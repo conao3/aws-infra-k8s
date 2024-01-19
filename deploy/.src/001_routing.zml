@@ -1,0 +1,158 @@
+DeployScript:
+  ext_variables: {}
+  variables:
+    - Vpc
+    - SubnetPubA
+    - SubnetPriAppA
+    - SubnetPriDbA
+    - SubnetPubC
+    - SubnetPriAppC
+    - SubnetPriDbC
+
+CloudFormation:
+  AWSTemplateFormatVersion: '2010-09-09'
+
+  Transform: AWS::Serverless-2016-10-31
+
+  Parameters:
+    Prefix: { Type: String }
+    Env: { Type: String }
+    Vpc: { Type: String }
+    SubnetPubA: { Type: String }
+    SubnetPriAppA: { Type: String }
+    SubnetPriDbA: { Type: String }
+    SubnetPubC: { Type: String }
+    SubnetPriAppC: { Type: String }
+    SubnetPriDbC: { Type: String }
+
+  Resources:
+    # InternetGateway
+    InternetGateway:
+      Type: AWS::EC2::InternetGateway
+      Properties: !Cfn::TagName
+        TagName: !Cfn::Prefix igw
+
+    AttachGateway:
+      Type: AWS::EC2::VPCGatewayAttachment
+      Properties:
+        InternetGatewayId: !Ref InternetGateway
+        VpcId: !Ref Vpc
+
+    # NatGateway
+    NatGatewayA:
+      Type: AWS::EC2::NatGateway
+      Properties:
+        AllocationId: !GetAtt EipNatGatewayA.AllocationId
+        SubnetId: !Ref SubnetPubA
+
+    EipNatGatewayA:
+      Type: AWS::EC2::EIP
+      Properties:
+        Domain: vpc
+
+    # To reduce cost, we use only one NAT Gateway.
+    # NatGatewayC:
+    #   Type: AWS::EC2::NatGateway
+    #   Properties:
+    #     AllocationId: !GetAtt EipNatGatewayC.AllocationId
+    #     SubnetId: !Ref SubnetPubC
+
+    # EipNatGatewayC:
+    #   Type: AWS::EC2::EIP
+    #   Properties:
+    #     Domain: vpc
+
+    # RouteTable: pub
+    RouteTablePub:
+      Type: AWS::EC2::RouteTable
+      Properties: !Cfn::TagName
+        VpcId: !Ref Vpc
+        TagName: pub
+
+    SubnetRouteTableAssociationPubA:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref RouteTablePub
+        SubnetId: !Ref SubnetPubA
+
+    SubnetRouteTableAssociationPubC:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref RouteTablePub
+        SubnetId: !Ref SubnetPubC
+
+    RoutePubAttachInternetGateway:
+      Type: AWS::EC2::Route
+      DependsOn: AttachGateway
+      Properties:
+        DestinationCidrBlock: 0.0.0.0/0
+        RouteTableId: !Ref RouteTablePub
+        GatewayId: !Ref InternetGateway
+
+    # RouteTable: pri-app-a
+    RouteTablePriAppA:
+      Type: AWS::EC2::RouteTable
+      Properties: !Cfn::TagName
+        VpcId: !Ref Vpc
+        TagName: pri-app-a
+
+    SubnetRouteTableAssociationPriAppA:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref RouteTablePriAppA
+        SubnetId: !Ref SubnetPriAppA
+
+    RoutePriAppAttachNatGatewayA:
+      Type: AWS::EC2::Route
+      Properties:
+        DestinationCidrBlock: 0.0.0.0/0
+        RouteTableId: !Ref RouteTablePriAppA
+        NatGatewayId: !Ref NatGatewayA
+
+    # RouteTable: pri-app-c
+    RouteTablePriAppC:
+      Type: AWS::EC2::RouteTable
+      Properties: !Cfn::TagName
+        VpcId: !Ref Vpc
+        TagName: pri-app-c
+
+    SubnetRouteTableAssociationPriAppC:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref RouteTablePriAppC
+        SubnetId: !Ref SubnetPriAppC
+
+    # RoutePriAppAttachNatGatewayC:
+    #   Type: AWS::EC2::Route
+    #   Properties:
+    #     DestinationCidrBlock: 0.0.0.0/0
+    #     RouteTableId: !Ref RouteTablePriAppC
+    #     NatGatewayId: !Ref NatGatewayC
+
+    # RouteTable: pri-db
+    RouteTablePriDb:
+      Type: AWS::EC2::RouteTable
+      Properties: !Cfn::TagName
+        VpcId: !Ref Vpc
+        TagName: pri-db
+
+    SubnetRouteTableAssociationPriDbA:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref RouteTablePriDb
+        SubnetId: !Ref SubnetPriDbA
+
+    SubnetRouteTableAssociationPriDbC:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref RouteTablePriDb
+        SubnetId: !Ref SubnetPriDbC
+
+  Outputs: !Cfn::ListOutputs
+    InternetGateway: !Ref InternetGateway
+    NatGatewayA: !Ref NatGatewayA
+    # NatGatewayC: !Ref NatGatewayC
+    RouteTablePub: !Ref RouteTablePub
+    RouteTablePriAppA: !Ref RouteTablePriAppA
+    RouteTablePriAppC: !Ref RouteTablePriAppC
+    RouteTablePriDb: !Ref RouteTablePriDb

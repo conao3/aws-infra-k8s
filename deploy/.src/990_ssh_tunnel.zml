@@ -1,0 +1,53 @@
+DeployScript:
+  ext_variables: {}
+  variables:
+    - SubnetPubA
+    - SecurityGroupSshTunnel
+
+CloudFormation:
+  AWSTemplateFormatVersion: '2010-09-09'
+
+  Transform: AWS::Serverless-2016-10-31
+
+  Parameters:
+    Prefix: { Type: String }
+    Env: { Type: String }
+    SubnetPubA: { Type: String }
+    SecurityGroupSshTunnel: { Type: String }
+    ImageIdAmazonLinux:
+      Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+      Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64
+
+  Resources:
+    InstanceSshTunnel:
+      Type: AWS::EC2::Instance
+      Properties: !Cfn::TagName
+        TagName: !Cfn::Prefix SshTunnel
+        ImageId: !Ref ImageIdAmazonLinux
+        InstanceType: t3.micro
+        KeyName: !Ref KeyPairSshTunnel
+        SubnetId: !Ref SubnetPubA
+        SecurityGroupIds:
+          - !Ref SecurityGroupSshTunnel
+
+    EipAssociationEipSshTunnel:
+      Type: AWS::EC2::EIPAssociation
+      Properties:
+        AllocationId: !GetAtt EipSshTunnel.AllocationId
+        InstanceId: !Ref InstanceSshTunnel
+
+    EipSshTunnel:
+      Type: AWS::EC2::EIP
+      Properties:
+        Domain: vpc
+
+    KeyPairSshTunnel:
+      Type: AWS::EC2::KeyPair
+      Properties:
+        KeyName: !Cfn::Prefix SshTunnel-${AWS::AccountId}
+
+  Outputs: !Cfn::ListOutputs
+    InstanceSshTunnel: !Ref InstanceSshTunnel
+    EipSshTunnel: !Ref EipSshTunnel
+    KeyPairSshTunnel: !Ref KeyPairSshTunnel
+    KeyPairSshTunnelId: !GetAtt KeyPairSshTunnel.KeyPairId

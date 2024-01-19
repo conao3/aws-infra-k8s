@@ -1,0 +1,62 @@
+DeployScript:
+  ext_variables: {}
+  variables:
+    - Vpc
+
+CloudFormation:
+  AWSTemplateFormatVersion: '2010-09-09'
+
+  Transform: AWS::Serverless-2016-10-31
+
+  Parameters:
+    Prefix: { Type: String }
+    Env: { Type: String }
+    Vpc: { Type: String }
+
+  Resources:
+    SecurityGroupRouter:
+      Type: AWS::EC2::SecurityGroup
+      Properties: !Cfn::TagName
+        TagName: !Cfn::Prefix router
+        VpcId: !Ref Vpc
+        GroupName: !Cfn::Prefix router
+        GroupDescription: Security Group for Router
+
+    SecurityGroupApp:
+      Type: AWS::EC2::SecurityGroup
+      Properties: !Cfn::TagName
+        TagName: !Cfn::Prefix app
+        VpcId: !Ref Vpc
+        GroupName: !Cfn::Prefix app
+        GroupDescription: Security Group for App
+
+    SecurityGroupDb:
+      Type: AWS::EC2::SecurityGroup
+      Properties: !Cfn::TagName
+        TagName: !Cfn::Prefix db
+        VpcId: !Ref Vpc
+        GroupName: !Cfn::Prefix db
+        GroupDescription: Security Group for DB
+
+    SecurityGroupSshTunnel:
+      Type: AWS::EC2::SecurityGroup
+      Properties: !Cfn::TagName
+        TagName: !Cfn::Prefix ssh-tunnel
+        VpcId: !Ref Vpc
+        GroupName: !Cfn::Prefix ssh-tunnel
+        GroupDescription: Security Group for ssh tunnnel EC2
+
+    SecurityGroupEice:
+      Type: AWS::EC2::SecurityGroup
+      Properties: !Cfn::TagName
+        TagName: !Cfn::Prefix eice
+        VpcId: !Ref Vpc
+        GroupName: !Cfn::Prefix eice
+        GroupDescription: Security Group for EC2 Instance Connect Endpoint
+
+  Outputs: !Cfn::ListOutputs
+    SecurityGroupRouter: !Ref SecurityGroupRouter
+    SecurityGroupApp: !Ref SecurityGroupApp
+    SecurityGroupDb: !Ref SecurityGroupDb
+    SecurityGroupSshTunnel: !Ref SecurityGroupSshTunnel
+    SecurityGroupEice: !Ref SecurityGroupEice

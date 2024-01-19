@@ -1,0 +1,85 @@
+DeployScript:
+  ext_variables: {}
+  variables: []
+
+CloudFormation:
+  AWSTemplateFormatVersion: '2010-09-09'
+
+  Transform: AWS::Serverless-2016-10-31
+
+  Parameters:
+    Prefix: { Type: String }
+    Env: { Type: String }
+
+  Mappings:
+    CIDR:
+      dev:
+        Vpc: 10.0.0.0/16
+        SubnetPubA: 10.0.0.0/24
+        SubnetPriAppA: 10.0.10.0/24
+        SubnetPriDbA: 10.0.20.0/24
+        SubnetPubC: 10.0.30.0/24
+        SubnetPriAppC: 10.0.40.0/24
+        SubnetPriDbC: 10.0.50.0/24
+
+      prd:
+        Vpc: 20.0.0.0/16
+        SubnetPubA: 20.0.0.0/24
+        SubnetPriAppA: 20.0.10.0/24
+        SubnetPriDbA: 20.0.20.0/24
+        SubnetPubC: 20.0.30.0/24
+        SubnetPriAppC: 20.0.40.0/24
+        SubnetPriDbC: 20.0.50.0/24
+
+  Resources:
+    Vpc:
+      Type: AWS::EC2::VPC
+      Properties: !Cfn::TagName
+        TagName: !Cfn::Prefix vpc
+        CidrBlock: !FindInMap [CIDR, !Ref Env, Vpc]
+        EnableDnsSupport: true
+        EnableDnsHostnames: true
+
+    <<: !Cfn::ListResources
+      Type: AWS::EC2::Subnet
+      Properties:
+        VpcId: !Ref Vpc
+      Resources:
+        SubnetPubA: !Cfn::TagName
+          TagName: !Cfn::Prefix pub-a
+          CidrBlock: !FindInMap [CIDR, !Ref Env, SubnetPubA]
+          AvailabilityZone: ap-northeast-1a
+
+        SubnetPriAppA: !Cfn::TagName
+          TagName: !Cfn::Prefix pri-app-a
+          CidrBlock: !FindInMap [CIDR, !Ref Env, SubnetPriAppA]
+          AvailabilityZone: ap-northeast-1a
+
+        SubnetPriDbA: !Cfn::TagName
+          TagName: !Cfn::Prefix pri-db-a
+          CidrBlock: !FindInMap [CIDR, !Ref Env, SubnetPriDbA]
+          AvailabilityZone: ap-northeast-1a
+
+        SubnetPubC: !Cfn::TagName
+          TagName: !Cfn::Prefix pub-c
+          CidrBlock: !FindInMap [CIDR, !Ref Env, SubnetPubC]
+          AvailabilityZone: ap-northeast-1c
+
+        SubnetPriAppC: !Cfn::TagName
+          TagName: !Cfn::Prefix pri-app-c
+          CidrBlock: !FindInMap [CIDR, !Ref Env, SubnetPriAppC]
+          AvailabilityZone: ap-northeast-1c
+
+        SubnetPriDbC: !Cfn::TagName
+          TagName: !Cfn::Prefix pri-db-c
+          CidrBlock: !FindInMap [CIDR, !Ref Env, SubnetPriDbC]
+          AvailabilityZone: ap-northeast-1c
+
+  Outputs: !Cfn::ListOutputs
+    Vpc: !Ref Vpc
+    SubnetPubA: !Ref SubnetPubA
+    SubnetPriAppA: !Ref SubnetPriAppA
+    SubnetPriDbA: !Ref SubnetPriDbA
+    SubnetPubC: !Ref SubnetPubC
+    SubnetPriAppC: !Ref SubnetPriAppC
+    SubnetPriDbC: !Ref SubnetPriDbC

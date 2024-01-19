@@ -1,0 +1,56 @@
+DeployScript:
+  ext_variables:
+    ImageIdAmazonLinux: ami-009082d575abf69d3
+  variables:
+    - SubnetPubA
+    - SecurityGroupRouter
+    - SecurityGroupApp
+
+CloudFormation:
+  AWSTemplateFormatVersion: '2010-09-09'
+
+  Transform: AWS::Serverless-2016-10-31
+
+  Parameters:
+    Prefix: { Type: String }
+    Env: { Type: String }
+    SubnetPubA: { Type: String }
+    SecurityGroupRouter: { Type: String }
+    SecurityGroupApp: { Type: String }
+    ImageIdAmazonLinux: { Type: String }
+
+  Resources:
+    InstanceRouter1:
+      Type: AWS::EC2::Instance
+      Properties: !Cfn::TagName
+        TagName: !Cfn::Prefix Router1
+        ImageId: !Ref ImageIdAmazonLinux
+        InstanceType: t3.micro
+        SubnetId: !Ref SubnetPubA
+        SecurityGroupIds:
+          - !Ref SecurityGroupRouter
+
+    InstanceApp1:
+      Type: AWS::EC2::Instance
+      Properties: !Cfn::TagName
+        TagName: !Cfn::Prefix App1
+        ImageId: !Ref ImageIdAmazonLinux
+        InstanceType: t3.micro
+        SubnetId: !Ref SubnetPubA
+        SecurityGroupIds:
+          - !Ref SecurityGroupRouter
+
+    InstanceApp2:
+      Type: AWS::EC2::Instance
+      Properties: !Cfn::TagName
+        TagName: !Cfn::Prefix App2
+        ImageId: !Ref ImageIdAmazonLinux
+        InstanceType: t3.micro
+        SubnetId: !Ref SubnetPubA
+        SecurityGroupIds:
+          - !Ref SecurityGroupRouter
+
+  Outputs: !Cfn::ListOutputs
+    InstanceRouter1: !Ref InstanceRouter1
+    InstanceApp1: !Ref InstanceApp1
+    InstanceApp2: !Ref InstanceApp2

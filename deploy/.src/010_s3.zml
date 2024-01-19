@@ -1,0 +1,46 @@
+DeployScript:
+  ext_variables: {}
+  variables: []
+
+CloudFormation:
+  AWSTemplateFormatVersion: '2010-09-09'
+
+  Transform: AWS::Serverless-2016-10-31
+
+  Parameters:
+    Prefix: { Type: String }
+    Env: { Type: String }
+
+  Resources:
+    BucketScript:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: !Cfn::Prefix script-${AWS::AccountId}
+
+    BucketBackup:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: !Cfn::Prefix backup-${AWS::AccountId}
+
+    BucketImageBuilder:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: !Cfn::Prefix image-builder-${AWS::AccountId}
+
+    BucketWafLog:
+      Type: AWS::S3::Bucket
+      Properties:
+        # Prefix with `aws-waf-logs-` is required by WAF logging
+        BucketName: !Sub aws-waf-logs-${Prefix}-${AWS::AccountId}
+
+    BucketAthenaResult:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: !Cfn::Prefix athena-result-${AWS::AccountId}
+
+  Outputs: !Cfn::ListOutputs
+    BucketScript: !Ref BucketScript
+    BucketBackup: !Ref BucketBackup
+    BucketImageBuilder: !Ref BucketImageBuilder
+    BucketWafLog: !Ref BucketWafLog
+    BucketAthenaResult: !Ref BucketAthenaResult

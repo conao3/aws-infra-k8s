@@ -1,0 +1,85 @@
+DeployScript:
+  ext_variables: {}
+  variables:
+    - SecurityGroupApp
+    - BucketScript
+    - BucketBackup
+
+CloudFormation:
+  AWSTemplateFormatVersion: '2010-09-09'
+
+  Transform: AWS::Serverless-2016-10-31
+
+  Parameters:
+    Prefix: { Type: String }
+    Env: { Type: String }
+    SecurityGroupApp: { Type: String }
+    BucketScript: { Type: String }
+    BucketBackup: { Type: String }
+    ImageIdAmazonLinux:
+      Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+      Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64
+
+  Resources:
+    LaunchTemplateApp:
+      Type: AWS::EC2::LaunchTemplate
+      Properties:
+        LaunchTemplateName: !Sub ${AWS::StackName}-launch-template
+        LaunchTemplateData:
+          ImageId: !Ref ImageIdAmazonLinux
+          InstanceType: t3.micro
+          IamInstanceProfile:
+            Name: !Ref InstanceProfileInstanceApp
+          SecurityGroupIds:
+            - !Ref SecurityGroupApp
+
+    InstanceProfileInstanceApp:
+      Type: AWS::IAM::InstanceProfile
+      Properties:
+        Roles:
+          - !Ref RoleInstanceApp
+
+    PolicyInstanceApp:
+      Type: AWS::IAM::ManagedPolicy
+      Properties:
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                # sam: S3CrudPolicy
+                - s3:GetObject
+                - s3:ListBucket
+                - s3:GetBucketLocation
+                - s3:GetObjectVersion
+                - s3:PutObject
+                - s3:PutObjectAcl
+                - s3:GetLifecycleConfiguration
+                - s3:PutLifecycleConfiguration
+                - s3:DeleteObject
+              Resource:
+                - !Sub arn:aws:s3:::${BucketScript}
+                - !Sub arn:aws:s3:::${BucketScript}/*
+                - !Sub arn:aws:s3:::${BucketBackup}
+                - !Sub arn:aws:s3:::${BucketBackup}/*
+
+    RoleInstanceApp:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: sts:AssumeRole
+              Principal:
+                Service: ec2.amazonaws.com
+        ManagedPolicyArns:
+          - !Ref PolicyInstanceApp
+          - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+          - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+
+  Outputs: !Cfn::ListOutputs
+    LaunchTemplateApp: !Ref LaunchTemplateApp
+    InstanceProfileInstanceApp: !Ref InstanceProfileInstanceApp
+    PolicyInstanceApp: !Ref PolicyInstanceApp
+    RoleInstanceApp: !Ref RoleInstanceApp
