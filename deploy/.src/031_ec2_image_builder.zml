@@ -2,7 +2,7 @@ DeployScript:
   ext_variables: {}
   variables:
     - SubnetPriAppA
-    - SecurityGroupApp
+    - SecurityGroupNode
     - BucketScript
     - BucketBackup
     - BucketImageBuilder
@@ -17,7 +17,7 @@ CloudFormation:
     Prefix: { Type: String }
     Env: { Type: String }
     SubnetPriAppA: { Type: String }
-    SecurityGroupApp: { Type: String }
+    SecurityGroupNode: { Type: String }
     BucketScript: { Type: String }
     BucketBackup: { Type: String }
     BucketImageBuilder: { Type: String }
@@ -80,7 +80,7 @@ CloudFormation:
           - t3.micro
         SubnetId: !Ref SubnetPriAppA
         SecurityGroupIds:
-          - !Ref SecurityGroupApp
+          - !Ref SecurityGroupNode
         TerminateInstanceOnFailure: false
         Logging:
           S3Logs:

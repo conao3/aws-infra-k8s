@@ -3,8 +3,8 @@ DeployScript:
     ImageIdAmazonLinux: ami-009082d575abf69d3
   variables:
     - SubnetPubA
-    - SecurityGroupRouter
-    - SecurityGroupApp
+    - SecurityGroupMaster
+    - SecurityGroupNode
 
 CloudFormation:
   AWSTemplateFormatVersion: '2010-09-09'
@@ -15,42 +15,42 @@ CloudFormation:
     Prefix: { Type: String }
     Env: { Type: String }
     SubnetPubA: { Type: String }
-    SecurityGroupRouter: { Type: String }
-    SecurityGroupApp: { Type: String }
+    SecurityGroupMaster: { Type: String }
+    SecurityGroupNode: { Type: String }
     ImageIdAmazonLinux: { Type: String }
 
   Resources:
-    InstanceRouter1:
+    InstanceMaster1:
       Type: AWS::EC2::Instance
       Properties: !Cfn::TagName
-        TagName: !Cfn::Prefix Router1
+        TagName: !Cfn::Prefix Master1
         ImageId: !Ref ImageIdAmazonLinux
         InstanceType: t3.small
         SubnetId: !Ref SubnetPubA
         SecurityGroupIds:
-          - !Ref SecurityGroupRouter
+          - !Ref SecurityGroupMaster
 
-    InstanceApp1:
+    InstanceNode1:
       Type: AWS::EC2::Instance
       Properties: !Cfn::TagName
-        TagName: !Cfn::Prefix App1
+        TagName: !Cfn::Prefix Node1
         ImageId: !Ref ImageIdAmazonLinux
         InstanceType: t3.small
         SubnetId: !Ref SubnetPubA
         SecurityGroupIds:
-          - !Ref SecurityGroupRouter
+          - !Ref SecurityGroupMaster
 
-    InstanceApp2:
+    InstanceNode2:
       Type: AWS::EC2::Instance
       Properties: !Cfn::TagName
-        TagName: !Cfn::Prefix App2
+        TagName: !Cfn::Prefix Node2
         ImageId: !Ref ImageIdAmazonLinux
         InstanceType: t3.small
         SubnetId: !Ref SubnetPubA
         SecurityGroupIds:
-          - !Ref SecurityGroupRouter
+          - !Ref SecurityGroupMaster
 
   Outputs: !Cfn::ListOutputs
-    InstanceRouter1: !Ref InstanceRouter1
-    InstanceApp1: !Ref InstanceApp1
-    InstanceApp2: !Ref InstanceApp2
+    InstanceMaster1: !Ref InstanceMaster1
+    InstanceNode1: !Ref InstanceNode1
+    InstanceNode2: !Ref InstanceNode2

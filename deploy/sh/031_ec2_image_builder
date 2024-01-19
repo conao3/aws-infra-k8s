@@ -11,7 +11,7 @@ cd "$(dirname "$0")/../../"
 template_file="./deploy/cfn/${template_name}"
 
 SubnetPriAppA=$(cfn-get-export SubnetPriAppA --prefix)
-SecurityGroupApp=$(cfn-get-export SecurityGroupApp --prefix)
+SecurityGroupNode=$(cfn-get-export SecurityGroupNode --prefix)
 BucketScript=$(cfn-get-export BucketScript --prefix)
 BucketBackup=$(cfn-get-export BucketBackup --prefix)
 BucketImageBuilder=$(cfn-get-export BucketImageBuilder --prefix)
@@ -30,7 +30,7 @@ sam deploy \
 Prefix=\"${OP_PREFIX}\" \
 Env=\"${OP_ENV}\" \
 SubnetPriAppA=\"${SubnetPriAppA}\" \
-SecurityGroupApp=\"${SecurityGroupApp}\" \
+SecurityGroupNode=\"${SecurityGroupNode}\" \
 BucketScript=\"${BucketScript}\" \
 BucketBackup=\"${BucketBackup}\" \
 BucketImageBuilder=\"${BucketImageBuilder}\" \

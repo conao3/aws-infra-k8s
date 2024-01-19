@@ -6,8 +6,8 @@ cd "$(dirname "$0")/../../"
 
 . deploy-script-header.sh
 
-SecurityGroupRouter=$(cfn-get-export SecurityGroupRouter --prefix)
-SecurityGroupApp=$(cfn-get-export SecurityGroupApp --prefix)
+SecurityGroupMaster=$(cfn-get-export SecurityGroupMaster --prefix)
+SecurityGroupNode=$(cfn-get-export SecurityGroupNode --prefix)
 SecurityGroupDb=$(cfn-get-export SecurityGroupDb --prefix)
 SecurityGroupSshTunnel=$(cfn-get-export SecurityGroupSshTunnel --prefix)
 SecurityGroupEice=$(cfn-get-export SecurityGroupEice --prefix)
@@ -16,11 +16,11 @@ labels=/tmp/configure_security_group.$$
 aws ec2 describe-security-group-rules | jq -r '.SecurityGroupRules[].Description' | grep -o '[^ ]*:' > "${labels}" || true
 
 
-## SecurityGroupRouter
+## SecurityGroupMaster
 
 grep -qx 'cc71979a:' "${labels}" ||
 aws ec2 authorize-security-group-ingress \
-    --group-id "${SecurityGroupRouter}" \
+    --group-id "${SecurityGroupMaster}" \
     --ip-permissions \
 IpProtocol=tcp,\
 FromPort=80,\
@@ -29,7 +29,7 @@ IpRanges='[{CidrIp=0.0.0.0/0,Description="cc71979a: Internet"}]'
 
 grep -qx '08c5916e:' "${labels}" ||
 aws ec2 authorize-security-group-ingress \
-    --group-id "${SecurityGroupRouter}" \
+    --group-id "${SecurityGroupMaster}" \
     --ip-permissions \
 IpProtocol=tcp,\
 FromPort=443,\
@@ -38,7 +38,7 @@ IpRanges='[{CidrIp=0.0.0.0/0,Description="08c5916e: Internet"}]'
 
 grep -qx 'da586869:' "${labels}" ||
 aws ec2 authorize-security-group-ingress \
-    --group-id "${SecurityGroupRouter}" \
+    --group-id "${SecurityGroupMaster}" \
     --ip-permissions \
 IpProtocol=tcp,\
 FromPort=22,\
@@ -46,11 +46,11 @@ ToPort=22,\
 UserIdGroupPairs="[{GroupId=${SecurityGroupEice},Description='da586869: EC2 Instance Connect Endpoint'}]"
 
 
-## SecurityGroupApp
+## SecurityGroupNode
 
 grep -qx '45c6822c:' "${labels}" ||
 aws ec2 authorize-security-group-ingress \
-    --group-id "${SecurityGroupApp}" \
+    --group-id "${SecurityGroupNode}" \
     --ip-permissions \
 IpProtocol=tcp,\
 FromPort=22,\
@@ -59,7 +59,7 @@ UserIdGroupPairs="[{GroupId=${SecurityGroupSshTunnel},Description='45c6822c: ssh
 
 grep -qx '526014de:' "${labels}" ||
 aws ec2 authorize-security-group-ingress \
-    --group-id "${SecurityGroupApp}" \
+    --group-id "${SecurityGroupNode}" \
     --ip-permissions \
 IpProtocol=tcp,\
 FromPort=22,\
@@ -68,12 +68,12 @@ UserIdGroupPairs="[{GroupId=${SecurityGroupEice},Description='526014de: EC2 Inst
 
 grep -qx '3791aa36:' "${labels}" ||
 aws ec2 authorize-security-group-ingress \
-    --group-id "${SecurityGroupApp}" \
+    --group-id "${SecurityGroupNode}" \
     --ip-permissions \
 IpProtocol=tcp,\
 FromPort=80,\
 ToPort=80,\
-UserIdGroupPairs="[{GroupId=${SecurityGroupRouter},Description='3791aa36: ALB'}]"
+UserIdGroupPairs="[{GroupId=${SecurityGroupMaster},Description='3791aa36: ALB'}]"
 
 
 ## SecurityGroupDb
@@ -94,7 +94,7 @@ aws ec2 authorize-security-group-ingress \
 IpProtocol=tcp,\
 FromPort=3306,\
 ToPort=3306,\
-UserIdGroupPairs="[{GroupId=${SecurityGroupApp},Description='bf7d31ba: App'}]"
+UserIdGroupPairs="[{GroupId=${SecurityGroupNode},Description='bf7d31ba: App'}]"
 
 
 ## SecurityGroupSshTunnel

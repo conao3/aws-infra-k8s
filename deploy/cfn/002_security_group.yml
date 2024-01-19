@@ -10,30 +10,30 @@ Parameters:
   Vpc:
     Type: String
 Resources:
-  SecurityGroupRouter:
+  SecurityGroupMaster:
     Type: AWS::EC2::SecurityGroup
     Properties:
       VpcId:
         Ref: Vpc
       GroupName:
-        Fn::Sub: ${Prefix}-router
-      GroupDescription: Security Group for Router
+        Fn::Sub: ${Prefix}-master
+      GroupDescription: Security Group for Master
       Tags:
         - Key: Name
           Value:
-            Fn::Sub: ${Prefix}-router
-  SecurityGroupApp:
+            Fn::Sub: ${Prefix}-master
+  SecurityGroupNode:
     Type: AWS::EC2::SecurityGroup
     Properties:
       VpcId:
         Ref: Vpc
       GroupName:
-        Fn::Sub: ${Prefix}-app
-      GroupDescription: Security Group for App
+        Fn::Sub: ${Prefix}-node
+      GroupDescription: Security Group for Node
       Tags:
         - Key: Name
           Value:
-            Fn::Sub: ${Prefix}-app
+            Fn::Sub: ${Prefix}-node
   SecurityGroupDb:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -71,18 +71,18 @@ Resources:
           Value:
             Fn::Sub: ${Prefix}-eice
 Outputs:
-  SecurityGroupRouter:
+  SecurityGroupMaster:
     Value:
-      Ref: SecurityGroupRouter
+      Ref: SecurityGroupMaster
     Export:
       Name:
-        Fn::Sub: ${Prefix}-SecurityGroupRouter
-  SecurityGroupApp:
+        Fn::Sub: ${Prefix}-SecurityGroupMaster
+  SecurityGroupNode:
     Value:
-      Ref: SecurityGroupApp
+      Ref: SecurityGroupNode
     Export:
       Name:
-        Fn::Sub: ${Prefix}-SecurityGroupApp
+        Fn::Sub: ${Prefix}-SecurityGroupNode
   SecurityGroupDb:
     Value:
       Ref: SecurityGroupDb

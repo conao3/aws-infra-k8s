@@ -12,8 +12,8 @@ template_file="./deploy/cfn/${template_name}"
 
 ImageIdAmazonLinux="ami-009082d575abf69d3"
 SubnetPubA=$(cfn-get-export SubnetPubA --prefix)
-SecurityGroupRouter=$(cfn-get-export SecurityGroupRouter --prefix)
-SecurityGroupApp=$(cfn-get-export SecurityGroupApp --prefix)
+SecurityGroupMaster=$(cfn-get-export SecurityGroupMaster --prefix)
+SecurityGroupNode=$(cfn-get-export SecurityGroupNode --prefix)
 
 sam validate --template-file "${template_file}"
 optwait cfn stack "${stack_name}"
@@ -29,6 +29,6 @@ Prefix=\"${OP_PREFIX}\" \
 Env=\"${OP_ENV}\" \
 ImageIdAmazonLinux=\"${ImageIdAmazonLinux}\" \
 SubnetPubA=\"${SubnetPubA}\" \
-SecurityGroupRouter=\"${SecurityGroupRouter}\" \
-SecurityGroupApp=\"${SecurityGroupApp}\" \
+SecurityGroupMaster=\"${SecurityGroupMaster}\" \
+SecurityGroupNode=\"${SecurityGroupNode}\" \
 "

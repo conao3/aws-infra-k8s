@@ -9,14 +9,14 @@ Parameters:
     Type: String
   SubnetPubA:
     Type: String
-  SecurityGroupRouter:
+  SecurityGroupMaster:
     Type: String
-  SecurityGroupApp:
+  SecurityGroupNode:
     Type: String
   ImageIdAmazonLinux:
     Type: String
 Resources:
-  InstanceRouter1:
+  InstanceMaster1:
     Type: AWS::EC2::Instance
     Properties:
       ImageId:
@@ -25,12 +25,12 @@ Resources:
       SubnetId:
         Ref: SubnetPubA
       SecurityGroupIds:
-        - Ref: SecurityGroupRouter
+        - Ref: SecurityGroupMaster
       Tags:
         - Key: Name
           Value:
-            Fn::Sub: ${Prefix}-Router1
-  InstanceApp1:
+            Fn::Sub: ${Prefix}-Master1
+  InstanceNode1:
     Type: AWS::EC2::Instance
     Properties:
       ImageId:
@@ -39,12 +39,12 @@ Resources:
       SubnetId:
         Ref: SubnetPubA
       SecurityGroupIds:
-        - Ref: SecurityGroupRouter
+        - Ref: SecurityGroupMaster
       Tags:
         - Key: Name
           Value:
-            Fn::Sub: ${Prefix}-App1
-  InstanceApp2:
+            Fn::Sub: ${Prefix}-Node1
+  InstanceNode2:
     Type: AWS::EC2::Instance
     Properties:
       ImageId:
@@ -53,27 +53,27 @@ Resources:
       SubnetId:
         Ref: SubnetPubA
       SecurityGroupIds:
-        - Ref: SecurityGroupRouter
+        - Ref: SecurityGroupMaster
       Tags:
         - Key: Name
           Value:
-            Fn::Sub: ${Prefix}-App2
+            Fn::Sub: ${Prefix}-Node2
 Outputs:
-  InstanceRouter1:
+  InstanceMaster1:
     Value:
-      Ref: InstanceRouter1
+      Ref: InstanceMaster1
     Export:
       Name:
-        Fn::Sub: ${Prefix}-InstanceRouter1
-  InstanceApp1:
+        Fn::Sub: ${Prefix}-InstanceMaster1
+  InstanceNode1:
     Value:
-      Ref: InstanceApp1
+      Ref: InstanceNode1
     Export:
       Name:
-        Fn::Sub: ${Prefix}-InstanceApp1
-  InstanceApp2:
+        Fn::Sub: ${Prefix}-InstanceNode1
+  InstanceNode2:
     Value:
-      Ref: InstanceApp2
+      Ref: InstanceNode2
     Export:
       Name:
-        Fn::Sub: ${Prefix}-InstanceApp2
+        Fn::Sub: ${Prefix}-InstanceNode2

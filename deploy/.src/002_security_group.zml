@@ -14,21 +14,21 @@ CloudFormation:
     Vpc: { Type: String }
 
   Resources:
-    SecurityGroupRouter:
+    SecurityGroupMaster:
       Type: AWS::EC2::SecurityGroup
       Properties: !Cfn::TagName
-        TagName: !Cfn::Prefix router
+        TagName: !Cfn::Prefix master
         VpcId: !Ref Vpc
-        GroupName: !Cfn::Prefix router
-        GroupDescription: Security Group for Router
+        GroupName: !Cfn::Prefix master
+        GroupDescription: Security Group for Master
 
-    SecurityGroupApp:
+    SecurityGroupNode:
       Type: AWS::EC2::SecurityGroup
       Properties: !Cfn::TagName
-        TagName: !Cfn::Prefix app
+        TagName: !Cfn::Prefix node
         VpcId: !Ref Vpc
-        GroupName: !Cfn::Prefix app
-        GroupDescription: Security Group for App
+        GroupName: !Cfn::Prefix node
+        GroupDescription: Security Group for Node
 
     SecurityGroupDb:
       Type: AWS::EC2::SecurityGroup
@@ -55,8 +55,8 @@ CloudFormation:
         GroupDescription: Security Group for EC2 Instance Connect Endpoint
 
   Outputs: !Cfn::ListOutputs
-    SecurityGroupRouter: !Ref SecurityGroupRouter
-    SecurityGroupApp: !Ref SecurityGroupApp
+    SecurityGroupMaster: !Ref SecurityGroupMaster
+    SecurityGroupNode: !Ref SecurityGroupNode
     SecurityGroupDb: !Ref SecurityGroupDb
     SecurityGroupSshTunnel: !Ref SecurityGroupSshTunnel
     SecurityGroupEice: !Ref SecurityGroupEice
