@@ -1,0 +1,127 @@
+#!/bin/bash
+
+set -euo pipefail -o posix
+
+cd "$(dirname "$0")/../../"
+
+. deploy-script-header.sh
+
+SecurityGroupRouter=$(cfn-get-export SecurityGroupRouter --prefix)
+SecurityGroupApp=$(cfn-get-export SecurityGroupApp --prefix)
+SecurityGroupDb=$(cfn-get-export SecurityGroupDb --prefix)
+SecurityGroupSshTunnel=$(cfn-get-export SecurityGroupSshTunnel --prefix)
+SecurityGroupEice=$(cfn-get-export SecurityGroupEice --prefix)
+
+labels=/tmp/configure_security_group.$$
+aws ec2 describe-security-group-rules | jq -r '.SecurityGroupRules[].Description' | grep -o '[^ ]*:' > "${labels}" || true
+
+
+## SecurityGroupRouter
+
+grep -qx 'cc71979a:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupRouter}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=80,\
+ToPort=80,\
+IpRanges='[{CidrIp=0.0.0.0/0,Description="cc71979a: Internet"}]'
+
+grep -qx '08c5916e:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupRouter}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=443,\
+ToPort=443,\
+IpRanges='[{CidrIp=0.0.0.0/0,Description="08c5916e: Internet"}]'
+
+grep -qx 'da586869:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupRouter}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=22,\
+ToPort=22,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupEice},Description='da586869: EC2 Instance Connect Endpoint'}]"
+
+
+## SecurityGroupApp
+
+grep -qx '45c6822c:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupApp}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=22,\
+ToPort=22,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupSshTunnel},Description='45c6822c: ssh tunnel'}]"
+
+grep -qx '526014de:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupApp}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=22,\
+ToPort=22,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupEice},Description='526014de: EC2 Instance Connect Endpoint'}]"
+
+grep -qx '3791aa36:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupApp}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=80,\
+ToPort=80,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupRouter},Description='3791aa36: ALB'}]"
+
+
+## SecurityGroupDb
+
+grep -qx '108d1512:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupDb}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=3306,\
+ToPort=3306,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupSshTunnel},Description='108d1512: ssh tunnel'}]"
+
+grep -qx 'bf7d31ba:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupDb}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=3306,\
+ToPort=3306,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupApp},Description='bf7d31ba: App'}]"
+
+
+## SecurityGroupSshTunnel
+
+
+## SecurityGroupEice
+
+
+## Delete all rules from VPC default security group
+# SecurityHub: vpc-default-security-group-closed
+
+Vpc=$(cfn-get-export Vpc --prefix)
+SecurityGroupDefault=$(aws ec2 describe-security-groups --filter Name=vpc-id,Values="${Vpc}" Name=group-name,Values=default | jq -r '.SecurityGroups[0].GroupId')
+
+aws ec2 describe-security-group-rules --filters Name=group-id,Values="${SecurityGroupDefault}" |
+jq -r '.SecurityGroupRules[] | select(.IsEgress == true) | .SecurityGroupRuleId' |
+while read -r rule_id; do
+    aws ec2 revoke-security-group-egress --group-id "${SecurityGroupDefault}" --security-group-rule-ids "${rule_id}"
+done
+
+aws ec2 describe-security-group-rules --filters Name=group-id,Values="${SecurityGroupDefault}" |
+jq -r '.SecurityGroupRules[] | select(.IsEgress == false) | .SecurityGroupRuleId' |
+while read -r rule_id; do
+    aws ec2 revoke-security-group-ingress --group-id "${SecurityGroupDefault}" --security-group-rule-ids "${rule_id}"
+done
+
+
+## Teardown
+
+rm -rf "${labels}"

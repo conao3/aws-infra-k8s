@@ -16,3 +16,5 @@ set -- "$@" --refresh
 ./deploy/sh/031_ec2_image_builder "$@"
 ./deploy/sh/990_ssh_tunnel "$@"
 ./deploy/sh/991_eice "$@"
+
+./deploy/sh/configure_security_group "$@"
