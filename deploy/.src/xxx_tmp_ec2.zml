@@ -25,7 +25,7 @@ CloudFormation:
       Properties: !Cfn::TagName
         TagName: !Cfn::Prefix Router1
         ImageId: !Ref ImageIdAmazonLinux
-        InstanceType: t3.micro
+        InstanceType: t3.small
         SubnetId: !Ref SubnetPubA
         SecurityGroupIds:
           - !Ref SecurityGroupRouter
@@ -35,7 +35,7 @@ CloudFormation:
       Properties: !Cfn::TagName
         TagName: !Cfn::Prefix App1
         ImageId: !Ref ImageIdAmazonLinux
-        InstanceType: t3.micro
+        InstanceType: t3.small
         SubnetId: !Ref SubnetPubA
         SecurityGroupIds:
           - !Ref SecurityGroupRouter
@@ -45,7 +45,7 @@ CloudFormation:
       Properties: !Cfn::TagName
         TagName: !Cfn::Prefix App2
         ImageId: !Ref ImageIdAmazonLinux
-        InstanceType: t3.micro
+        InstanceType: t3.small
         SubnetId: !Ref SubnetPubA
         SecurityGroupIds:
           - !Ref SecurityGroupRouter
