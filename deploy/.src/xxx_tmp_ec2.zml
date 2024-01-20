@@ -26,9 +26,12 @@ CloudFormation:
         TagName: !Cfn::Prefix Master1
         ImageId: !Ref ImageIdAmazonLinux
         InstanceType: t3.small
-        SubnetId: !Ref SubnetPubA
-        SecurityGroupIds:
-          - !Ref SecurityGroupMaster
+        NetworkInterfaces:
+          - AssociatePublicIpAddress: true
+            DeviceIndex: 0
+            SubnetId: !Ref SubnetPubA
+            GroupSet:
+              - !Ref SecurityGroupMaster
 
     InstanceNode1:
       Type: AWS::EC2::Instance
@@ -36,9 +39,12 @@ CloudFormation:
         TagName: !Cfn::Prefix Node1
         ImageId: !Ref ImageIdAmazonLinux
         InstanceType: t3.small
-        SubnetId: !Ref SubnetPubA
-        SecurityGroupIds:
-          - !Ref SecurityGroupMaster
+        NetworkInterfaces:
+          - AssociatePublicIpAddress: true
+            DeviceIndex: 0
+            SubnetId: !Ref SubnetPubA
+            GroupSet:
+              - !Ref SecurityGroupMaster
 
     InstanceNode2:
       Type: AWS::EC2::Instance
@@ -46,9 +52,12 @@ CloudFormation:
         TagName: !Cfn::Prefix Node2
         ImageId: !Ref ImageIdAmazonLinux
         InstanceType: t3.small
-        SubnetId: !Ref SubnetPubA
-        SecurityGroupIds:
-          - !Ref SecurityGroupMaster
+        NetworkInterfaces:
+          - AssociatePublicIpAddress: true
+            DeviceIndex: 0
+            SubnetId: !Ref SubnetPubA
+            GroupSet:
+              - !Ref SecurityGroupMaster
 
   Outputs: !Cfn::ListOutputs
     InstanceMaster1: !Ref InstanceMaster1
