@@ -38,17 +38,17 @@ CloudFormation:
         InternetGatewayId: !Ref InternetGateway
         VpcId: !Ref Vpc
 
-    # # NatGateway
-    # NatGatewayA:
-    #   Type: AWS::EC2::NatGateway
-    #   Properties:
-    #     AllocationId: !GetAtt EipNatGatewayA.AllocationId
-    #     SubnetId: !Ref SubnetPubA
+    # NatGateway
+    NatGatewayA:
+      Type: AWS::EC2::NatGateway
+      Properties:
+        AllocationId: !GetAtt EipNatGatewayA.AllocationId
+        SubnetId: !Ref SubnetPubA
 
-    # EipNatGatewayA:
-    #   Type: AWS::EC2::EIP
-    #   Properties:
-    #     Domain: vpc
+    EipNatGatewayA:
+      Type: AWS::EC2::EIP
+      Properties:
+        Domain: vpc
 
     # NatGatewayC:
     #   Type: AWS::EC2::NatGateway
@@ -101,12 +101,12 @@ CloudFormation:
         RouteTableId: !Ref RouteTablePriAppA
         SubnetId: !Ref SubnetPriAppA
 
-    # RoutePriAppAttachNatGatewayA:
-    #   Type: AWS::EC2::Route
-    #   Properties:
-    #     DestinationCidrBlock: 0.0.0.0/0
-    #     RouteTableId: !Ref RouteTablePriAppA
-    #     NatGatewayId: !Ref NatGatewayA
+    RoutePriAppAttachNatGatewayA:
+      Type: AWS::EC2::Route
+      Properties:
+        DestinationCidrBlock: 0.0.0.0/0
+        RouteTableId: !Ref RouteTablePriAppA
+        NatGatewayId: !Ref NatGatewayA
 
     # RouteTable: pri-app-c
     RouteTablePriAppC:
@@ -149,7 +149,7 @@ CloudFormation:
 
   Outputs: !Cfn::ListOutputs
     InternetGateway: !Ref InternetGateway
-    # NatGatewayA: !Ref NatGatewayA
+    NatGatewayA: !Ref NatGatewayA
     # NatGatewayC: !Ref NatGatewayC
     RouteTablePub: !Ref RouteTablePub
     RouteTablePriAppA: !Ref RouteTablePriAppA

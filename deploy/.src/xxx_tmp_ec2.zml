@@ -2,7 +2,7 @@ DeployScript:
   ext_variables:
     ImageIdAmazonLinux: ami-009082d575abf69d3
   variables:
-    - SubnetPubA
+    - SubnetPriAppA
     - SecurityGroupMaster
     - SecurityGroupNode
 
@@ -14,7 +14,7 @@ CloudFormation:
   Parameters:
     Prefix: { Type: String }
     Env: { Type: String }
-    SubnetPubA: { Type: String }
+    SubnetPriAppA: { Type: String }
     SecurityGroupMaster: { Type: String }
     SecurityGroupNode: { Type: String }
     ImageIdAmazonLinux: { Type: String }
@@ -26,12 +26,9 @@ CloudFormation:
         TagName: !Cfn::Prefix Master1
         ImageId: !Ref ImageIdAmazonLinux
         InstanceType: t3.small
-        NetworkInterfaces:
-          - AssociatePublicIpAddress: true
-            DeviceIndex: 0
-            SubnetId: !Ref SubnetPubA
-            GroupSet:
-              - !Ref SecurityGroupMaster
+        SubnetId: !Ref SubnetPriAppA
+        SecurityGroupIds:
+          - !Ref SecurityGroupNode
 
     InstanceNode1:
       Type: AWS::EC2::Instance
@@ -39,12 +36,9 @@ CloudFormation:
         TagName: !Cfn::Prefix Node1
         ImageId: !Ref ImageIdAmazonLinux
         InstanceType: t3.small
-        NetworkInterfaces:
-          - AssociatePublicIpAddress: true
-            DeviceIndex: 0
-            SubnetId: !Ref SubnetPubA
-            GroupSet:
-              - !Ref SecurityGroupMaster
+        SubnetId: !Ref SubnetPriAppA
+        SecurityGroupIds:
+          - !Ref SecurityGroupNode
 
     InstanceNode2:
       Type: AWS::EC2::Instance
@@ -52,12 +46,9 @@ CloudFormation:
         TagName: !Cfn::Prefix Node2
         ImageId: !Ref ImageIdAmazonLinux
         InstanceType: t3.small
-        NetworkInterfaces:
-          - AssociatePublicIpAddress: true
-            DeviceIndex: 0
-            SubnetId: !Ref SubnetPubA
-            GroupSet:
-              - !Ref SecurityGroupMaster
+        SubnetId: !Ref SubnetPriAppA
+        SecurityGroupIds:
+          - !Ref SecurityGroupNode
 
   Outputs: !Cfn::ListOutputs
     InstanceMaster1: !Ref InstanceMaster1

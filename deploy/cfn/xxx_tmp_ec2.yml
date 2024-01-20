@@ -7,7 +7,7 @@ Parameters:
     Type: String
   Env:
     Type: String
-  SubnetPubA:
+  SubnetPriAppA:
     Type: String
   SecurityGroupMaster:
     Type: String
@@ -22,13 +22,10 @@ Resources:
       ImageId:
         Ref: ImageIdAmazonLinux
       InstanceType: t3.small
-      NetworkInterfaces:
-        - AssociatePublicIpAddress: true
-          DeviceIndex: 0
-          SubnetId:
-            Ref: SubnetPubA
-          GroupSet:
-            - Ref: SecurityGroupMaster
+      SubnetId:
+        Ref: SubnetPriAppA
+      SecurityGroupIds:
+        - Ref: SecurityGroupNode
       Tags:
         - Key: Name
           Value:
@@ -39,13 +36,10 @@ Resources:
       ImageId:
         Ref: ImageIdAmazonLinux
       InstanceType: t3.small
-      NetworkInterfaces:
-        - AssociatePublicIpAddress: true
-          DeviceIndex: 0
-          SubnetId:
-            Ref: SubnetPubA
-          GroupSet:
-            - Ref: SecurityGroupMaster
+      SubnetId:
+        Ref: SubnetPriAppA
+      SecurityGroupIds:
+        - Ref: SecurityGroupNode
       Tags:
         - Key: Name
           Value:
@@ -56,13 +50,10 @@ Resources:
       ImageId:
         Ref: ImageIdAmazonLinux
       InstanceType: t3.small
-      NetworkInterfaces:
-        - AssociatePublicIpAddress: true
-          DeviceIndex: 0
-          SubnetId:
-            Ref: SubnetPubA
-          GroupSet:
-            - Ref: SecurityGroupMaster
+      SubnetId:
+        Ref: SubnetPriAppA
+      SecurityGroupIds:
+        - Ref: SecurityGroupNode
       Tags:
         - Key: Name
           Value:

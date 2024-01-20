@@ -36,6 +36,17 @@ Resources:
         Ref: InternetGateway
       VpcId:
         Ref: Vpc
+  NatGatewayA:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt: EipNatGatewayA.AllocationId
+      SubnetId:
+        Ref: SubnetPubA
+  EipNatGatewayA:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
   RouteTablePub:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -82,6 +93,14 @@ Resources:
         Ref: RouteTablePriAppA
       SubnetId:
         Ref: SubnetPriAppA
+  RoutePriAppAttachNatGatewayA:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      RouteTableId:
+        Ref: RouteTablePriAppA
+      NatGatewayId:
+        Ref: NatGatewayA
   RouteTablePriAppC:
     Type: AWS::EC2::RouteTable
     Properties:
@@ -126,6 +145,12 @@ Outputs:
     Export:
       Name:
         Fn::Sub: ${Prefix}-InternetGateway
+  NatGatewayA:
+    Value:
+      Ref: NatGatewayA
+    Export:
+      Name:
+        Fn::Sub: ${Prefix}-NatGatewayA
   RouteTablePub:
     Value:
       Ref: RouteTablePub
