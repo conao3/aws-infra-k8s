@@ -1,6 +1,6 @@
 DeployScript:
   ext_variables:
-    ImageIdAmazonLinux: ami-009082d575abf69d3
+    ImageIdAmazonLinux: ami-0add6fc5c834307f8
   variables:
     - SubnetPriAppA
     - SecurityGroupMaster
