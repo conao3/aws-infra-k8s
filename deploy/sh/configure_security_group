@@ -25,7 +25,7 @@ aws ec2 authorize-security-group-ingress \
 IpProtocol=tcp,\
 FromPort=80,\
 ToPort=80,\
-IpRanges='[{CidrIp=0.0.0.0/0,Description="cc71979a: Internet"}]'
+IpRanges='[{CidrIp=0.0.0.0/0,Description="cc71979a: Internet - HTTP"}]'
 
 grep -qx '08c5916e:' "${labels}" ||
 aws ec2 authorize-security-group-ingress \
@@ -34,7 +34,17 @@ aws ec2 authorize-security-group-ingress \
 IpProtocol=tcp,\
 FromPort=443,\
 ToPort=443,\
-IpRanges='[{CidrIp=0.0.0.0/0,Description="08c5916e: Internet"}]'
+IpRanges='[{CidrIp=0.0.0.0/0,Description="08c5916e: Internet - HTTPS"}]'
+
+# This rule is required for EICE
+grep -qx '240bee42:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupK8sMaster}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=22,\
+ToPort=22,\
+IpRanges='[{CidrIp=0.0.0.0/0,Description="240bee42: Internet - SSH"}]'
 
 grep -qx 'da586869:' "${labels}" ||
 aws ec2 authorize-security-group-ingress \
