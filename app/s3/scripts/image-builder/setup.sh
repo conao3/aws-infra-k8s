@@ -29,3 +29,11 @@ EOF'
 
 sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
 sudo systemctl enable --now kubelet
+
+# master node
+if [ "${OP_NODE_TYPE}" = "master" ]; then
+    sudo kubeadm init --pod-network-cidr=192.168.0.0/16
+    mkdir -p "${HOME}/.kube"
+    sudo cp -i /etc/kubernetes/admin.conf "${HOME}/.kube/config"
+    sudo chown "$(id -u):$(id -g)" "${HOME}/.kube/config"
+fi
