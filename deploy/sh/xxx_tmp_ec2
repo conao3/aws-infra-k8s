@@ -11,6 +11,7 @@ cd "$(dirname "$0")/../../"
 template_file="./deploy/cfn/${template_name}"
 
 ImageIdAmazonLinux="ami-0add6fc5c834307f8"
+SubnetPubA=$(cfn-get-export SubnetPubA --prefix)
 SubnetPriAppA=$(cfn-get-export SubnetPriAppA --prefix)
 SecurityGroupK8sMaster=$(cfn-get-export SecurityGroupK8sMaster --prefix)
 SecurityGroupK8sWorker=$(cfn-get-export SecurityGroupK8sWorker --prefix)
@@ -28,6 +29,7 @@ sam deploy \
 Prefix=\"${OP_PREFIX}\" \
 Env=\"${OP_ENV}\" \
 ImageIdAmazonLinux=\"${ImageIdAmazonLinux}\" \
+SubnetPubA=\"${SubnetPubA}\" \
 SubnetPriAppA=\"${SubnetPriAppA}\" \
 SecurityGroupK8sMaster=\"${SecurityGroupK8sMaster}\" \
 SecurityGroupK8sWorker=\"${SecurityGroupK8sWorker}\" \

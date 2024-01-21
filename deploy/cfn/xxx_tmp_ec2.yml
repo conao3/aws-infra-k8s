@@ -7,6 +7,8 @@ Parameters:
     Type: String
   Env:
     Type: String
+  SubnetPubA:
+    Type: String
   SubnetPriAppA:
     Type: String
   SecurityGroupK8sMaster:
@@ -22,10 +24,13 @@ Resources:
       ImageId:
         Ref: ImageIdAmazonLinux
       InstanceType: t3.small
-      SubnetId:
-        Ref: SubnetPriAppA
-      SecurityGroupIds:
-        - Ref: SecurityGroupK8sMaster
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          SubnetId:
+            Ref: SubnetPubA
+          GroupSet:
+            - Ref: SecurityGroupK8sMaster
       Tags:
         - Key: Name
           Value:
