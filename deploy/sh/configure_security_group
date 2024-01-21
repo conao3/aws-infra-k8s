@@ -73,7 +73,25 @@ aws ec2 authorize-security-group-ingress \
 IpProtocol=tcp,\
 FromPort=80,\
 ToPort=80,\
-UserIdGroupPairs="[{GroupId=${SecurityGroupK8sMaster},Description='3791aa36: K8s-Master'}]"
+UserIdGroupPairs="[{GroupId=${SecurityGroupK8sMaster},Description='3791aa36: K8s-Master - HTTP'}]"
+
+grep -qx 'dc561abb:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupK8sWorker}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=10250,\
+ToPort=10250,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupK8sMaster},Description='dc561abb: K8s-Master - Kubelet'}]"
+
+grep -qx '01d8cc4a:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupK8sWorker}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=30000,\
+ToPort=32767,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupK8sMaster},Description='01d8cc4a: K8s-Master - NodePort'}]"
 
 
 ## SecurityGroupDb
