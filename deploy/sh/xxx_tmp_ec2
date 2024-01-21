@@ -12,8 +12,8 @@ template_file="./deploy/cfn/${template_name}"
 
 ImageIdAmazonLinux="ami-0add6fc5c834307f8"
 SubnetPriAppA=$(cfn-get-export SubnetPriAppA --prefix)
-SecurityGroupMaster=$(cfn-get-export SecurityGroupMaster --prefix)
-SecurityGroupNode=$(cfn-get-export SecurityGroupNode --prefix)
+SecurityGroupK8sMaster=$(cfn-get-export SecurityGroupK8sMaster --prefix)
+SecurityGroupK8sWorker=$(cfn-get-export SecurityGroupK8sWorker --prefix)
 
 sam validate --template-file "${template_file}"
 optwait cfn stack "${stack_name}"
@@ -29,6 +29,6 @@ Prefix=\"${OP_PREFIX}\" \
 Env=\"${OP_ENV}\" \
 ImageIdAmazonLinux=\"${ImageIdAmazonLinux}\" \
 SubnetPriAppA=\"${SubnetPriAppA}\" \
-SecurityGroupMaster=\"${SecurityGroupMaster}\" \
-SecurityGroupNode=\"${SecurityGroupNode}\" \
+SecurityGroupK8sMaster=\"${SecurityGroupK8sMaster}\" \
+SecurityGroupK8sWorker=\"${SecurityGroupK8sWorker}\" \
 "

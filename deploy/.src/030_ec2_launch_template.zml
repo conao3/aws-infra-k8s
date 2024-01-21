@@ -1,7 +1,7 @@
 DeployScript:
   ext_variables: {}
   variables:
-    - SecurityGroupNode
+    - SecurityGroupK8sWorker
     - BucketScript
     - BucketBackup
 
@@ -13,7 +13,7 @@ CloudFormation:
   Parameters:
     Prefix: { Type: String }
     Env: { Type: String }
-    SecurityGroupNode: { Type: String }
+    SecurityGroupK8sWorker: { Type: String }
     BucketScript: { Type: String }
     BucketBackup: { Type: String }
     ImageIdAmazonLinux:
@@ -31,7 +31,7 @@ CloudFormation:
           IamInstanceProfile:
             Name: !Ref InstanceProfileInstanceApp
           SecurityGroupIds:
-            - !Ref SecurityGroupNode
+            - !Ref SecurityGroupK8sWorker
 
     InstanceProfileInstanceApp:
       Type: AWS::IAM::InstanceProfile

@@ -7,7 +7,7 @@ Parameters:
     Type: String
   Env:
     Type: String
-  SecurityGroupNode:
+  SecurityGroupK8sWorker:
     Type: String
   BucketScript:
     Type: String
@@ -30,7 +30,7 @@ Resources:
           Name:
             Ref: InstanceProfileInstanceApp
         SecurityGroupIds:
-          - Ref: SecurityGroupNode
+          - Ref: SecurityGroupK8sWorker
   InstanceProfileInstanceApp:
     Type: AWS::IAM::InstanceProfile
     Properties:

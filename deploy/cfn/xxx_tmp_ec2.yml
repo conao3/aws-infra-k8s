@@ -9,9 +9,9 @@ Parameters:
     Type: String
   SubnetPriAppA:
     Type: String
-  SecurityGroupMaster:
+  SecurityGroupK8sMaster:
     Type: String
-  SecurityGroupNode:
+  SecurityGroupK8sWorker:
     Type: String
   ImageIdAmazonLinux:
     Type: String
@@ -25,7 +25,7 @@ Resources:
       SubnetId:
         Ref: SubnetPriAppA
       SecurityGroupIds:
-        - Ref: SecurityGroupNode
+        - Ref: SecurityGroupK8sMaster
       Tags:
         - Key: Name
           Value:
@@ -39,7 +39,7 @@ Resources:
       SubnetId:
         Ref: SubnetPriAppA
       SecurityGroupIds:
-        - Ref: SecurityGroupNode
+        - Ref: SecurityGroupK8sWorker
       Tags:
         - Key: Name
           Value:
@@ -53,7 +53,7 @@ Resources:
       SubnetId:
         Ref: SubnetPriAppA
       SecurityGroupIds:
-        - Ref: SecurityGroupNode
+        - Ref: SecurityGroupK8sWorker
       Tags:
         - Key: Name
           Value:

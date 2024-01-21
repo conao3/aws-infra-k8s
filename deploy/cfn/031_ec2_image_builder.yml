@@ -9,7 +9,7 @@ Parameters:
     Type: String
   SubnetPriAppA:
     Type: String
-  SecurityGroupNode:
+  SecurityGroupK8sWorker:
     Type: String
   BucketScript:
     Type: String
@@ -78,7 +78,7 @@ Resources:
       SubnetId:
         Ref: SubnetPriAppA
       SecurityGroupIds:
-        - Ref: SecurityGroupNode
+        - Ref: SecurityGroupK8sWorker
       TerminateInstanceOnFailure: false
       Logging:
         S3Logs:

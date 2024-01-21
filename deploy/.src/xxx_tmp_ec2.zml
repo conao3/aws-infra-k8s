@@ -3,8 +3,8 @@ DeployScript:
     ImageIdAmazonLinux: ami-0add6fc5c834307f8
   variables:
     - SubnetPriAppA
-    - SecurityGroupMaster
-    - SecurityGroupNode
+    - SecurityGroupK8sMaster
+    - SecurityGroupK8sWorker
 
 CloudFormation:
   AWSTemplateFormatVersion: '2010-09-09'
@@ -15,8 +15,8 @@ CloudFormation:
     Prefix: { Type: String }
     Env: { Type: String }
     SubnetPriAppA: { Type: String }
-    SecurityGroupMaster: { Type: String }
-    SecurityGroupNode: { Type: String }
+    SecurityGroupK8sMaster: { Type: String }
+    SecurityGroupK8sWorker: { Type: String }
     ImageIdAmazonLinux: { Type: String }
 
   Resources:
@@ -28,7 +28,7 @@ CloudFormation:
         InstanceType: t3.small
         SubnetId: !Ref SubnetPriAppA
         SecurityGroupIds:
-          - !Ref SecurityGroupNode
+          - !Ref SecurityGroupK8sMaster
 
     InstanceNode1:
       Type: AWS::EC2::Instance
@@ -38,7 +38,7 @@ CloudFormation:
         InstanceType: t3.small
         SubnetId: !Ref SubnetPriAppA
         SecurityGroupIds:
-          - !Ref SecurityGroupNode
+          - !Ref SecurityGroupK8sWorker
 
     InstanceNode2:
       Type: AWS::EC2::Instance
@@ -48,7 +48,7 @@ CloudFormation:
         InstanceType: t3.small
         SubnetId: !Ref SubnetPriAppA
         SecurityGroupIds:
-          - !Ref SecurityGroupNode
+          - !Ref SecurityGroupK8sWorker
 
   Outputs: !Cfn::ListOutputs
     InstanceMaster1: !Ref InstanceMaster1

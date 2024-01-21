@@ -14,21 +14,21 @@ CloudFormation:
     Vpc: { Type: String }
 
   Resources:
-    SecurityGroupMaster:
+    SecurityGroupK8sMaster:
       Type: AWS::EC2::SecurityGroup
       Properties: !Cfn::TagName
-        TagName: !Cfn::Prefix master
+        TagName: !Cfn::Prefix k8s-master
         VpcId: !Ref Vpc
-        GroupName: !Cfn::Prefix master
-        GroupDescription: Security Group for Master
+        GroupName: !Cfn::Prefix k8s-master
+        GroupDescription: Security Group for K8s-Master
 
-    SecurityGroupNode:
+    SecurityGroupK8sWorker:
       Type: AWS::EC2::SecurityGroup
       Properties: !Cfn::TagName
-        TagName: !Cfn::Prefix node
+        TagName: !Cfn::Prefix k8s-worker
         VpcId: !Ref Vpc
-        GroupName: !Cfn::Prefix node
-        GroupDescription: Security Group for Node
+        GroupName: !Cfn::Prefix k8s-worker
+        GroupDescription: Security Group for K8s-Worker
 
     SecurityGroupDb:
       Type: AWS::EC2::SecurityGroup
@@ -55,8 +55,8 @@ CloudFormation:
         GroupDescription: Security Group for EC2 Instance Connect Endpoint
 
   Outputs: !Cfn::ListOutputs
-    SecurityGroupMaster: !Ref SecurityGroupMaster
-    SecurityGroupNode: !Ref SecurityGroupNode
+    SecurityGroupK8sMaster: !Ref SecurityGroupK8sMaster
+    SecurityGroupK8sWorker: !Ref SecurityGroupK8sWorker
     SecurityGroupDb: !Ref SecurityGroupDb
     SecurityGroupSshTunnel: !Ref SecurityGroupSshTunnel
     SecurityGroupEice: !Ref SecurityGroupEice

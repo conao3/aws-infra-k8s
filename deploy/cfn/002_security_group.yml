@@ -10,30 +10,30 @@ Parameters:
   Vpc:
     Type: String
 Resources:
-  SecurityGroupMaster:
+  SecurityGroupK8sMaster:
     Type: AWS::EC2::SecurityGroup
     Properties:
       VpcId:
         Ref: Vpc
       GroupName:
-        Fn::Sub: ${Prefix}-master
-      GroupDescription: Security Group for Master
+        Fn::Sub: ${Prefix}-k8s-master
+      GroupDescription: Security Group for K8s-Master
       Tags:
         - Key: Name
           Value:
-            Fn::Sub: ${Prefix}-master
-  SecurityGroupNode:
+            Fn::Sub: ${Prefix}-k8s-master
+  SecurityGroupK8sWorker:
     Type: AWS::EC2::SecurityGroup
     Properties:
       VpcId:
         Ref: Vpc
       GroupName:
-        Fn::Sub: ${Prefix}-node
-      GroupDescription: Security Group for Node
+        Fn::Sub: ${Prefix}-k8s-worker
+      GroupDescription: Security Group for K8s-Worker
       Tags:
         - Key: Name
           Value:
-            Fn::Sub: ${Prefix}-node
+            Fn::Sub: ${Prefix}-k8s-worker
   SecurityGroupDb:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -71,18 +71,18 @@ Resources:
           Value:
             Fn::Sub: ${Prefix}-eice
 Outputs:
-  SecurityGroupMaster:
+  SecurityGroupK8sMaster:
     Value:
-      Ref: SecurityGroupMaster
+      Ref: SecurityGroupK8sMaster
     Export:
       Name:
-        Fn::Sub: ${Prefix}-SecurityGroupMaster
-  SecurityGroupNode:
+        Fn::Sub: ${Prefix}-SecurityGroupK8sMaster
+  SecurityGroupK8sWorker:
     Value:
-      Ref: SecurityGroupNode
+      Ref: SecurityGroupK8sWorker
     Export:
       Name:
-        Fn::Sub: ${Prefix}-SecurityGroupNode
+        Fn::Sub: ${Prefix}-SecurityGroupK8sWorker
   SecurityGroupDb:
     Value:
       Ref: SecurityGroupDb
