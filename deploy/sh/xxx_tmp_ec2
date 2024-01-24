@@ -10,7 +10,7 @@ cd "$(dirname "$0")/../../"
 
 template_file="./deploy/cfn/${template_name}"
 
-ImageIdAmazonLinux="ami-0add6fc5c834307f8"
+ImageIdAmazonLinux="ami-046451162c4340bff"
 SubnetPubA=$(cfn-get-export SubnetPubA --prefix)
 SubnetPriAppA=$(cfn-get-export SubnetPriAppA --prefix)
 SecurityGroupK8sMaster=$(cfn-get-export SecurityGroupK8sMaster --prefix)

@@ -1,6 +1,6 @@
 DeployScript:
   ext_variables:
-    ImageIdAmazonLinux: ami-0add6fc5c834307f8
+    ImageIdAmazonLinux: ami-046451162c4340bff
   variables:
     - SubnetPubA
     - SubnetPriAppA
@@ -36,27 +36,41 @@ CloudFormation:
             GroupSet:
               - Ref: SecurityGroupK8sMaster
 
-    InstanceNode1:
+    InstanceWorker1:
       Type: AWS::EC2::Instance
       Properties: !Cfn::TagName
-        TagName: !Cfn::Prefix Node1
+        TagName: !Cfn::Prefix Worker1
         ImageId: !Ref ImageIdAmazonLinux
         InstanceType: t3.small
-        SubnetId: !Ref SubnetPriAppA
-        SecurityGroupIds:
-          - !Ref SecurityGroupK8sWorker
+        # SubnetId: !Ref SubnetPriAppA
+        # SecurityGroupIds:
+        #   - !Ref SecurityGroupK8sWorker
+        NetworkInterfaces:
+          - AssociatePublicIpAddress: true
+            DeviceIndex: 0
+            SubnetId:
+              Ref: SubnetPubA
+            GroupSet:
+              - Ref: SecurityGroupK8sMaster
 
-    InstanceNode2:
+    InstanceWorker2:
       Type: AWS::EC2::Instance
       Properties: !Cfn::TagName
-        TagName: !Cfn::Prefix Node2
+        TagName: !Cfn::Prefix Worker2
         ImageId: !Ref ImageIdAmazonLinux
         InstanceType: t3.small
-        SubnetId: !Ref SubnetPriAppA
-        SecurityGroupIds:
-          - !Ref SecurityGroupK8sWorker
+        # SubnetId: !Ref SubnetPriAppA
+        # SecurityGroupIds:
+        #   - !Ref SecurityGroupK8sWorker
+        NetworkInterfaces:
+          - AssociatePublicIpAddress: true
+            DeviceIndex: 0
+            SubnetId:
+              Ref: SubnetPubA
+            GroupSet:
+              - Ref: SecurityGroupK8sMaster
 
   Outputs: !Cfn::ListOutputs
     InstanceMaster1: !Ref InstanceMaster1
-    InstanceNode1: !Ref InstanceNode1
-    InstanceNode2: !Ref InstanceNode2
+    InstanceWorker1: !Ref InstanceWorker1
+    InstanceWorker2: !Ref InstanceWorker2

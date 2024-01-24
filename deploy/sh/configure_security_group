@@ -55,6 +55,80 @@ FromPort=22,\
 ToPort=22,\
 UserIdGroupPairs="[{GroupId=${SecurityGroupEice},Description='da586869: EC2 Instance Connect Endpoint'}]"
 
+grep -qx 'aa59fd80:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupK8sMaster}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=6443,\
+ToPort=6443,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupK8sWorker},Description='aa59fd80: K8s-Worker - K8s API Server'}]"
+
+grep -qx '6e94c45c:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupK8sMaster}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=10250,\
+ToPort=10250,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupK8sWorker},Description='6e94c45c: K8s-Worker - Kubelet'}]"
+
+grep -qx '75d3d380:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupK8sMaster}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=30000,\
+ToPort=32767,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupK8sWorker},Description='75d3d380: K8s-Worker - NodePort'}]"
+
+grep -qx '0223aa71:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupK8sMaster}" \
+    --ip-permissions \
+IpProtocol=udp,\
+FromPort=8472,\
+ToPort=8472,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupK8sWorker},Description='0223aa71: K8s-Worker - Flannel'}]"
+
+# loopback rule
+
+grep -qx '5204bc18:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupK8sMaster}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=6443,\
+ToPort=6443,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupK8sMaster},Description='5204bc18: K8s-Master - K8s API Server'}]"
+
+grep -qx '6226119b:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupK8sMaster}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=10250,\
+ToPort=10250,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupK8sMaster},Description='6226119b: K8s-Master - Kubelet'}]"
+
+grep -qx '68bc150f:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupK8sMaster}" \
+    --ip-permissions \
+IpProtocol=tcp,\
+FromPort=30000,\
+ToPort=32767,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupK8sMaster},Description='68bc150f: K8s-Master - NodePort'}]"
+
+grep -qx '07538663:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupK8sMaster}" \
+    --ip-permissions \
+IpProtocol=udp,\
+FromPort=8472,\
+ToPort=8472,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupK8sMaster},Description='07538663: K8s-Master - Flannel'}]"
+
 
 ## SecurityGroupK8sWorker
 
@@ -102,6 +176,15 @@ IpProtocol=tcp,\
 FromPort=30000,\
 ToPort=32767,\
 UserIdGroupPairs="[{GroupId=${SecurityGroupK8sMaster},Description='01d8cc4a: K8s-Master - NodePort'}]"
+
+grep -qx 'b3ae17c4:' "${labels}" ||
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SecurityGroupK8sWorker}" \
+    --ip-permissions \
+IpProtocol=udp,\
+FromPort=8472,\
+ToPort=8472,\
+UserIdGroupPairs="[{GroupId=${SecurityGroupK8sMaster},Description='b3ae17c4: K8s-Master - Flannel'}]"
 
 
 ## SecurityGroupDb

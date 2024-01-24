@@ -2,9 +2,15 @@
 
 set -euxo pipefail -o posix
 
+# misc
+sudo yum install -y nmap-ncat
+sudo yum install -y firewalld
+sudo systemctl enable --now firewalld
+
 # docker
 sudo yum install -y docker
 sudo systemctl enable --now docker
+sudo usermod -aG docker ec2-user
 
 # disable SELinux
 sudo setenforce 0
@@ -30,10 +36,18 @@ EOF'
 sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
 sudo systemctl enable --now kubelet
 
-# master node
-if [ "${OP_NODE_TYPE}" = "master" ]; then
-    sudo kubeadm init --pod-network-cidr=192.168.0.0/16
-    mkdir -p "${HOME}/.kube"
-    sudo cp -i /etc/kubernetes/admin.conf "${HOME}/.kube/config"
-    sudo chown "$(id -u):$(id -g)" "${HOME}/.kube/config"
-fi
+sudo firewall-cmd --add-port=6443/tcp --zone=public --permanent
+sudo firewall-cmd --reload
+
+# # master node
+# if [ "${OP_NODE_TYPE}" = "master" ]; then
+#     # kubeadm
+#     sudo kubeadm init --pod-network-cidr=10.244.0.0/16
+#     mkdir -p "${HOME}/.kube"
+#     sudo cp -i /etc/kubernetes/admin.conf "${HOME}/.kube/config"
+#     sudo chown "$(id -u):$(id -g)" "${HOME}/.kube/config"
+
+#     # flannel
+#     curl -LO https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+#     kubectl apply -f kube-flannel.yml
+# fi

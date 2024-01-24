@@ -35,34 +35,40 @@ Resources:
         - Key: Name
           Value:
             Fn::Sub: ${Prefix}-Master1
-  InstanceNode1:
+  InstanceWorker1:
     Type: AWS::EC2::Instance
     Properties:
       ImageId:
         Ref: ImageIdAmazonLinux
       InstanceType: t3.small
-      SubnetId:
-        Ref: SubnetPriAppA
-      SecurityGroupIds:
-        - Ref: SecurityGroupK8sWorker
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          SubnetId:
+            Ref: SubnetPubA
+          GroupSet:
+            - Ref: SecurityGroupK8sMaster
       Tags:
         - Key: Name
           Value:
-            Fn::Sub: ${Prefix}-Node1
-  InstanceNode2:
+            Fn::Sub: ${Prefix}-Worker1
+  InstanceWorker2:
     Type: AWS::EC2::Instance
     Properties:
       ImageId:
         Ref: ImageIdAmazonLinux
       InstanceType: t3.small
-      SubnetId:
-        Ref: SubnetPriAppA
-      SecurityGroupIds:
-        - Ref: SecurityGroupK8sWorker
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          SubnetId:
+            Ref: SubnetPubA
+          GroupSet:
+            - Ref: SecurityGroupK8sMaster
       Tags:
         - Key: Name
           Value:
-            Fn::Sub: ${Prefix}-Node2
+            Fn::Sub: ${Prefix}-Worker2
 Outputs:
   InstanceMaster1:
     Value:
@@ -70,15 +76,15 @@ Outputs:
     Export:
       Name:
         Fn::Sub: ${Prefix}-InstanceMaster1
-  InstanceNode1:
+  InstanceWorker1:
     Value:
-      Ref: InstanceNode1
+      Ref: InstanceWorker1
     Export:
       Name:
-        Fn::Sub: ${Prefix}-InstanceNode1
-  InstanceNode2:
+        Fn::Sub: ${Prefix}-InstanceWorker1
+  InstanceWorker2:
     Value:
-      Ref: InstanceNode2
+      Ref: InstanceWorker2
     Export:
       Name:
-        Fn::Sub: ${Prefix}-InstanceNode2
+        Fn::Sub: ${Prefix}-InstanceWorker2
