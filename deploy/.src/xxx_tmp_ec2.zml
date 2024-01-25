@@ -1,6 +1,6 @@
 DeployScript:
   ext_variables:
-    ImageIdAmazonLinux: ami-046451162c4340bff
+    ImageIdAmazonLinux: ami-0bb1e7dc5465c50f5
   variables:
     - SubnetPubA
     - SubnetPriAppA
@@ -27,7 +27,7 @@ CloudFormation:
       Properties: !Cfn::TagName
         TagName: !Cfn::Prefix Master1
         ImageId: !Ref ImageIdAmazonLinux
-        InstanceType: t3.midium
+        InstanceType: t3.medium
         NetworkInterfaces:
           - AssociatePublicIpAddress: true
             DeviceIndex: 0

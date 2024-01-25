@@ -23,7 +23,7 @@ Resources:
     Properties:
       ImageId:
         Ref: ImageIdAmazonLinux
-      InstanceType: t3.midium
+      InstanceType: t3.medium
       NetworkInterfaces:
         - AssociatePublicIpAddress: true
           DeviceIndex: 0

@@ -4,8 +4,6 @@ set -euxo pipefail -o posix
 
 # misc
 sudo yum install -y nmap-ncat
-# sudo yum install -y firewalld
-# sudo systemctl enable --now firewalld
 
 # docker
 sudo yum install -y docker
@@ -35,6 +33,11 @@ net.ipv4.ip_forward = 1
 EOF'
 sudo sysctl --system
 
+# containerd
+containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+sudo sed -i /etc/containerd/config.toml -e 's/SystemdCgroup = false/SystemdCgroup = true/'
+sudo systemctl restart containerd
+
 # install k8s
 sudo bash -c 'cat <<EOF > /etc/yum.repos.d/kubernetes.repo
 [kubernetes]
@@ -49,18 +52,18 @@ EOF'
 sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
 sudo systemctl enable --now kubelet
 
-# sudo firewall-cmd --add-port=6443/tcp --zone=public --permanent
-# sudo firewall-cmd --reload
+# master node
+if [ "${OP_NODE_TYPE}" = "master" ]; then
+    # kubeadm
+    sudo kubeadm init --pod-network-cidr=10.244.0.0/16
+    mkdir -p "${HOME}/.kube"
+    sudo cp -i /etc/kubernetes/admin.conf "${HOME}/.kube/config"
+    user=$(id -u)
+    group=$(id -g)
+    sudo chown "${user}:${group}" "${HOME}/.kube/config"
 
-# # master node
-# if [ "${OP_NODE_TYPE}" = "master" ]; then
-#     # kubeadm
-#     sudo kubeadm init --pod-network-cidr=10.244.0.0/16
-#     mkdir -p "${HOME}/.kube"
-#     sudo cp -i /etc/kubernetes/admin.conf "${HOME}/.kube/config"
-#     sudo chown "$(id -u):$(id -g)" "${HOME}/.kube/config"
-
-#     # flannel
-#     curl -LO https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
-#     kubectl apply -f kube-flannel.yml
-# fi
+    # flannel
+    curl -LO https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+    sed -i kube-flannel.yml -e 's/10.244.0.0/192.168.0.0/'
+    kubectl apply -f kube-flannel.yml
+fi
