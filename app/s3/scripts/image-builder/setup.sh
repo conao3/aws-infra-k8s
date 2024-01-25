@@ -4,13 +4,24 @@ set -euxo pipefail -o posix
 
 # misc
 sudo yum install -y nmap-ncat
-sudo yum install -y firewalld
-sudo systemctl enable --now firewalld
+# sudo yum install -y firewalld
+# sudo systemctl enable --now firewalld
 
 # docker
 sudo yum install -y docker
 sudo systemctl enable --now docker
 sudo usermod -aG docker ec2-user
+
+# swap off
+swapoff -a
+
+# modprove
+sudo bash -c 'cat <<EOF > /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF'
+sudo modprobe overlay
+sudo modprobe br_netfilter
 
 # disable SELinux
 sudo setenforce 0
@@ -20,7 +31,9 @@ sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
 sudo bash -c 'cat <<EOF > /etc/sysctl.d/k8s.conf
 net.bridge.bridge-nf-call-ip6tables = 1
 net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
 EOF'
+sudo sysctl --system
 
 # install k8s
 sudo bash -c 'cat <<EOF > /etc/yum.repos.d/kubernetes.repo
@@ -36,8 +49,8 @@ EOF'
 sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
 sudo systemctl enable --now kubelet
 
-sudo firewall-cmd --add-port=6443/tcp --zone=public --permanent
-sudo firewall-cmd --reload
+# sudo firewall-cmd --add-port=6443/tcp --zone=public --permanent
+# sudo firewall-cmd --reload
 
 # # master node
 # if [ "${OP_NODE_TYPE}" = "master" ]; then
