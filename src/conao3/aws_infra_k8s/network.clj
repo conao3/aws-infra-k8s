@@ -70,8 +70,7 @@
           (json/generate-stream writer)))
 
     (c.util/eshell "sam" "validate" "--template-file" (str (fs/path file)))
-    (c.util/eshell "sam"
-                   "deploy"
+    (c.util/eshell "sam" "deploy"
                    "--template-file" (str (fs/path file))
                    "--stack-name" (str (-> param :prefix) "-" "network")
                    "--capabilities" "CAPABILITY_NAMED_IAM"
