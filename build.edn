@@ -1,0 +1,9 @@
+{:main conao3.aws-infra-k8s
+ :name "aws-infra-k8s"
+ :native-image
+ {:graal-native-image "native-image"
+  :args ["-H:+ReportExceptionStackTraces"
+         "--no-fallback"
+         "--initialize-at-build-time"
+         "-H:+StaticExecutableWithDynamicLibC"
+         "--enable-url-protocols=http,https"]}}

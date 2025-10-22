@@ -1,0 +1,13 @@
+{:paths ["src" "resources"]
+ :deps
+ {org.clojure/clojure {:mvn/version "1.12.2"}}
+ :aliases
+ {:build {:deps {io.github.clojure/tools.build {:mvn/version "0.10.10"}}
+          :ns-default build}
+  :native-image {:main-opts ["-m" "clj.native-image"
+                              "conao3.aws-infra-k8s"
+                              "--no-fallback"
+                              "-H:+ReportExceptionStackTraces"
+                              "--initialize-at-build-time"
+                              "-H:Name=aws-infra-k8s"]
+                 :extra-deps {clj.native-image/clj.native-image {:mvn/version "0.2.1"}}}}}
