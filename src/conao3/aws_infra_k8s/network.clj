@@ -2,9 +2,7 @@
   (:require
    [clojure.java.io :as io]
    [babashka.fs :as fs]
-   [babashka.process :as process]
    [cheshire.core :as json]
-   [conao3.aws-infra :as a]
    [conao3.aws-infra.cfn :as a.cfn]
    [conao3.aws-infra-k8s.util :as c.util]))
 
