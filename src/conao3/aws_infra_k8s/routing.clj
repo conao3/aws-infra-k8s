@@ -7,7 +7,7 @@
    [conao3.aws-infra-k8s.util :as c.util]
    [conao3.aws-infra.cfn :as a.cfn]))
 
-(defn cfn [param]
+(defn cfn [_param]
   (a.cfn/template
    {:Parameters
     (a.cfn/list-string-parameters

@@ -1,6 +1,5 @@
-(ns conao3.aws-infra-k8s.security-group 
+(ns conao3.aws-infra-k8s.ssh-tunnel 
   (:require
-   [camel-snake-kebab.core :as csk]
    [babashka.fs :as fs]
    [cheshire.core :as json]
    [clojure.java.io :as io]
@@ -9,34 +8,33 @@
    [conao3.aws-infra.cfn :as a.cfn]))
 
 (defn cfn [_param]
-  (let [security-group (fn [x]
-                         {:Type "AWS::EC2::SecurityGroup"
-                          :Properties
-                          (a.cfn/tag-name
-                           {:TagName (a.cfn/prefix (csk/->kebab-case x))
-                            :VpcId {:Ref :Vpc}
-                            :GroupName (a.cfn/prefix (csk/->kebab-case x))
-                            :GroupDescription (format "Security Group for %s" (csk/->PascalCase x))})})]
-    (a.cfn/template
+  (a.cfn/template
    {:Parameters
-    (a.cfn/list-string-parameters
-     [:Env :Prefix
-      :Vpc])
+    (-> [:Env :Prefix
+         :SubnetPubA :SecurityGroupSshTunnel]
+        a.cfn/list-string-parameters
+        (assoc :ImageIdAmazonLinux
+               {:Type "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
+                :Default "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64"}))
 
     :Resources
-    {:SecurityGroupApp (security-group "App")
-     :SecurityGroupSshTunnel (security-group "SshTunnel")
-     :SecurityGroupEice (security-group "Eice")}
+    {:InstanceSshTunnel
+     {:Type "AWS::EC2::Instance"
+      :Properties
+      (a.cfn/tag-name
+       {:TagName (a.cfn/prefix "SshTunnel")
+        :ImageId {:Ref :ImageIdAmazonLinux}
+        :InstanceType "t3.micro"
+        :SubnetId {:Ref :SubnetPubA}
+        :SecurityGroupIds [{:Ref :SecurityGroupSshTunnel}]})}}
 
     :Outputs
     (a.cfn/list-outputs
-     {:SecurityGroupApp {:Ref :SecurityGroupApp}
-      :SecurityGroupSshTunnel {:Ref :SecurityGroupSshTunnel}
-      :SecurityGroupEice {:Ref :SecurityGroupEice}})})))
+     {:InstanceSshTunnel {:Ref :InstanceSshTunnel}})}))
 
 (defn deploy [param]
-  (let [file (fs/file "target/cfn/security-group.json")
-        stack-name (str (-> param :prefix) "-" "security-group")]
+  (let [file (fs/file "target/cfn/ssh-tunnel.json")
+        stack-name (str (-> param :prefix) "-" "ssh-tunnel")]
     (fs/create-dirs (fs/parent file))
 
     (c.util/eprintln (format "Write: %s" (fs/path file)))
@@ -69,7 +67,9 @@
                      "--parameter-overrides"
                      (->> {:Env (-> param :env)
                            :Prefix (-> param :prefix)
-                           :Vpc (get exports (keyword (format "%s-%s" (-> param :prefix) (name :Vpc))))}
+                           :Vpc (get exports (keyword (format "%s-%s" (-> param :prefix) (name :Vpc))))
+                           :SubnetPubA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPubA))))
+                           :SecurityGroupSshTunnel (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupSshTunnel))))}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))
                           (str/join " "))))))

@@ -1,6 +1,5 @@
-(ns conao3.aws-infra-k8s.security-group 
+(ns conao3.aws-infra-k8s.eice 
   (:require
-   [camel-snake-kebab.core :as csk]
    [babashka.fs :as fs]
    [cheshire.core :as json]
    [clojure.java.io :as io]
@@ -9,34 +8,26 @@
    [conao3.aws-infra.cfn :as a.cfn]))
 
 (defn cfn [_param]
-  (let [security-group (fn [x]
-                         {:Type "AWS::EC2::SecurityGroup"
-                          :Properties
-                          (a.cfn/tag-name
-                           {:TagName (a.cfn/prefix (csk/->kebab-case x))
-                            :VpcId {:Ref :Vpc}
-                            :GroupName (a.cfn/prefix (csk/->kebab-case x))
-                            :GroupDescription (format "Security Group for %s" (csk/->PascalCase x))})})]
-    (a.cfn/template
+  (a.cfn/template
    {:Parameters
     (a.cfn/list-string-parameters
      [:Env :Prefix
-      :Vpc])
+      :SubnetPriA :SecurityGroupEice])
 
     :Resources
-    {:SecurityGroupApp (security-group "App")
-     :SecurityGroupSshTunnel (security-group "SshTunnel")
-     :SecurityGroupEice (security-group "Eice")}
+    {:InstanceConnectEndpoint
+     {:Type "AWS::EC2::InstanceConnectEndpoint"
+      :Properties
+      {:SecurityGroupIds [{:Ref :SecurityGroupEice}]
+       :SubnetId {:Ref :SubnetPriA}}}}
 
     :Outputs
     (a.cfn/list-outputs
-     {:SecurityGroupApp {:Ref :SecurityGroupApp}
-      :SecurityGroupSshTunnel {:Ref :SecurityGroupSshTunnel}
-      :SecurityGroupEice {:Ref :SecurityGroupEice}})})))
+     {:InstanceConnectEndpoint {:Ref :InstanceConnectEndpoint}})}))
 
 (defn deploy [param]
-  (let [file (fs/file "target/cfn/security-group.json")
-        stack-name (str (-> param :prefix) "-" "security-group")]
+  (let [file (fs/file "target/cfn/eice.json")
+        stack-name (str (-> param :prefix) "-" "eice")]
     (fs/create-dirs (fs/parent file))
 
     (c.util/eprintln (format "Write: %s" (fs/path file)))
@@ -69,7 +60,9 @@
                      "--parameter-overrides"
                      (->> {:Env (-> param :env)
                            :Prefix (-> param :prefix)
-                           :Vpc (get exports (keyword (format "%s-%s" (-> param :prefix) (name :Vpc))))}
+                           :SubnetPriA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPriA))))
+                           :SecurityGroupEice (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupEice))))}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))
-                          (str/join " "))))))
+                          (str/join " ")))))
+  (shutdown-agents))

@@ -2,7 +2,9 @@
   (:require
    [conao3.aws-infra-k8s.network :as c.network]
    [conao3.aws-infra-k8s.routing :as c.routing]
-   [conao3.aws-infra-k8s.security-group :as c.security-group])
+   [conao3.aws-infra-k8s.security-group :as c.security-group]
+   [conao3.aws-infra-k8s.ssh-tunnel :as c.ssh-tunnel]
+   [conao3.aws-infra-k8s.eice :as c.eice])
   (:gen-class))
 
 (defn -main [& args]
@@ -22,6 +24,8 @@
                                                  :subnet-pri-c "10.0.30.0/24"}))
                    "routing" (c.routing/deploy param)
                    "security-group" (c.security-group/deploy param)
+                   "ssh-tunnel" (c.ssh-tunnel/deploy param)
+                   "eice" (c.eice/deploy param)
                    "all" (do
                            (-main "deploy" "network")
                            (-main "deploy" "routing")))))))
