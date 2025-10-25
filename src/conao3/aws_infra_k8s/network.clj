@@ -19,44 +19,50 @@
   (let [subnet (fn [m]
                  {:Type "AWS::EC2::Subnet"
                   :Properties
-                  (-> m (assoc :VpcId {:Ref "Vpc"}))})]
+                  (-> m (assoc :VpcId {:Ref :Vpc}))})]
     {:SubnetPubA
      (subnet
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pub-a")
         :CidrBlock (-> param :subnet-pub-a)
-        :AvailabilityZone "ap-northeast-1a"}))
+        :AvailabilityZone :ap-northeast-1a}))
 
      :SubnetPriA
      (subnet
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pri-a")
         :CidrBlock (-> param :subnet-pri-a)
-        :AvailabilityZone "ap-northeast-1a"}))
+        :AvailabilityZone :ap-northeast-1a}))
 
      :SubnetPubC
      (subnet
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pub-c")
         :CidrBlock (-> param :subnet-pub-c)
-        :AvailabilityZone "ap-northeast-1c"}))
+        :AvailabilityZone :ap-northeast-1c}))
 
      :SubnetPriC
      (subnet
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pri-c")
         :CidrBlock (-> param :subnet-pri-c)
-        :AvailabilityZone "ap-northeast-1c"}))}))
+        :AvailabilityZone :ap-northeast-1c}))}))
 
 (defn cfn [param]
   (a.cfn/template
    {:Parameters
-    {:Env {:Type "String"}
-     :Prefix {:Type "String"}}
+    (a.cfn/list-string-parameters [:Env :Prefix])
     :Resources
     (merge
      {:Vpc (resource-vpc param)}
-     (resources-subnet param))}))
+     (resources-subnet param))
+    :Outputs
+    (a.cfn/list-outputs
+     {:Vpc {:Ref "Vpc"}
+      :SubnetPubA {:Ref :SubnetPubA}
+      :SubnetPriA {:Ref :SubnetPriA}
+      :SubnetPubC {:Ref :SubnetPubC}
+      :SubnetPriC {:Ref :SubnetPriC}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/network.json")]
