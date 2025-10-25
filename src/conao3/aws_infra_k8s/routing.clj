@@ -8,13 +8,14 @@
    [conao3.aws-infra.cfn :as a.cfn]))
 
 (defn cfn [param]
-  (conao3.aws-infra.cfn/template
+  (a.cfn/template
    {:Parameters
     (a.cfn/list-string-parameters
      [:Env :Prefix
       :Vpc
       :SubnetPubA :SubnetPriA
       :SubnetPubC :SubnetPriC])
+
     :Resources
     (merge
      {:InternetGateway
