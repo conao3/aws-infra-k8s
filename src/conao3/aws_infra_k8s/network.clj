@@ -46,7 +46,21 @@
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pri-c")
         :CidrBlock (-> param :subnet-pri-c)
-        :AvailabilityZone :ap-northeast-1c}))}))
+        :AvailabilityZone :ap-northeast-1c}))
+
+     :SubnetPubD
+     (subnet
+      (a.cfn/tag-name
+       {:TagName (a.cfn/prefix "pub-d")
+        :CidrBlock (-> param :subnet-pub-d)
+        :AvailabilityZone :ap-northeast-1d}))
+
+     :SubnetPriD
+     (subnet
+      (a.cfn/tag-name
+       {:TagName (a.cfn/prefix "pri-d")
+        :CidrBlock (-> param :subnet-pri-d)
+        :AvailabilityZone :ap-northeast-1d}))}))
 
 (defn cfn [param]
   (a.cfn/template
@@ -62,7 +76,9 @@
       :SubnetPubA {:Ref :SubnetPubA}
       :SubnetPriA {:Ref :SubnetPriA}
       :SubnetPubC {:Ref :SubnetPubC}
-      :SubnetPriC {:Ref :SubnetPriC}})}))
+      :SubnetPriC {:Ref :SubnetPriC}
+      :SubnetPubD {:Ref :SubnetPubD}
+      :SubnetPriD {:Ref :SubnetPriD}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/network.json")]

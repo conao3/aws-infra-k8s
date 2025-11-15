@@ -64,5 +64,4 @@
                            :SecurityGroupEice (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupEice))))}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))
-                          (str/join " ")))))
-  (shutdown-agents))
+                          (str/join " "))))))
