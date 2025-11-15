@@ -32,6 +32,8 @@
           packages = with pkgs; [
             graalvm
             clojure
+            awscli
+            aws-sam-cli
           ];
         };
 
