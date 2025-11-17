@@ -25,8 +25,12 @@
        {:TagName (a.cfn/prefix "SshTunnel")
         :ImageId {:Ref :ImageIdAmazonLinux}
         :InstanceType "t3.micro"
-        :SubnetId {:Ref :SubnetPubA}
-        :SecurityGroupIds [{:Ref :SecurityGroupSshTunnel}]})}}
+        :NetworkInterfaces
+        [{:DeviceIndex 0
+          :SubnetId {:Ref :SubnetPubA}
+          :AssociatePublicIpAddress false
+          :Ipv6AddressCount 1
+          :GroupSet [{:Ref :SecurityGroupSshTunnel}]}]})}}
 
     :Outputs
     (a.cfn/list-outputs
@@ -67,7 +71,6 @@
                      "--parameter-overrides"
                      (->> {:Env (-> param :env)
                            :Prefix (-> param :prefix)
-                           :Vpc (get exports (keyword (format "%s-%s" (-> param :prefix) (name :Vpc))))
                            :SubnetPubA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPubA))))
                            :SecurityGroupSshTunnel (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupSshTunnel))))}
                           (map (fn [[k v]]

@@ -3,6 +3,7 @@
    [conao3.aws-infra-k8s.network :as c.network]
    [conao3.aws-infra-k8s.routing :as c.routing]
    [conao3.aws-infra-k8s.security-group :as c.security-group]
+   [conao3.aws-infra-k8s.cluster :as c.cluster]
    [conao3.aws-infra-k8s.ssh-tunnel :as c.ssh-tunnel]
    [conao3.aws-infra-k8s.eice :as c.eice])
   (:gen-class))
@@ -14,21 +15,17 @@
                  (case target
                    "network" (c.network/deploy (merge
                                                 param
-                                                {:vpc "10.0.0.0/16"
-                                                 :subnet-pub-a "10.0.0.0/24"
-                                                 :subnet-pri-a "10.0.10.0/24"
-                                                 :subnet-pub-c "10.0.20.0/24"
-                                                 :subnet-pri-c "10.0.30.0/24"
-                                                 :subnet-pub-d "10.0.40.0/24"
-                                                 :subnet-pri-d "10.0.50.0/24"}))
+                                                {:vpc "10.0.0.0/16"}))
                    "routing" (c.routing/deploy param)
                    "security-group" (c.security-group/deploy param)
+                   "cluster" (c.cluster/deploy param)
                    "ssh-tunnel" (c.ssh-tunnel/deploy param)
                    "eice" (c.eice/deploy param)
                    "all" (do
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
                            (run ["deploy" "security-group"] param)
+                           (run ["deploy" "cluster"] param)
                            (run ["deploy" "ssh-tunnel"] param)
                            (run ["deploy" "eice"] param)))))))
 

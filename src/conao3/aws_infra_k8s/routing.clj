@@ -5,7 +5,42 @@
    [clojure.java.io :as io]
    [clojure.string :as str]
    [conao3.aws-infra-k8s.util :as c.util]
-   [conao3.aws-infra.cfn :as a.cfn]))
+   [conao3.aws-infra.cfn :as a.cfn]
+   [camel-snake-kebab.core :as csk]))
+
+(defn resources-pub-subnet-association [suffix]
+  (let [key (keyword (format "SubnetRouteTableAssociationPub%s" suffix))
+        subnet-key (keyword (format "SubnetPub%s" suffix))]
+    {key
+     {:Type "AWS::EC2::SubnetRouteTableAssociation"
+      :Properties
+      {:RouteTableId {:Ref :RouteTablePub}
+       :SubnetId {:Ref subnet-key}}}}))
+
+(defn resources-pri-route-table [suffix]
+  (let [route-table-key (keyword (format "RouteTablePri%s" suffix))
+        association-key (keyword (format "SubnetRouteTableAssociationPri%s" suffix))
+        route-key (keyword (format "RoutePri%sIpv6EgressOnly" suffix))
+        subnet-key (keyword (format "SubnetPri%s" suffix))]
+    {route-table-key
+     {:Type "AWS::EC2::RouteTable"
+      :Properties
+      (a.cfn/tag-name
+       {:VpcId {:Ref :Vpc}
+        :TagName (a.cfn/prefix (str "pri-" (csk/->kebab-case suffix)))})}
+
+     association-key
+     {:Type "AWS::EC2::SubnetRouteTableAssociation"
+      :Properties
+      {:RouteTableId {:Ref route-table-key}
+       :SubnetId {:Ref subnet-key}}}
+
+     route-key
+     {:Type "AWS::EC2::Route"
+      :Properties
+      {:DestinationIpv6CidrBlock "::/0"
+       :RouteTableId {:Ref route-table-key}
+       :EgressOnlyInternetGatewayId {:Ref :EgressOnlyInternetGateway}}}}))
 
 (defn cfn [_param]
   (a.cfn/template
@@ -14,7 +49,8 @@
      [:Env :Prefix
       :Vpc
       :SubnetPubA :SubnetPriA
-      :SubnetPubC :SubnetPriC])
+      :SubnetPubC :SubnetPriC
+      :SubnetPubD :SubnetPriD])
 
     :Resources
     (merge
@@ -28,67 +64,45 @@
       {:Type "AWS::EC2::VPCGatewayAttachment"
        :Properties
        {:InternetGatewayId {:Ref :InternetGateway}
-        :VpcId {:Ref :Vpc}}}}
+        :VpcId {:Ref :Vpc}}}
 
-     {:RouteTablePub
+      :EgressOnlyInternetGateway
+      {:Type "AWS::EC2::EgressOnlyInternetGateway"
+       :Properties
+       (a.cfn/tag-name
+        {:TagName (a.cfn/prefix "eigw")
+         :VpcId {:Ref :Vpc}})}
+
+      :RouteTablePub
       {:Type "AWS::EC2::RouteTable"
        :Properties
        (a.cfn/tag-name
         {:VpcId {:Ref :Vpc}
          :TagName (a.cfn/prefix "pub")})}
 
-      :SubnetRouteTableAssociationPubA
-      {:Type "AWS::EC2::SubnetRouteTableAssociation"
-       :Properties
-       {:RouteTableId {:Ref :RouteTablePub}
-        :SubnetId {:Ref :SubnetPubA}}}
-
-      :SubnetRouteTableAssociationPubC
-      {:Type "AWS::EC2::SubnetRouteTableAssociation"
-       :Properties
-       {:RouteTableId {:Ref :RouteTablePub}
-        :SubnetId {:Ref :SubnetPubC}}}
-
-      :RoutePubAttachInternetGateway
+      :RoutePubIpv6AttachInternetGateway
       {:Type "AWS::EC2::Route"
        :DependsOn :AttachGateway
        :Properties
-       {:DestinationCidrBlock "0.0.0.0/0"
+       {:DestinationIpv6CidrBlock "::/0"
         :RouteTableId {:Ref :RouteTablePub}
         :GatewayId {:Ref :InternetGateway}}}}
 
-     {:RouteTablePriA
-      {:Type "AWS::EC2::RouteTable"
-       :Properties
-       (a.cfn/tag-name
-        {:VpcId {:Ref :Vpc}
-         :TagName (a.cfn/prefix "pri-a")})}
-
-      :SubnetRouteTableAssociationPriA
-      {:Type "AWS::EC2::SubnetRouteTableAssociation"
-       :Properties
-       {:RouteTableId {:Ref :RouteTablePriA}
-        :SubnetId {:Ref :SubnetPriA}}}}
-
-     {:RouteTablePriC
-      {:Type "AWS::EC2::RouteTable"
-       :Properties
-       (a.cfn/tag-name
-        {:VpcId {:Ref :Vpc}
-         :TagName (a.cfn/prefix "pri-app-c")})}
-
-      :SubnetRouteTableAssociationPriC
-      {:Type "AWS::EC2::SubnetRouteTableAssociation"
-       :Properties
-       {:RouteTableId {:Ref :RouteTablePriC}
-        :SubnetId {:Ref :SubnetPriC}}}})
+     (resources-pub-subnet-association "A")
+     (resources-pub-subnet-association "C")
+     (resources-pub-subnet-association "D")
+     (resources-pri-route-table "A")
+     (resources-pri-route-table "C")
+     (resources-pri-route-table "D"))
 
     :Outputs
     (a.cfn/list-outputs
      {:InternetGateway {:Ref :InternetGateway}
+      :EgressOnlyInternetGateway {:Ref :EgressOnlyInternetGateway}
       :RouteTablePub {:Ref :RouteTablePub}
       :RouteTablePriA {:Ref :RouteTablePriA}
-      :RouteTablePriC {:Ref :RouteTablePriC}})}))
+      :RouteTablePriC {:Ref :RouteTablePriC}
+      :RouteTablePriD {:Ref :RouteTablePriD}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/routing.json")
@@ -123,13 +137,13 @@
                      "--no-fail-on-empty-changeset"
                      "--on-failure" "DELETE"
                      "--parameter-overrides"
-                     (->> {:Env (-> param :env)
-                           :Prefix (-> param :prefix)
-                           :Vpc (get exports (keyword (format "%s-%s" (-> param :prefix) (name :Vpc))))
-                           :SubnetPubA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPubA))))
-                           :SubnetPriA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPriA))))
-                           :SubnetPubC (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPubC))))
-                           :SubnetPriC (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPriC))))}
+                     (->> (merge
+                           {:Env (-> param :env)
+                            :Prefix (-> param :prefix)}
+                           (->> [:Vpc :SubnetPubA :SubnetPriA :SubnetPubC :SubnetPriC :SubnetPubD :SubnetPriD]
+                                (map (fn [k]
+                                       [k (get exports (keyword (format "%s-%s" (-> param :prefix) (name k))))]))
+                                (into {})))
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))
                           (str/join " "))))))

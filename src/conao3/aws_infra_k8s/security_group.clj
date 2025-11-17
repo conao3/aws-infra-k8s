@@ -18,21 +18,37 @@
                             :GroupName (a.cfn/prefix (csk/->kebab-case x))
                             :GroupDescription (format "Security Group for %s" (csk/->PascalCase x))})})]
     (a.cfn/template
-   {:Parameters
-    (a.cfn/list-string-parameters
-     [:Env :Prefix
-      :Vpc])
+     {:Parameters
+      (a.cfn/list-string-parameters
+       [:Env :Prefix
+        :Vpc])
 
-    :Resources
-    {:SecurityGroupApp (security-group "App")
-     :SecurityGroupSshTunnel (security-group "SshTunnel")
-     :SecurityGroupEice (security-group "Eice")}
+      :Resources
+      {:SecurityGroupApp (security-group "App")
+       :SecurityGroupSshTunnel (security-group "SshTunnel")
+       :SecurityGroupEice (security-group "Eice")
+       :SecurityGroupIngressSshTunnelFromIpv6
+       {:Type "AWS::EC2::SecurityGroupIngress"
+        :Properties
+        {:GroupId {:Ref :SecurityGroupSshTunnel}
+         :IpProtocol "tcp"
+         :FromPort 22
+         :ToPort 22
+         :CidrIpv6 "::/0"}}
+       :SecurityGroupIngressSshTunnelFromEice
+       {:Type "AWS::EC2::SecurityGroupIngress"
+        :Properties
+        {:GroupId {:Ref :SecurityGroupSshTunnel}
+         :IpProtocol "tcp"
+         :FromPort 22
+         :ToPort 22
+         :SourceSecurityGroupId {:Ref :SecurityGroupEice}}}}
 
-    :Outputs
-    (a.cfn/list-outputs
-     {:SecurityGroupApp {:Ref :SecurityGroupApp}
-      :SecurityGroupSshTunnel {:Ref :SecurityGroupSshTunnel}
-      :SecurityGroupEice {:Ref :SecurityGroupEice}})})))
+      :Outputs
+      (a.cfn/list-outputs
+       {:SecurityGroupApp {:Ref :SecurityGroupApp}
+        :SecurityGroupSshTunnel {:Ref :SecurityGroupSshTunnel}
+        :SecurityGroupEice {:Ref :SecurityGroupEice}})})))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/security-group.json")

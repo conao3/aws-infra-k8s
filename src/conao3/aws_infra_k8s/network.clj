@@ -15,52 +15,67 @@
      :EnableDnsSupport true
      :EnableDnsHostnames true})})
 
-(defn resources-subnet [param]
-  (let [subnet (fn [m]
+(defn resource-ipv6-cidr-block []
+  {:Type "AWS::EC2::VPCCidrBlock"
+   :Properties
+   {:VpcId {:Ref :Vpc}
+    :AmazonProvidedIpv6CidrBlock true}})
+
+(defn resources-subnet []
+  (let [subnet (fn [m ipv6-index]
                  {:Type "AWS::EC2::Subnet"
                   :Properties
-                  (-> m (assoc :VpcId {:Ref :Vpc}))})]
+                  (-> m
+                      (assoc :VpcId {:Ref :Vpc})
+                      (assoc :Ipv6CidrBlock
+                             {"Fn::Select" [ipv6-index
+                                            {"Fn::Cidr" [{"Fn::Select" [0 {"Fn::GetAtt" [:Vpc :Ipv6CidrBlocks]}]}
+                                                         256
+                                                         64]}]})
+                      (assoc :Ipv6Native true)
+                      (assoc :AssignIpv6AddressOnCreation true))
+                  :DependsOn [:VpcIpv6CidrBlock]})]
     {:SubnetPubA
      (subnet
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pub-a")
-        :CidrBlock (-> param :subnet-pub-a)
-        :AvailabilityZone :ap-northeast-1a}))
+        :AvailabilityZone :ap-northeast-1a})
+      0)
 
      :SubnetPriA
      (subnet
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pri-a")
-        :CidrBlock (-> param :subnet-pri-a)
-        :AvailabilityZone :ap-northeast-1a}))
+        :AvailabilityZone :ap-northeast-1a})
+      1)
 
      :SubnetPubC
      (subnet
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pub-c")
-        :CidrBlock (-> param :subnet-pub-c)
-        :AvailabilityZone :ap-northeast-1c}))
+        :AvailabilityZone :ap-northeast-1c})
+      2)
 
      :SubnetPriC
      (subnet
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pri-c")
-        :CidrBlock (-> param :subnet-pri-c)
-        :AvailabilityZone :ap-northeast-1c}))
+        :AvailabilityZone :ap-northeast-1c})
+      3)
 
      :SubnetPubD
      (subnet
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pub-d")
-        :CidrBlock (-> param :subnet-pub-d)
-        :AvailabilityZone :ap-northeast-1d}))
+        :AvailabilityZone :ap-northeast-1d})
+      4)
 
      :SubnetPriD
      (subnet
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pri-d")
-        :CidrBlock (-> param :subnet-pri-d)
-        :AvailabilityZone :ap-northeast-1d}))}))
+        :AvailabilityZone :ap-northeast-1d})
+      5)}))
 
 (defn cfn [param]
   (a.cfn/template
@@ -68,8 +83,9 @@
     (a.cfn/list-string-parameters [:Env :Prefix])
     :Resources
     (merge
-     {:Vpc (resource-vpc param)}
-     (resources-subnet param))
+     {:Vpc (resource-vpc param)
+      :VpcIpv6CidrBlock (resource-ipv6-cidr-block)}
+     (resources-subnet))
     :Outputs
     (a.cfn/list-outputs
      {:Vpc {:Ref "Vpc"}
