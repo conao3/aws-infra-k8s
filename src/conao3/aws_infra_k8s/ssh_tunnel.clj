@@ -15,7 +15,7 @@
         a.cfn/list-string-parameters
         (assoc :ImageIdAmazonLinux
                {:Type "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
-                :Default "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64"}))
+                :Default "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-arm64"}))
 
     :Resources
     {:InstanceSshTunnel
@@ -24,7 +24,7 @@
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "SshTunnel")
         :ImageId {:Ref :ImageIdAmazonLinux}
-        :InstanceType "t3.micro"
+        :InstanceType "t4g.nano"
         :NetworkInterfaces
         [{:DeviceIndex 0
           :SubnetId {:Ref :SubnetPubA}

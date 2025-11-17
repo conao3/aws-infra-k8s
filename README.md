@@ -71,10 +71,10 @@ Sample output.
 "nixos/25.05.811339.98ff3f9af268-aarch64-linux","ami-03ed3f8468e5819f0"
 "nixos/25.05.811621.c8aa8cc00a5c-aarch64-linux","ami-09d01ec47db9c7394"
 "nixos/25.05.811874.daf6dc47aa4b-aarch64-linux","ami-06371070e4cda92c0"
-"nixos/25.05.812554.6faeb062ee4c-aarch64-linux","ami-08c842db734cbcbef"
+"nixos/25.05.812778.3acb677ea67d-aarch64-linux","ami-09aa74e80fadac3b7"
 ```
 
-You should use last one, `ami-08c842db734cbcbef`.
+You should use last one, `ami-09aa74e80fadac3b7`.
 
 ## License
 
