@@ -27,6 +27,14 @@
       {:SecurityGroupApp (security-group "App")
        :SecurityGroupSshTunnel (security-group "SshTunnel")
        :SecurityGroupEice (security-group "Eice")
+       :SecurityGroupIngressAppFromEice
+       {:Type "AWS::EC2::SecurityGroupIngress"
+        :Properties
+        {:GroupId {:Ref :SecurityGroupApp}
+         :IpProtocol "tcp"
+         :FromPort 22
+         :ToPort 22
+         :SourceSecurityGroupId {:Ref :SecurityGroupEice}}}
        :SecurityGroupIngressSshTunnelFromIpv6
        {:Type "AWS::EC2::SecurityGroupIngress"
         :Properties

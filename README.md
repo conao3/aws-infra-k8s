@@ -6,10 +6,18 @@ AWS infrastructure management for Kubernetes using Clojure and CloudFormation.
 
 This project provides a modular approach to deploying AWS infrastructure components. Each module handles a specific aspect of the infrastructure and can be deployed independently or all at once.
 
-## Prerequisites
+## Pre-requires
 
-- AWS CLI configured with appropriate credentials
-- Clojure CLI tools installed
+Add keypair.
+
+```
+aws ec2 create-key-pair --key-name dev-k8s-keypair --query 'KeyMaterial' --output text --profile conao3.k8s > ~/.ssh/dev-k8s-keypair.pem
+chmod 400 ~/.ssh/dev-k8s-keypair.pem
+```
+
+## Deploy
+
+Deploy all via this command.
 
 ## Available Modules
 

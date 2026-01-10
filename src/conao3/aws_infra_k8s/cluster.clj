@@ -34,21 +34,18 @@
    {:LaunchTemplateName (a.cfn/prefix name)
     :LaunchTemplateData
     {:ImageId "ami-09aa74e80fadac3b7"
+     :KeyName (a.cfn/prefix "keypair")
      :InstanceType instance-type
      :IamInstanceProfile {:Arn {"Fn::GetAtt" [:InstanceProfile :Arn]}}
+     :MetadataOptions
+     {:HttpTokens "optional"
+      :HttpPutResponseHopLimit 2
+      :HttpEndpoint "enabled"}
      :NetworkInterfaces
      [{:DeviceIndex 0
        :AssociatePublicIpAddress false
        :Ipv6AddressCount 1
        :Groups [{:Ref :SecurityGroupApp}]}]
-     :UserData
-     {"Fn::Base64"
-      {"Fn::Sub"
-       (str/join "\n"
-                 ["#!/usr/bin/env bash"
-                  "set -euxo pipefail -o posix"
-                  ""
-                  ""])}}
      :TagSpecifications
      [{:ResourceType "instance"
        :Tags [{:Key "Name" :Value (a.cfn/prefix name)}]}]}}})

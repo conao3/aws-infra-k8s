@@ -21,3 +21,12 @@ run:
 .PHONY: test
 test:
 	./aws-infra-k8s
+
+.PHONY: build-ec2-image
+build-ec2-image:
+	nix build .#ec2-image
+
+.PHONY: upload-ec2-image
+upload-ec2-image: build-ec2-image
+	aws s3 cp result/nixos.vhd s3://aws-sam-cli-managed-default-samclisourcebucket-9ipbfd2ab3os/nixos-custom.vhd
+	aws ec2 import-snapshot --description "NixOS Custom EC2 Image" --disk-container "Format=VHD,UserBucket={S3Bucket=aws-sam-cli-managed-default-samclisourcebucket-9ipbfd2ab3os,S3Key=nixos-custom.vhd}"
