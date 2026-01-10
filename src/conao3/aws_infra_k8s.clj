@@ -5,7 +5,8 @@
    [conao3.aws-infra-k8s.security-group :as c.security-group]
    [conao3.aws-infra-k8s.cluster :as c.cluster]
    [conao3.aws-infra-k8s.ssh-tunnel :as c.ssh-tunnel]
-   [conao3.aws-infra-k8s.eice :as c.eice])
+   [conao3.aws-infra-k8s.eice :as c.eice]
+   [conao3.aws-infra-k8s.rds :as c.rds])
   (:gen-class))
 
 (defn run [args param]
@@ -21,10 +22,12 @@
                    "cluster" (c.cluster/deploy param)
                    "ssh-tunnel" (c.ssh-tunnel/deploy param)
                    "eice" (c.eice/deploy param)
+                   "rds" (c.rds/deploy param)
                    "all" (do
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
                            (run ["deploy" "security-group"] param)
+                           (run ["deploy" "rds"] param)
                            (run ["deploy" "cluster"] param)
                            (run ["deploy" "ssh-tunnel"] param)
                            (run ["deploy" "eice"] param)))))))

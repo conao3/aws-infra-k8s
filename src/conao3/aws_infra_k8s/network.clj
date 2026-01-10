@@ -34,7 +34,20 @@
                                                          64]}]})
                       (assoc :Ipv6Native true)
                       (assoc :AssignIpv6AddressOnCreation true))
-                  :DependsOn [:VpcIpv6CidrBlock]})]
+                  :DependsOn [:VpcIpv6CidrBlock]})
+        subnet-dual (fn [m ipv4-cidr ipv6-index]
+                      {:Type "AWS::EC2::Subnet"
+                       :Properties
+                       (-> m
+                           (assoc :VpcId {:Ref :Vpc})
+                           (assoc :CidrBlock ipv4-cidr)
+                           (assoc :Ipv6CidrBlock
+                                  {"Fn::Select" [ipv6-index
+                                                 {"Fn::Cidr" [{"Fn::Select" [0 {"Fn::GetAtt" [:Vpc :Ipv6CidrBlocks]}]}
+                                                              256
+                                                              64]}]})
+                           (assoc :AssignIpv6AddressOnCreation true))
+                       :DependsOn [:VpcIpv6CidrBlock]})]
     {:SubnetPubA
      (subnet
       (a.cfn/tag-name
@@ -75,7 +88,31 @@
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pri-d")
         :AvailabilityZone :ap-northeast-1d})
-      5)}))
+      5)
+
+     :SubnetDualA
+     (subnet-dual
+      (a.cfn/tag-name
+       {:TagName (a.cfn/prefix "dual-a")
+        :AvailabilityZone :ap-northeast-1a})
+      "10.0.100.0/24"
+      6)
+
+     :SubnetDualC
+     (subnet-dual
+      (a.cfn/tag-name
+       {:TagName (a.cfn/prefix "dual-c")
+        :AvailabilityZone :ap-northeast-1c})
+      "10.0.101.0/24"
+      7)
+
+     :SubnetDualD
+     (subnet-dual
+      (a.cfn/tag-name
+       {:TagName (a.cfn/prefix "dual-d")
+        :AvailabilityZone :ap-northeast-1d})
+      "10.0.102.0/24"
+      8)}))
 
 (defn cfn [param]
   (a.cfn/template
@@ -94,7 +131,10 @@
       :SubnetPubC {:Ref :SubnetPubC}
       :SubnetPriC {:Ref :SubnetPriC}
       :SubnetPubD {:Ref :SubnetPubD}
-      :SubnetPriD {:Ref :SubnetPriD}})}))
+      :SubnetPriD {:Ref :SubnetPriD}
+      :SubnetDualA {:Ref :SubnetDualA}
+      :SubnetDualC {:Ref :SubnetDualC}
+      :SubnetDualD {:Ref :SubnetDualD}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/network.json")]

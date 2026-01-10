@@ -15,6 +15,26 @@ aws ec2 create-key-pair --key-name dev-k8s-keypair --query 'KeyMaterial' --outpu
 chmod 400 ~/.ssh/dev-k8s-keypair.pem
 ```
 
+Add secret for RDS.
+
+```
+cat <<EOF > /tmp/dev-k8s-secret.json
+{"rds-postgres-password":"ChangeMe12345"}
+EOF
+
+aws secretsmanager create-secret --name dev-k8s-secret --secret-string file:///tmp/dev-k8s-secret.json --profile conao3.k8s
+rm /tmp/dev-k8s-secret.json
+```
+
+Update secret.
+
+```
+aws secretsmanager get-secret-value --secret-id dev-k8s-secret --query SecretString --output text --profile conao3.k8s | jq . > /tmp/dev-k8s-secret.json
+$EDITOR /tmp/dev-k8s-secret.json
+aws secretsmanager update-secret --secret-id dev-k8s-secret --secret-string file:///tmp/dev-k8s-secret.json --profile conao3.k8s
+rm /tmp/dev-k8s-secret.json
+```
+
 ## Deploy
 
 Deploy all via this command.
@@ -47,6 +67,7 @@ Currently below modules are provided.
 - `cluster`
 - `ssh-tunnel`
 - `eice`
+- `rds`
 
 ```bash
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy <module-name>
