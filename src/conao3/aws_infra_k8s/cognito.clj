@@ -25,6 +25,12 @@
     {:RecoveryMechanisms [{:Name "verified_email"
                            :Priority 1}]}}})
 
+(defn resource-user-pool-domain []
+  {:Type "AWS::Cognito::UserPoolDomain"
+   :Properties
+   {:Domain (a.cfn/prefix "auth")
+    :UserPoolId {:Ref :UserPool}}})
+
 (defn resource-user-pool-client []
   {:Type "AWS::Cognito::UserPoolClient"
    :Properties
@@ -35,7 +41,13 @@
                         "ALLOW_USER_SRP_AUTH"
                         "ALLOW_ADMIN_USER_PASSWORD_AUTH"
                         "ALLOW_REFRESH_TOKEN_AUTH"]
-    :PreventUserExistenceErrors "ENABLED"}})
+    :PreventUserExistenceErrors "ENABLED"
+    :CallbackURLs ["http://localhost:3000/callback"]
+    :LogoutURLs ["http://localhost:3000/logout"]
+    :AllowedOAuthFlows ["code" "implicit"]
+    :AllowedOAuthScopes ["email" "openid" "profile"]
+    :AllowedOAuthFlowsUserPoolClient true
+    :SupportedIdentityProviders ["COGNITO"]}})
 
 (defn resource-identity-pool []
   {:Type "AWS::Cognito::IdentityPool"
@@ -94,6 +106,7 @@
 
     :Resources
     {:UserPool (resource-user-pool)
+     :UserPoolDomain (resource-user-pool-domain)
      :UserPoolClient (resource-user-pool-client)
      :IdentityPool (resource-identity-pool)
      :IdentityPoolRoleAuthenticated (resource-identity-pool-role-authenticated)
@@ -103,6 +116,7 @@
     :Outputs
     (a.cfn/list-outputs
      {:UserPool {:Ref :UserPool}
+      :UserPoolDomain {:Ref :UserPoolDomain}
       :UserPoolClient {:Ref :UserPoolClient}
       :IdentityPool {:Ref :IdentityPool}})}))
 
