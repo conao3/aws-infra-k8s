@@ -20,21 +20,21 @@
   {:Type "AWS::RDS::DBClusterParameterGroup"
    :Properties
    {:Description "Aurora PostgreSQL cluster parameter group"
-    :Family "aurora-postgresql16"
+    :Family "aurora-postgresql17"
     :Parameters {}}})
 
 (defn resource-db-parameter-group []
   {:Type "AWS::RDS::DBParameterGroup"
    :Properties
    {:Description "Aurora PostgreSQL parameter group"
-    :Family "aurora-postgresql16"
+    :Family "aurora-postgresql17"
     :Parameters {}}})
 
 (defn resource-db-cluster []
   {:Type "AWS::RDS::DBCluster"
    :Properties
    {:Engine "aurora-postgresql"
-    :EngineVersion "16.4"
+    :EngineVersion "17.7"
     :DatabaseName "postgres"
     :MasterUsername "postgres"
     :MasterUserPassword {"Fn::Sub" "{{resolve:secretsmanager:${Secret}:SecretString:rds-postgres-password}}"}
@@ -101,14 +101,18 @@
                        :Exports
                        (map (fn [elm] [(keyword (:Name elm)) (:Value elm)]))
                        (into {}))
-          status (->> (or (-> (c.util/eshell {:out :string :continue true} "aws" "cloudformation" "describe-stacks" "--stack-name" stack-name)
-                              :out
-                              (json/parse-string keyword)
-                              :Stacks)
-                          [])
-                      first
-                      :StackStatus)]
-      (println status)
+          get-status (fn []
+                       (->> (or (-> (c.util/eshell {:out :string :continue true} "aws" "cloudformation" "describe-stacks" "--stack-name" stack-name)
+                                    :out
+                                    (json/parse-string keyword)
+                                    :Stacks)
+                                [])
+                            first
+                            :StackStatus))
+          status (get-status)]
+      (when (= status "DELETE_IN_PROGRESS")
+        (c.util/eprintln "Waiting for stack deletion to complete...")
+        (c.util/eshell "aws" "cloudformation" "wait" "stack-delete-complete" "--stack-name" stack-name))
       (c.util/eshell "sam" "deploy"
                      "--template-file" (str (fs/path file))
                      "--stack-name" stack-name
