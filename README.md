@@ -68,6 +68,7 @@ Currently below modules are provided.
 - `ssh-tunnel`
 - `eice`
 - `rds`
+- `cognito`
 
 ```bash
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy <module-name>
