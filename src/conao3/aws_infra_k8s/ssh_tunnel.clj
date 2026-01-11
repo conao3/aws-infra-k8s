@@ -53,14 +53,18 @@
                        :Exports
                        (map (fn [elm] [(keyword (:Name elm)) (:Value elm)]))
                        (into {}))
-          status (->> (or (-> (c.util/eshell {:out :string :continue true} "aws" "cloudformation" "describe-stacks" "--stack-name" stack-name)
-                              :out
-                              (json/parse-string keyword)
-                              :Stacks)
-                          [])
-                      first
-                      :StackStatus)]
-      (println status)
+          get-status (fn []
+                       (->> (or (-> (c.util/eshell {:out :string :continue true} "aws" "cloudformation" "describe-stacks" "--stack-name" stack-name)
+                                    :out
+                                    (json/parse-string keyword)
+                                    :Stacks)
+                                [])
+                            first
+                            :StackStatus))
+          status (get-status)]
+      (when (= status "DELETE_IN_PROGRESS")
+        (c.util/eprintln "Waiting for stack deletion to complete...")
+        (c.util/eshell "aws" "cloudformation" "wait" "stack-delete-complete" "--stack-name" stack-name))
       (c.util/eshell "sam" "deploy"
                      "--template-file" (str (fs/path file))
                      "--stack-name" stack-name

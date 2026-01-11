@@ -137,7 +137,8 @@
       :SubnetDualD {:Ref :SubnetDualD}})}))
 
 (defn deploy [param]
-  (let [file (fs/file "target/cfn/network.json")]
+  (let [file (fs/file "target/cfn/network.json")
+        stack-name (str (-> param :prefix) "-" "network")]
     (fs/create-dirs (fs/parent file))
 
     (c.util/eprintln (format "Write: %s" (fs/path file)))
@@ -146,14 +147,26 @@
           (json/generate-stream writer)))
 
     (c.util/eshell "sam" "validate" "--template-file" (str (fs/path file)))
-    (c.util/eshell "sam" "deploy"
-                   "--template-file" (str (fs/path file))
-                   "--stack-name" (str (-> param :prefix) "-" "network")
-                   "--capabilities" "CAPABILITY_NAMED_IAM"
-                   "--resolve-s3"
-                   "--no-fail-on-empty-changeset"
-                   "--on-failure" "DELETE"
-                   "--parameter-overrides"
-                   (format "Env=\"%s\" Prefix=\"%s\""
-                           (-> param :env)
-                           (-> param :prefix)))))
+    (let [get-status (fn []
+                       (->> (or (-> (c.util/eshell {:out :string :continue true} "aws" "cloudformation" "describe-stacks" "--stack-name" stack-name)
+                                    :out
+                                    (json/parse-string keyword)
+                                    :Stacks)
+                                [])
+                            first
+                            :StackStatus))
+          status (get-status)]
+      (when (= status "DELETE_IN_PROGRESS")
+        (c.util/eprintln "Waiting for stack deletion to complete...")
+        (c.util/eshell "aws" "cloudformation" "wait" "stack-delete-complete" "--stack-name" stack-name))
+      (c.util/eshell "sam" "deploy"
+                     "--template-file" (str (fs/path file))
+                     "--stack-name" stack-name
+                     "--capabilities" "CAPABILITY_NAMED_IAM"
+                     "--resolve-s3"
+                     "--no-fail-on-empty-changeset"
+                     "--on-failure" "DELETE"
+                     "--parameter-overrides"
+                     (format "Env=\"%s\" Prefix=\"%s\""
+                             (-> param :env)
+                             (-> param :prefix))))))
