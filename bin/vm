@@ -6,7 +6,7 @@ cmd_run() {
   echo "Note: This will run slowly on x86_64 hosts due to emulation"
   echo "To exit: Press Ctrl-A then X"
   echo ""
-  QEMU_OPTS="-m 2048 -smp 2" nix run .#vmAarch64
+  QEMU_OPTS="${QEMU_OPTS:--m 10240 -smp 6}" nix run .#vmAarch64
 }
 
 cmd_help() {
@@ -18,11 +18,11 @@ Commands:
   help     Show this help message
 
 Environment variables:
-  QEMU_OPTS    Additional QEMU options (default: "-m 2048 -smp 2")
+  QEMU_OPTS    QEMU options (default: "-m 10240 -smp 6")
 
 Example:
   bin/vm run
-  QEMU_OPTS="-m 4096 -smp 4" bin/vm run
+  QEMU_OPTS="-m 16384 -smp 8" bin/vm run
 EOF
 }
 

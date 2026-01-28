@@ -133,8 +133,10 @@ make run-vm
 
 Or directly with nix:
 ```bash
-QEMU_OPTS="-m 4096 -smp 4" nix run .#vmAarch64
+QEMU_OPTS="-m 16384 -smp 8" nix run .#vmAarch64
 ```
+
+Default configuration: 10GB RAM, 6 CPU cores
 
 **Note:** This will run slowly on x86_64 hosts due to aarch64 emulation.
 
