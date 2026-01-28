@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+set -euxo pipefail -o posix
+
+PROFILE="conao3.k8s"
+S3_BUCKET="aws-sam-cli-managed-default-samclisourcebucket-9ipbfd2ab3os"
+AMI_ID_FILE="target/ami-id.txt"
+
+cmd_build() {
+  echo "Building Amazon AMI image (aarch64)..."
+  nix build .#imageAmazonAarch64
+  echo "Image built successfully: result/nixos.vhd"
+}
+
+cmd_upload() {
+  if [ ! -f result/nixos.vhd ]; then
+    echo "Error: result/nixos.vhd not found. Run 'bin/image build' first."
+    exit 1
+  fi
+
+  local timestamp
+  timestamp=$(date +%Y%m%d-%H%M%S)
+  local s3_key="nixos-custom-${timestamp}.vhd"
+
+  echo "Uploading image to S3 as ${s3_key}..."
+  aws s3 cp result/nixos.vhd "s3://${S3_BUCKET}/${s3_key}" --profile "${PROFILE}"
+  echo "Image uploaded successfully"
+
+  echo "Starting snapshot import..."
+  local import_task_id
+  import_task_id=$(aws ec2 import-snapshot \
+    --description "NixOS Custom EC2 Image ${timestamp}" \
+    --disk-container "Format=VHD,UserBucket={S3Bucket=${S3_BUCKET},S3Key=${s3_key}}" \
+    --profile "${PROFILE}" \
+    --query 'ImportTaskId' \
+    --output text)
+  echo "Import task ID: ${import_task_id}"
+
+  echo "Waiting for snapshot import to complete..."
+  while true; do
+    local status
+    status=$(aws ec2 describe-import-snapshot-tasks \
+      --import-task-ids "${import_task_id}" \
+      --profile "${PROFILE}" \
+      --query 'ImportSnapshotTasks[0].SnapshotTaskDetail.Status' \
+      --output text)
+    echo "Current status: ${status}"
+
+    if [ "${status}" = "completed" ]; then
+      break
+    elif [ "${status}" = "deleted" ] || [ "${status}" = "deleting" ]; then
+      echo "Import failed with status: ${status}"
+      exit 1
+    fi
+    sleep 30
+  done
+
+  local snapshot_id
+  snapshot_id=$(aws ec2 describe-import-snapshot-tasks \
+    --import-task-ids "${import_task_id}" \
+    --profile "${PROFILE}" \
+    --query 'ImportSnapshotTasks[0].SnapshotTaskDetail.SnapshotId' \
+    --output text)
+  echo "Snapshot created: ${snapshot_id}"
+
+  echo "Registering AMI..."
+  local ami_id
+  ami_id=$(aws ec2 register-image \
+    --name "nixos-custom-${timestamp}" \
+    --description "NixOS Custom Image ${timestamp}" \
+    --architecture arm64 \
+    --root-device-name '/dev/xvda' \
+    --block-device-mappings "DeviceName=/dev/xvda,Ebs={SnapshotId=${snapshot_id},VolumeSize=20,VolumeType=gp3}" \
+    --virtualization-type hvm \
+    --ena-support \
+    --profile "${PROFILE}" \
+    --query 'ImageId' \
+    --output text)
+  echo "AMI created: ${ami_id}"
+
+  mkdir -p target
+  echo "${ami_id}" > "${AMI_ID_FILE}"
+  echo "AMI ID saved to ${AMI_ID_FILE}"
+}
+
+cmd_deploy() {
+  if [ ! -f "${AMI_ID_FILE}" ]; then
+    echo "Error: ${AMI_ID_FILE} not found. Run 'bin/image upload' first."
+    exit 1
+  fi
+
+  local ami_id
+  ami_id=$(cat "${AMI_ID_FILE}")
+  echo "Deploying cluster with custom AMI: ${ami_id}"
+  AWS_PROFILE="${PROFILE}" clojure -M -m conao3.aws-infra-k8s deploy cluster --ami-id "${ami_id}"
+}
+
+cmd_help() {
+  cat <<EOF
+Usage: bin/image <command>
+
+Commands:
+  build     Build the Amazon AMI image (aarch64)
+  upload    Upload image to S3, import snapshot, and register AMI
+  deploy    Deploy cluster with custom AMI
+  help      Show this help message
+
+Workflow:
+  1. bin/image build   - Build the image
+  2. bin/image upload  - Upload and register as AMI
+  3. bin/image deploy  - Deploy cluster with the AMI
+EOF
+}
+
+case "${1:-help}" in
+  build)
+    cmd_build
+    ;;
+  upload)
+    cmd_upload
+    ;;
+  deploy)
+    cmd_deploy
+    ;;
+  help|--help|-h)
+    cmd_help
+    ;;
+  *)
+    echo "Error: Unknown command '${1}'"
+    echo ""
+    cmd_help
+    exit 1
+    ;;
+esac

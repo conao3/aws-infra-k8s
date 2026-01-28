@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euxo pipefail -o posix
+
+cmd_run() {
+  echo "Starting NixOS VM (aarch64)..."
+  echo "Note: This will run slowly on x86_64 hosts due to emulation"
+  echo "To exit: Press Ctrl-A then X"
+  echo ""
+  QEMU_OPTS="-m 2048 -smp 2" nix run .#vmAarch64
+}
+
+cmd_help() {
+  cat <<EOF
+Usage: bin/vm [command]
+
+Commands:
+  run      Run the NixOS VM (default)
+  help     Show this help message
+
+Environment variables:
+  QEMU_OPTS    Additional QEMU options (default: "-m 2048 -smp 2")
+
+Example:
+  bin/vm run
+  QEMU_OPTS="-m 4096 -smp 4" bin/vm run
+EOF
+}
+
+case "${1:-run}" in
+  run)
+    cmd_run
+    ;;
+  help|--help|-h)
+    cmd_help
+    ;;
+  *)
+    echo "Error: Unknown command '${1}'"
+    echo ""
+    cmd_help
+    exit 1
+    ;;
+esac

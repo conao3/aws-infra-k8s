@@ -28,12 +28,12 @@
    {:InstanceProfileName (a.cfn/prefix "cluster")
     :Roles [{:Ref :IamRole}]}})
 
-(defn resource-launch-template [name instance-type]
+(defn resource-launch-template [name instance-type ami-id]
   {:Type "AWS::EC2::LaunchTemplate"
    :Properties
    {:LaunchTemplateName (a.cfn/prefix name)
     :LaunchTemplateData
-    {:ImageId "ami-09aa74e80fadac3b7"
+    {:ImageId ami-id
      :KeyName (a.cfn/prefix "keypair")
      :InstanceType instance-type
      :IamInstanceProfile {:Arn {"Fn::GetAtt" [:InstanceProfile :Arn]}}
@@ -62,18 +62,19 @@
     {:LaunchTemplateId {:Ref launch-template-ref}
      :Version {"Fn::GetAtt" [launch-template-ref :LatestVersionNumber]}}}})
 
-(defn cfn [_param]
+(defn cfn [param]
   (a.cfn/template
    {:Parameters
     (a.cfn/list-string-parameters
      [:Env :Prefix
       :SubnetPubA
-      :SecurityGroupApp])
+      :SecurityGroupApp
+      :AmiId])
 
     :Resources
     {:IamRole (resource-iam-role)
      :InstanceProfile (resource-instance-profile)
-     :LaunchTemplateNode (resource-launch-template "node" "t4g.medium")
+     :LaunchTemplateNode (resource-launch-template "node" "t4g.medium" {:Ref :AmiId})
      :AutoScalingGroupNode (resource-autoscaling-group "node" :SubnetPubA :LaunchTemplateNode)}
 
     :Outputs
@@ -120,7 +121,8 @@
                      (->> {:Env (-> param :env)
                            :Prefix (-> param :prefix)
                            :SubnetPubA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPubA))))
-                           :SecurityGroupApp (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupApp))))}
+                           :SecurityGroupApp (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupApp))))
+                           :AmiId (or (-> param :ami-id) "ami-09aa74e80fadac3b7")}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))
                           (str/join " "))))))

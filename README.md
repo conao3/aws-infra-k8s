@@ -80,15 +80,75 @@ For example, to deploy only the routing module:
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy routing
 ```
 
-## Search NixOS ami
+## Custom NixOS AMI
+
+### NixOS Configuration Structure
+
+```
+nixos/
+├── nixos-configuration.nix  # Common configuration
+└── hosts/
+    ├── ec2-image.nix        # EC2-specific configuration
+    └── vm.nix               # VM-specific configuration
+```
+
+### Build and Deploy Custom AMI
+
+You can build and deploy a custom NixOS AMI using the configuration in `nixos/hosts/ec2-image.nix`.
+
+Using the `bin/image` script:
+```bash
+bin/image build    # Build the custom image
+bin/image upload   # Upload to S3, import snapshot, and register as AMI
+bin/image deploy   # Deploy cluster with custom AMI
+```
+
+Or using make:
+```bash
+make build-image
+make upload-image
+make deploy-cluster-custom
+```
+
+The `upload` command creates a file `target/ami-id.txt` with the new AMI ID.
+
+Or manually specify AMI ID:
+```bash
+AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy cluster --ami-id ami-xxxxx
+```
+
+### Test Custom Image with VM
+
+You can test your custom NixOS configuration locally using QEMU before deploying to AWS.
+
+Using the `bin/vm` script:
+```bash
+bin/vm run
+```
+
+Or using make:
+```bash
+make run-vm
+```
+
+Or directly with nix:
+```bash
+QEMU_OPTS="-m 4096 -smp 4" nix run .#vmAarch64
+```
+
+**Note:** This will run slowly on x86_64 hosts due to aarch64 emulation.
+
+To exit, press `Ctrl-A` then `X`.
+
+### Search Official NixOS AMI
 
 Ref: https://nixos.org/download/#nixos-amazon
 
-```
+```bash
 aws ec2 describe-images --owners 427812963091 --filter 'Name=name,Values=nixos/25.05*' 'Name=architecture,Values=arm64' --query 'sort_by(Images, &CreationDate)' --profile conao3.k8s | jq -r '.[] | [.Name, .SourceImageId] | @csv'
 ```
 
-Sample output.
+Sample output:
 ```
 "nixos/25.05.808519.9cb344e96d5b-aarch64-linux","ami-0f913a43e93891b14"
 "nixos/25.05.809091.41d292bfc373-aarch64-linux","ami-04357df6ca2259145"
@@ -104,7 +164,7 @@ Sample output.
 "nixos/25.05.812778.3acb677ea67d-aarch64-linux","ami-09aa74e80fadac3b7"
 ```
 
-You should use last one, `ami-09aa74e80fadac3b7`.
+Default AMI: `ami-09aa74e80fadac3b7`
 
 ## License
 

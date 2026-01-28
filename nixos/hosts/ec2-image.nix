@@ -5,17 +5,10 @@
 }: {
   imports = [
     "${modulesPath}/virtualisation/amazon-image.nix"
+    ../nixos-configuration.nix
   ];
 
   ec2.hvm = true;
-
-  services.openssh = {
-    enable = true;
-    settings = {
-      PermitRootLogin = "prohibit-password";
-      PasswordAuthentication = false;
-    };
-  };
 
   systemd.services.fetch-ec2-ssh-key = {
     description = "Fetch EC2 SSH key from metadata service";
@@ -43,6 +36,4 @@
       fi
     '';
   };
-
-  system.stateVersion = "25.05";
 }

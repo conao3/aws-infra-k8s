@@ -10,8 +10,20 @@
    [conao3.aws-infra-k8s.cognito :as c.cognito])
   (:gen-class))
 
+(defn parse-args [args]
+  (loop [remaining args
+         result {}]
+    (if (empty? remaining)
+      result
+      (let [[flag value & rest] remaining]
+        (if (str/starts-with? (or flag "") "--")
+          (recur rest (assoc result (keyword (subs flag 2)) value))
+          (recur rest result))))))
+
 (defn run [args param]
-  (let [[command & rest] args]
+  (let [[command & rest] args
+        parsed-args (parse-args rest)
+        param (merge param parsed-args)]
     (case command
       "deploy" (let [target (first rest)]
                  (case target
