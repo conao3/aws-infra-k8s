@@ -51,6 +51,11 @@ rm /tmp/dev-k8s-secret.json
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy all
 ```
 
+With custom AMI:
+```bash
+AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy all --ami-id ami-xxxxx
+```
+
 ### Deploy Individual Module
 Deploy each modules like this.
 Currently below modules are provided.
@@ -108,9 +113,14 @@ make deploy-cluster-custom
 
 The `upload` command creates a file `target/ami-id.txt` with the new AMI ID.
 
-Or manually specify AMI ID:
+Or manually specify AMI ID for cluster:
 ```bash
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy cluster --ami-id ami-xxxxx
+```
+
+Or deploy all modules with custom AMI:
+```bash
+AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy all --ami-id ami-xxxxx
 ```
 
 ### Test Custom Image with VM
