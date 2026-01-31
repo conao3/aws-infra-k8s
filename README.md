@@ -88,8 +88,8 @@ AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy routing
 nixos/
 ├── nixos-configuration.nix  # Common configuration
 └── hosts/
-    ├── ec2-image.nix        # EC2-specific configuration
-    └── vm.nix               # VM-specific configuration
+    ├── ec2-image.nix        # EC2-specific configuration (aarch64)
+    └── vm.nix               # VM-specific configuration (x86_64)
 ```
 
 ### Build and Deploy Custom AMI
@@ -133,12 +133,12 @@ make run-vm
 
 Or directly with nix:
 ```bash
-QEMU_OPTS="-m 16384 -smp 8" nix run .#vmAarch64
+QEMU_OPTS="-m 8192 -smp 8" nix run .#vm
 ```
 
-Default configuration: 10GB RAM, 6 CPU cores
+Default configuration: 4GB RAM, 4 CPU cores
 
-**Note:** This will run slowly on x86_64 hosts due to aarch64 emulation.
+**Note:** VM runs x86_64 for testing. AMI is built for aarch64 (ARM64) for EC2.
 
 To exit, press `Ctrl-A` then `X`.
 

@@ -2,11 +2,10 @@
 set -euxo pipefail -o posix
 
 cmd_run() {
-  echo "Starting NixOS VM (aarch64)..."
-  echo "Note: This will run slowly on x86_64 hosts due to emulation"
+  echo "Starting NixOS VM (x86_64)..."
   echo "To exit: Press Ctrl-A then X"
   echo ""
-  QEMU_OPTS="${QEMU_OPTS:--m 10240 -smp 6}" nix run .#vmAarch64
+  QEMU_OPTS="${QEMU_OPTS:--m 4096 -smp 4}" nix run .#vm
 }
 
 cmd_help() {
@@ -18,11 +17,11 @@ Commands:
   help     Show this help message
 
 Environment variables:
-  QEMU_OPTS    QEMU options (default: "-m 10240 -smp 6")
+  QEMU_OPTS    QEMU options (default: "-m 4096 -smp 4")
 
 Example:
   bin/vm run
-  QEMU_OPTS="-m 16384 -smp 8" bin/vm run
+  QEMU_OPTS="-m 8192 -smp 8" bin/vm run
 EOF
 }
 

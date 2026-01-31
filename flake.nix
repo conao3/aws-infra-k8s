@@ -22,11 +22,11 @@
       ];
 
       flake = {
-        nixosConfigurations.ec2-aarch64-vm = nixpkgs.lib.nixosSystem {
-          system = "aarch64-linux";
+        nixosConfigurations.vm = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
           modules = [
             {
-              networking.hostName = "ec2-aarch64-vm";
+              networking.hostName = "nixos-vm";
               nix.registry.nixpkgs.flake = inputs.nixpkgs;
               virtualisation.diskSize = 20 * 1024;
             }
@@ -63,7 +63,7 @@
               "${self}/nixos/hosts/ec2-image.nix"
             ];
           };
-          vmAarch64 = self.nixosConfigurations.ec2-aarch64-vm.config.system.build.vm;
+          vm = self.nixosConfigurations.vm.config.system.build.vm;
         };
 
         devShells.default = pkgs.mkShell {

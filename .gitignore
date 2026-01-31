@@ -3,3 +3,4 @@
 /target
 /.lsp
 /.nrepl-port
+*.qcow2
