@@ -74,7 +74,7 @@
     :Resources
     {:IamRole (resource-iam-role)
      :InstanceProfile (resource-instance-profile)
-     :LaunchTemplateNode (resource-launch-template "node" "t4g.medium" {:Ref :AmiId})
+     :LaunchTemplateNode (resource-launch-template "node" "t3.medium" {:Ref :AmiId})
      :AutoScalingGroupNode (resource-autoscaling-group "node" :SubnetPubA :LaunchTemplateNode)}
 
     :Outputs
@@ -122,7 +122,7 @@
                            :Prefix (-> param :prefix)
                            :SubnetPubA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPubA))))
                            :SecurityGroupApp (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupApp))))
-                           :AmiId (or (-> param :ami-id) "ami-09aa74e80fadac3b7")}
+                           :AmiId (or (-> param :ami-id) "ami-0e08d1626421f5ec4")}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))
                           (str/join " "))))))

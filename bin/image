@@ -6,8 +6,8 @@ S3_BUCKET="aws-sam-cli-managed-default-samclisourcebucket-9ipbfd2ab3os"
 AMI_ID_FILE="target/ami-id.txt"
 
 cmd_build() {
-  echo "Building Amazon AMI image (aarch64)..."
-  nix build .#imageAmazonAarch64
+  echo "Building Amazon AMI image (x86_64)..."
+  nix build .#imageAmazon
   echo "Image built successfully: result/nixos.vhd"
 }
 
@@ -67,7 +67,7 @@ cmd_upload() {
   ami_id=$(aws ec2 register-image \
     --name "nixos-custom-${timestamp}" \
     --description "NixOS Custom Image ${timestamp}" \
-    --architecture arm64 \
+    --architecture x86_64 \
     --root-device-name '/dev/xvda' \
     --block-device-mappings "DeviceName=/dev/xvda,Ebs={SnapshotId=${snapshot_id},VolumeSize=20,VolumeType=gp3}" \
     --virtualization-type hvm \
@@ -99,7 +99,7 @@ cmd_help() {
 Usage: bin/image <command>
 
 Commands:
-  build     Build the Amazon AMI image (aarch64)
+  build     Build the Amazon AMI image (x86_64)
   upload    Upload image to S3, import snapshot, and register AMI
   deploy    Deploy cluster with custom AMI
   help      Show this help message

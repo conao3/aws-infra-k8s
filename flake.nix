@@ -52,8 +52,8 @@
         };
       in {
         packages = {
-          imageAmazonAarch64 = inputs.nixos-generators.nixosGenerate {
-            system = "aarch64-linux";
+          imageAmazon = inputs.nixos-generators.nixosGenerate {
+            system = "x86_64-linux";
             format = "amazon";
             modules = [
               {

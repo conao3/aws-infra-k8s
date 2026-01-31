@@ -6,6 +6,5 @@
 
   users.users.root.initialPassword = "root";
 
-  services.xserver.enable = false;
   virtualisation.graphics = false;
 }
