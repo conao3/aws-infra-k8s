@@ -69,7 +69,7 @@ cmd_upload() {
     --description "NixOS Custom Image ${timestamp}" \
     --architecture x86_64 \
     --root-device-name '/dev/xvda' \
-    --block-device-mappings "DeviceName=/dev/xvda,Ebs={SnapshotId=${snapshot_id},VolumeSize=20,VolumeType=gp3}" \
+    --block-device-mappings "DeviceName=/dev/xvda,Ebs={SnapshotId=${snapshot_id},VolumeSize=25,VolumeType=gp3}" \
     --virtualization-type hvm \
     --ena-support \
     --profile "${PROFILE}" \
