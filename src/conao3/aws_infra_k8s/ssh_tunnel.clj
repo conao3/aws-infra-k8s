@@ -38,7 +38,13 @@
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "AmiBuilder")
         :ImageId {:Ref :ImageIdAmazonLinux}
-        :InstanceType "t4g.large"
+        :InstanceType "t4g.medium"
+        :BlockDeviceMappings
+        [{:DeviceName "/dev/xvda"
+          :Ebs
+          {:VolumeSize 30
+           :VolumeType "gp3"
+           :DeleteOnTermination true}}]
         :NetworkInterfaces
         [{:DeviceIndex 0
           :SubnetId {:Ref :SubnetPubA}
