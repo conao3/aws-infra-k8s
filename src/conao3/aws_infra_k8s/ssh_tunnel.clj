@@ -30,11 +30,26 @@
           :SubnetId {:Ref :SubnetPubA}
           :AssociatePublicIpAddress false
           :Ipv6AddressCount 1
+          :GroupSet [{:Ref :SecurityGroupSshTunnel}]}]})}
+
+     :InstanceAmiBuilder
+     {:Type "AWS::EC2::Instance"
+      :Properties
+      (a.cfn/tag-name
+       {:TagName (a.cfn/prefix "AmiBuilder")
+        :ImageId {:Ref :ImageIdAmazonLinux}
+        :InstanceType "t4g.nano"
+        :NetworkInterfaces
+        [{:DeviceIndex 0
+          :SubnetId {:Ref :SubnetPubA}
+          :AssociatePublicIpAddress false
+          :Ipv6AddressCount 1
           :GroupSet [{:Ref :SecurityGroupSshTunnel}]}]})}}
 
     :Outputs
     (a.cfn/list-outputs
-     {:InstanceSshTunnel {:Ref :InstanceSshTunnel}})}))
+     {:InstanceSshTunnel {:Ref :InstanceSshTunnel}
+      :InstanceAmiBuilder {:Ref :InstanceAmiBuilder}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/ssh-tunnel.json")
