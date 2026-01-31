@@ -24,15 +24,15 @@ test:
 
 .PHONY: build-image
 build-image:
-	bin/image build
+	./bin/image build
 
 .PHONY: upload-image
 upload-image:
-	bin/image upload
+	./bin/image upload
 
 .PHONY: deploy-cluster-custom
 deploy-cluster-custom:
-	bin/image deploy
+	./bin/image deploy
 
 .PHONY: run-vm
 run-vm:
