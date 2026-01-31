@@ -7,6 +7,25 @@
    [conao3.aws-infra-k8s.util :as c.util]
    [conao3.aws-infra.cfn :as a.cfn]))
 
+(defn resource-iam-role []
+  {:Type "AWS::IAM::Role"
+   :Properties
+   {:RoleName (a.cfn/prefix "ami-builder")
+    :AssumeRolePolicyDocument
+    {:Version "2012-10-17"
+     :Statement
+     [{:Effect "Allow"
+       :Principal {:Service "ec2.amazonaws.com"}
+       :Action "sts:AssumeRole"}]}
+    :ManagedPolicyArns
+    ["arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"]}})
+
+(defn resource-instance-profile []
+  {:Type "AWS::IAM::InstanceProfile"
+   :Properties
+   {:InstanceProfileName (a.cfn/prefix "ami-builder")
+    :Roles [{:Ref :IamRole}]}})
+
 (defn cfn [_param]
   (a.cfn/template
    {:Parameters
@@ -18,13 +37,16 @@
                 :Default "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-arm64"}))
 
     :Resources
-    {:InstanceAmiBuilder
+    {:IamRole (resource-iam-role)
+     :InstanceProfile (resource-instance-profile)
+     :InstanceAmiBuilder
      {:Type "AWS::EC2::Instance"
       :Properties
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "AmiBuilder")
         :ImageId {:Ref :ImageIdAmazonLinux}
         :InstanceType "t4g.medium"
+        :IamInstanceProfile {:Ref :InstanceProfile}
         :MetadataOptions
         {:HttpTokens "required"
          :HttpPutResponseHopLimit 2
