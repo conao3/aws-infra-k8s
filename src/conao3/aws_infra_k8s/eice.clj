@@ -12,14 +12,14 @@
    {:Parameters
     (a.cfn/list-string-parameters
      [:Env :Prefix
-      :SubnetPriA :SecurityGroupEice])
+      :SubnetPubA :SecurityGroupEice])
 
     :Resources
     {:InstanceConnectEndpoint
      {:Type "AWS::EC2::InstanceConnectEndpoint"
       :Properties
       {:SecurityGroupIds [{:Ref :SecurityGroupEice}]
-       :SubnetId {:Ref :SubnetPriA}}}}
+       :SubnetId {:Ref :SubnetPubA}}}}
 
     :Outputs
     (a.cfn/list-outputs
@@ -64,7 +64,7 @@
                      "--parameter-overrides"
                      (->> {:Env (-> param :env)
                            :Prefix (-> param :prefix)
-                           :SubnetPriA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPriA))))
+                           :SubnetPubA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPubA))))
                            :SecurityGroupEice (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupEice))))}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))

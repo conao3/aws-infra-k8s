@@ -91,31 +91,7 @@
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pri-d")
         :AvailabilityZone :ap-northeast-1d})
-      5)
-
-     :SubnetDualA
-     (subnet-dual
-      (a.cfn/tag-name
-       {:TagName (a.cfn/prefix "dual-a")
-        :AvailabilityZone :ap-northeast-1a})
-      "10.0.100.0/24"
-      6)
-
-     :SubnetDualC
-     (subnet-dual
-      (a.cfn/tag-name
-       {:TagName (a.cfn/prefix "dual-c")
-        :AvailabilityZone :ap-northeast-1c})
-      "10.0.101.0/24"
-      7)
-
-     :SubnetDualD
-     (subnet-dual
-      (a.cfn/tag-name
-       {:TagName (a.cfn/prefix "dual-d")
-        :AvailabilityZone :ap-northeast-1d})
-      "10.0.102.0/24"
-      8)}))
+      5)}))
 
 (defn cfn [param]
   (a.cfn/template
@@ -134,10 +110,7 @@
       :SubnetPubC {:Ref :SubnetPubC}
       :SubnetPriC {:Ref :SubnetPriC}
       :SubnetPubD {:Ref :SubnetPubD}
-      :SubnetPriD {:Ref :SubnetPriD}
-      :SubnetDualA {:Ref :SubnetDualA}
-      :SubnetDualC {:Ref :SubnetDualC}
-      :SubnetDualD {:Ref :SubnetDualD}})}))
+      :SubnetPriD {:Ref :SubnetPriD}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/network.json")

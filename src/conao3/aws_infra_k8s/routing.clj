@@ -80,6 +80,14 @@
         {:VpcId {:Ref :Vpc}
          :TagName (a.cfn/prefix "pub")})}
 
+      :RoutePubIpv4AttachInternetGateway
+      {:Type "AWS::EC2::Route"
+       :DependsOn :AttachGateway
+       :Properties
+       {:DestinationCidrBlock "0.0.0.0/0"
+        :RouteTableId {:Ref :RouteTablePub}
+        :GatewayId {:Ref :InternetGateway}}}
+
       :RoutePubIpv6AttachInternetGateway
       {:Type "AWS::EC2::Route"
        :DependsOn :AttachGateway
