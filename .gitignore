@@ -4,3 +4,4 @@
 /.lsp
 /.nrepl-port
 *.qcow2
+/result
