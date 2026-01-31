@@ -30,7 +30,7 @@
   (a.cfn/template
    {:Parameters
     (-> [:Env :Prefix
-         :SubnetPubA :SecurityGroupSshTunnel]
+         :SubnetPriA :SecurityGroupSshTunnel]
         a.cfn/list-string-parameters
         (assoc :ImageIdAmazonLinux
                {:Type "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
@@ -59,7 +59,7 @@
            :DeleteOnTermination true}}]
         :NetworkInterfaces
         [{:DeviceIndex 0
-          :SubnetId {:Ref :SubnetPubA}
+          :SubnetId {:Ref :SubnetPriA}
           :AssociatePublicIpAddress false
           :Ipv6AddressCount 1
           :GroupSet [{:Ref :SecurityGroupSshTunnel}]}]})}}
@@ -107,7 +107,7 @@
                      "--parameter-overrides"
                      (->> {:Env (-> param :env)
                            :Prefix (-> param :prefix)
-                           :SubnetPubA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPubA))))
+                           :SubnetPriA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPriA))))
                            :SecurityGroupSshTunnel (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupSshTunnel))))}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))

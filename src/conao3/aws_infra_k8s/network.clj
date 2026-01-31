@@ -57,10 +57,11 @@
       0)
 
      :SubnetPriA
-     (subnet
+     (subnet-dual
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pri-a")
         :AvailabilityZone :ap-northeast-1a})
+      "10.0.10.0/24"
       1)
 
      :SubnetPubC
@@ -72,10 +73,11 @@
       2)
 
      :SubnetPriC
-     (subnet
+     (subnet-dual
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pri-c")
         :AvailabilityZone :ap-northeast-1c})
+      "10.0.11.0/24"
       3)
 
      :SubnetPubD
@@ -87,10 +89,11 @@
       4)
 
      :SubnetPriD
-     (subnet
+     (subnet-dual
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pri-d")
         :AvailabilityZone :ap-northeast-1d})
+      "10.0.12.0/24"
       5)}))
 
 (defn cfn [param]
