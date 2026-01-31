@@ -24,11 +24,11 @@
           (recur rest result))))))
 
 (defn run [args param]
-  (let [[command & rest] args
-        parsed-args (parse-args rest)
-        param (merge param parsed-args)]
+  (let [[command & rest] args]
     (case command
-      "deploy" (let [target (first rest)]
+      "deploy" (let [target (first rest)
+                     parsed-args (parse-args (rest rest))
+                     param (merge param parsed-args)]
                  (case target
                    "network" (c.network/deploy (merge
                                                 param
