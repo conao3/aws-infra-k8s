@@ -31,8 +31,8 @@
           "s3:GetObject"
           "s3:ListBucket"]
          :Resource
-         [{"Fn::Sub" "arn:aws:s3:::${S3Bucket}"}
-          {"Fn::Sub" "arn:aws:s3:::${S3Bucket}/*"}]}
+         [{"Fn::Sub" ["arn:aws:s3:::${BucketName}" {:BucketName {:Ref :VmImportBucket}}]}
+          {"Fn::Sub" ["arn:aws:s3:::${BucketName}/*" {:BucketName {:Ref :VmImportBucket}}]}]}
         {:Effect "Allow"
          :Action
          ["ec2:ModifySnapshotAttribute"
@@ -45,7 +45,7 @@
   (a.cfn/template
    {:Parameters
     (a.cfn/list-string-parameters
-     [:Env :Prefix :S3Bucket])
+     [:Env :Prefix :VmImportBucket])
 
     :Resources
     {:VmImportRole (resource-vm-import-role)}
@@ -54,9 +54,18 @@
     (a.cfn/list-outputs
      {:VmImportRole {:Ref :VmImportRole}})}))
 
+(defn get-vm-import-bucket [prefix]
+  (-> (c.util/eshell {:out :string}
+                     "aws" "cloudformation" "list-exports"
+                     "--query" (format "Exports[?Name=='%s-VmImportBucket'].Value" prefix)
+                     "--output" "text")
+      :out
+      str/trim))
+
 (defn deploy [param]
   (let [file (fs/file "target/cfn/vm-import.json")
-        stack-name (str (-> param :prefix) "-" "vm-import")]
+        stack-name (str (-> param :prefix) "-" "vm-import")
+        vm-import-bucket (get-vm-import-bucket (-> param :prefix))]
     (fs/create-dirs (fs/parent file))
 
     (c.util/eprintln (format "Write: %s" (fs/path file)))
@@ -75,7 +84,7 @@
                    "--parameter-overrides"
                    (->> {:Env (-> param :env)
                          :Prefix (-> param :prefix)
-                         :S3Bucket (-> param :s3-bucket)}
+                         :VmImportBucket vm-import-bucket}
                         (map (fn [[k v]]
                                (format "%s=\"%s\"" (name k) v)))
                         (str/join " ")))))

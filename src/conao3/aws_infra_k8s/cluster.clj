@@ -62,7 +62,7 @@
     {:LaunchTemplateId {:Ref launch-template-ref}
      :Version {"Fn::GetAtt" [launch-template-ref :LatestVersionNumber]}}}})
 
-(defn cfn [param]
+(defn cfn [_param]
   (a.cfn/template
    {:Parameters
     (a.cfn/list-string-parameters

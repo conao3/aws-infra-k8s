@@ -15,10 +15,11 @@ aws ec2 create-key-pair --key-name dev-k8s-keypair --query 'KeyMaterial' --outpu
 chmod 400 ~/.ssh/dev-k8s-keypair.pem
 ```
 
-### Add VM Import role
+### Add S3 bucket and VM Import role
 
-Deploy VM Import role (required for custom AMI upload):
+Deploy S3 bucket and VM Import role (required for custom AMI upload):
 ```bash
+AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy s3
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy vm-import
 ```
 
@@ -54,6 +55,7 @@ AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy all
 Deploy each modules like this.
 Currently below modules are provided.
 
+- `s3` (S3 bucket for VM Import)
 - `vm-import` (VM Import IAM role for custom AMI upload)
 - `network`
 - `routing`

@@ -9,6 +9,7 @@
    [conao3.aws-infra-k8s.eice :as c.eice]
    [conao3.aws-infra-k8s.rds :as c.rds]
    [conao3.aws-infra-k8s.cognito :as c.cognito]
+   [conao3.aws-infra-k8s.s3 :as c.s3]
    [conao3.aws-infra-k8s.vm-import :as c.vm-import])
   (:gen-class))
 
@@ -39,8 +40,10 @@
                    "eice" (c.eice/deploy param)
                    "rds" (c.rds/deploy param)
                    "cognito" (c.cognito/deploy param)
+                   "s3" (c.s3/deploy param)
                    "vm-import" (c.vm-import/deploy param)
                    "all" (do
+                           (run ["deploy" "s3"] param)
                            (run ["deploy" "vm-import"] param)
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
@@ -54,7 +57,6 @@
 (defn -main [& args]
   (let [env "dev"
         prefix (format "%s-%s" env "k8s")
-        s3-bucket "aws-sam-cli-managed-default-samclisourcebucket-9ipbfd2ab3os"
-        param {:env env :prefix prefix :s3-bucket s3-bucket}]
+        param {:env env :prefix prefix}]
     (run args param)
     (shutdown-agents)))

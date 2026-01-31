@@ -2,34 +2,55 @@
 set -euxo pipefail -o posix
 
 PROFILE="conao3.k8s"
-S3_BUCKET="aws-sam-cli-managed-default-samclisourcebucket-9ipbfd2ab3os"
+PREFIX="dev-k8s"
 AMI_ID_FILE="target/ami-id.txt"
+
+get_s3_bucket() {
+  aws cloudformation list-exports \
+    --profile "${PROFILE}" \
+    --query "Exports[?Name=='${PREFIX}-VmImportBucket'].Value" \
+    --output text
+}
+
+get_vhd_file() {
+  local vhd_file
+  vhd_file=$(ls -1 result/*.vhd 2>/dev/null | sort -r | head -n 1)
+  if [ -z "${vhd_file}" ]; then
+    echo "Error: No VHD file found in result/. Run 'bin/image build' first." >&2
+    exit 1
+  fi
+  echo "${vhd_file}"
+}
 
 cmd_build() {
   echo "Building Amazon AMI image (x86_64)..."
   nix build .#imageAmazon
-  echo "Image built successfully: result/nixos.vhd"
+  local vhd_file
+  vhd_file=$(get_vhd_file)
+  echo "Image built successfully: ${vhd_file}"
 }
 
 cmd_upload() {
-  if [ ! -f result/nixos.vhd ]; then
-    echo "Error: result/nixos.vhd not found. Run 'bin/image build' first."
-    exit 1
-  fi
+  local vhd_file
+  vhd_file=$(get_vhd_file)
+
+  local s3_bucket
+  s3_bucket=$(get_s3_bucket)
+  echo "Using S3 bucket: ${s3_bucket}"
 
   local timestamp
   timestamp=$(date +%Y%m%d-%H%M%S)
   local s3_key="nixos-custom-${timestamp}.vhd"
 
   echo "Uploading image to S3 as ${s3_key}..."
-  aws s3 cp result/nixos.vhd "s3://${S3_BUCKET}/${s3_key}" --profile "${PROFILE}"
+  aws s3 cp "${vhd_file}" "s3://${s3_bucket}/${s3_key}" --profile "${PROFILE}"
   echo "Image uploaded successfully"
 
   echo "Starting snapshot import..."
   local import_task_id
   import_task_id=$(aws ec2 import-snapshot \
     --description "NixOS Custom EC2 Image ${timestamp}" \
-    --disk-container "Format=VHD,UserBucket={S3Bucket=${S3_BUCKET},S3Key=${s3_key}}" \
+    --disk-container "Format=VHD,UserBucket={S3Bucket=${s3_bucket},S3Key=${s3_key}}" \
     --profile "${PROFILE}" \
     --query 'ImportTaskId' \
     --output text)
@@ -69,7 +90,7 @@ cmd_upload() {
     --description "NixOS Custom Image ${timestamp}" \
     --architecture x86_64 \
     --root-device-name '/dev/xvda' \
-    --block-device-mappings "DeviceName=/dev/xvda,Ebs={SnapshotId=${snapshot_id},VolumeSize=25,VolumeType=gp3}" \
+    --block-device-mappings "DeviceName=/dev/xvda,Ebs={SnapshotId=${snapshot_id},VolumeSize=20,VolumeType=gp3}" \
     --virtualization-type hvm \
     --ena-support \
     --profile "${PROFILE}" \
