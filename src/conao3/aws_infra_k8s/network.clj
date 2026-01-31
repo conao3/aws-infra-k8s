@@ -49,10 +49,11 @@
                            (assoc :AssignIpv6AddressOnCreation true))
                        :DependsOn [:VpcIpv6CidrBlock]})]
     {:SubnetPubA
-     (subnet
+     (subnet-dual
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pub-a")
         :AvailabilityZone :ap-northeast-1a})
+      "10.0.0.0/24"
       0)
 
      :SubnetPriA
@@ -63,10 +64,11 @@
       1)
 
      :SubnetPubC
-     (subnet
+     (subnet-dual
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pub-c")
         :AvailabilityZone :ap-northeast-1c})
+      "10.0.1.0/24"
       2)
 
      :SubnetPriC
@@ -77,10 +79,11 @@
       3)
 
      :SubnetPubD
-     (subnet
+     (subnet-dual
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "pub-d")
         :AvailabilityZone :ap-northeast-1d})
+      "10.0.2.0/24"
       4)
 
      :SubnetPriD
