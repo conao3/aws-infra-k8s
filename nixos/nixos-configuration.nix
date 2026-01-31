@@ -7,6 +7,8 @@
     };
   };
 
+  services.amazon-ssm-agent.enable = true;
+
   environment.systemPackages = with pkgs; [
     curl
     vim
