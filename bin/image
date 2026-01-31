@@ -113,6 +113,45 @@ cmd_deploy() {
   ami_id=$(cat "${AMI_ID_FILE}")
   echo "Deploying cluster with custom AMI: ${ami_id}"
   AWS_PROFILE="${PROFILE}" clojure -M -m conao3.aws-infra-k8s deploy cluster --ami-id "${ami_id}"
+
+  echo ""
+  echo "Starting instance refresh to update running instances..."
+  local asg_name="${PREFIX}-node"
+  aws autoscaling start-instance-refresh \
+    --auto-scaling-group-name "${asg_name}" \
+    --profile "${PROFILE}"
+
+  echo "Instance refresh started. Waiting for completion..."
+  while true; do
+    local status
+    status=$(aws autoscaling describe-instance-refreshes \
+      --auto-scaling-group-name "${asg_name}" \
+      --profile "${PROFILE}" \
+      --query 'InstanceRefreshes[0].Status' \
+      --output text)
+
+    local percentage
+    percentage=$(aws autoscaling describe-instance-refreshes \
+      --auto-scaling-group-name "${asg_name}" \
+      --profile "${PROFILE}" \
+      --query 'InstanceRefreshes[0].PercentageComplete' \
+      --output text)
+
+    echo "Status: ${status}, Progress: ${percentage}%"
+
+    if [ "${status}" = "Successful" ]; then
+      echo "Instance refresh completed successfully!"
+      break
+    elif [ "${status}" = "Failed" ] || [ "${status}" = "Cancelled" ]; then
+      echo "Instance refresh failed with status: ${status}"
+      exit 1
+    fi
+
+    sleep 10
+  done
+
+  echo ""
+  echo "Deployment complete! New instance is now running with custom AMI."
 }
 
 cmd_help() {
@@ -122,13 +161,13 @@ Usage: bin/image <command>
 Commands:
   build     Build the Amazon AMI image (x86_64)
   upload    Upload image to S3, import snapshot, and register AMI
-  deploy    Deploy cluster with custom AMI
+  deploy    Deploy cluster with custom AMI and refresh instances
   help      Show this help message
 
 Workflow:
   1. bin/image build   - Build the image
   2. bin/image upload  - Upload and register as AMI
-  3. bin/image deploy  - Deploy cluster with the AMI
+  3. bin/image deploy  - Deploy cluster and refresh running instances with the AMI
 EOF
 }
 
