@@ -3,10 +3,6 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
     treefmt-nix.url = "github:numtide/treefmt-nix";
-    nixos-generators = {
-      url = "github:nix-community/nixos-generators";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
   };
 
   outputs = inputs @ {
@@ -33,6 +29,17 @@
             "${self}/nixos/hosts/vm.nix"
           ];
         };
+
+        nixosConfigurations.ec2 = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            "${inputs.nixpkgs}/nixos/modules/virtualisation/amazon-image.nix"
+            {
+              nix.registry.nixpkgs.flake = inputs.nixpkgs;
+            }
+            "${self}/nixos/hosts/ec2-image.nix"
+          ];
+        };
       };
 
       perSystem = {
@@ -51,23 +58,8 @@
           overlays = [overlay];
         };
       in {
-        packages = let
-          amazonImage = inputs.nixos-generators.nixosGenerate {
-            system = "x86_64-linux";
-            format = "amazon";
-            modules = [
-              {
-                nix.registry.nixpkgs.flake = inputs.nixpkgs;
-                virtualisation.diskSize = 25 * 1024;
-              }
-              "${self}/nixos/hosts/ec2-image.nix"
-            ];
-          };
-        in {
-          imageAmazon = pkgs.runCommand "nixos-amazon-image" {} ''
-            mkdir -p $out
-            cp ${amazonImage}/*.vhd $out/nixos.vhd
-          '';
+        packages = {
+          imageAmazon = self.nixosConfigurations.ec2.config.system.build.images.amazon;
           vm = self.nixosConfigurations.vm.config.system.build.vm;
         };
 
