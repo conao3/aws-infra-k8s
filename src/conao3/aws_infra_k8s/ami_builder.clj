@@ -25,6 +25,10 @@
        {:TagName (a.cfn/prefix "AmiBuilder")
         :ImageId {:Ref :ImageIdAmazonLinux}
         :InstanceType "t4g.medium"
+        :MetadataOptions
+        {:HttpTokens "required"
+         :HttpPutResponseHopLimit 2
+         :HttpEndpoint "enabled"}
         :BlockDeviceMappings
         [{:DeviceName "/dev/xvda"
           :Ebs

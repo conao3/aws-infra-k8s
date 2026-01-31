@@ -38,7 +38,7 @@
      :InstanceType instance-type
      :IamInstanceProfile {:Arn {"Fn::GetAtt" [:InstanceProfile :Arn]}}
      :MetadataOptions
-     {:HttpTokens "optional"
+     {:HttpTokens "required"
       :HttpPutResponseHopLimit 2
       :HttpEndpoint "enabled"}
      :NetworkInterfaces

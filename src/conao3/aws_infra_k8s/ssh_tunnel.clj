@@ -25,6 +25,10 @@
        {:TagName (a.cfn/prefix "SshTunnel")
         :ImageId {:Ref :ImageIdAmazonLinux}
         :InstanceType "t4g.nano"
+        :MetadataOptions
+        {:HttpTokens "required"
+         :HttpPutResponseHopLimit 2
+         :HttpEndpoint "enabled"}
         :NetworkInterfaces
         [{:DeviceIndex 0
           :SubnetId {:Ref :SubnetPubA}
