@@ -67,6 +67,7 @@ Currently below modules are provided.
 - `security-group`
 - `cluster`
 - `ssh-tunnel`
+- `ami-builder` (AMI builder instance, not included in `deploy all`)
 - `eice`
 - `rds`
 - `cognito`

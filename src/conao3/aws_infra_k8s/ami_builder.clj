@@ -1,4 +1,4 @@
-(ns conao3.aws-infra-k8s.ssh-tunnel 
+(ns conao3.aws-infra-k8s.ami-builder
   (:require
    [babashka.fs :as fs]
    [cheshire.core :as json]
@@ -18,13 +18,19 @@
                 :Default "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-arm64"}))
 
     :Resources
-    {:InstanceSshTunnel
+    {:InstanceAmiBuilder
      {:Type "AWS::EC2::Instance"
       :Properties
       (a.cfn/tag-name
-       {:TagName (a.cfn/prefix "SshTunnel")
+       {:TagName (a.cfn/prefix "AmiBuilder")
         :ImageId {:Ref :ImageIdAmazonLinux}
-        :InstanceType "t4g.nano"
+        :InstanceType "t4g.medium"
+        :BlockDeviceMappings
+        [{:DeviceName "/dev/xvda"
+          :Ebs
+          {:VolumeSize 30
+           :VolumeType "gp3"
+           :DeleteOnTermination true}}]
         :NetworkInterfaces
         [{:DeviceIndex 0
           :SubnetId {:Ref :SubnetPubA}
@@ -34,11 +40,11 @@
 
     :Outputs
     (a.cfn/list-outputs
-     {:InstanceSshTunnel {:Ref :InstanceSshTunnel}})}))
+     {:InstanceAmiBuilder {:Ref :InstanceAmiBuilder}})}))
 
 (defn deploy [param]
-  (let [file (fs/file "target/cfn/ssh-tunnel.json")
-        stack-name (str (-> param :prefix) "-" "ssh-tunnel")]
+  (let [file (fs/file "target/cfn/ami-builder.json")
+        stack-name (str (-> param :prefix) "-" "ami-builder")]
     (fs/create-dirs (fs/parent file))
 
     (c.util/eprintln (format "Write: %s" (fs/path file)))

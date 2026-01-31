@@ -6,6 +6,7 @@
    [conao3.aws-infra-k8s.security-group :as c.security-group]
    [conao3.aws-infra-k8s.cluster :as c.cluster]
    [conao3.aws-infra-k8s.ssh-tunnel :as c.ssh-tunnel]
+   [conao3.aws-infra-k8s.ami-builder :as c.ami-builder]
    [conao3.aws-infra-k8s.eice :as c.eice]
    [conao3.aws-infra-k8s.cognito :as c.cognito]
    [conao3.aws-infra-k8s.s3 :as c.s3]
@@ -36,6 +37,7 @@
                    "security-group" (c.security-group/deploy param)
                    "cluster" (c.cluster/deploy param)
                    "ssh-tunnel" (c.ssh-tunnel/deploy param)
+                   "ami-builder" (c.ami-builder/deploy param)
                    "eice" (c.eice/deploy param)
                    ;; "rds" (c.rds/deploy param)
                    "cognito" (c.cognito/deploy param)
