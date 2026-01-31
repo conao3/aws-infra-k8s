@@ -38,7 +38,7 @@
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "AmiBuilder")
         :ImageId {:Ref :ImageIdAmazonLinux}
-        :InstanceType "t4g.nano"
+        :InstanceType "t4g.large"
         :NetworkInterfaces
         [{:DeviceIndex 0
           :SubnetId {:Ref :SubnetPubA}
