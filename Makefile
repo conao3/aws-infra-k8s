@@ -36,4 +36,7 @@ deploy-cluster-custom:
 
 .PHONY: run-vm
 run-vm:
-	bin/vm run
+	@echo "Starting NixOS VM (x86_64)..."
+	@echo "To exit: Press Ctrl-A then X"
+	@echo ""
+	QEMU_OPTS="${QEMU_OPTS:--m 4096 -smp 4}" nix run .#vm

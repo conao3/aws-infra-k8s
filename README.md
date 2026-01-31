@@ -121,18 +121,14 @@ AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy cluster --ami-i
 
 You can test your custom NixOS configuration locally using QEMU before deploying to AWS.
 
-Using the `bin/vm` script:
-```bash
-bin/vm run
-```
-
-Or using make:
+Using make:
 ```bash
 make run-vm
 ```
 
 Or directly with nix:
 ```bash
+nix run .#vm
 QEMU_OPTS="-m 8192 -smp 8" nix run .#vm
 ```
 
