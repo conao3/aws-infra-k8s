@@ -7,7 +7,6 @@
    [conao3.aws-infra-k8s.cluster :as c.cluster]
    [conao3.aws-infra-k8s.ssh-tunnel :as c.ssh-tunnel]
    [conao3.aws-infra-k8s.eice :as c.eice]
-   [conao3.aws-infra-k8s.rds :as c.rds]
    [conao3.aws-infra-k8s.cognito :as c.cognito]
    [conao3.aws-infra-k8s.s3 :as c.s3]
    [conao3.aws-infra-k8s.vm-import :as c.vm-import])
@@ -38,7 +37,7 @@
                    "cluster" (c.cluster/deploy param)
                    "ssh-tunnel" (c.ssh-tunnel/deploy param)
                    "eice" (c.eice/deploy param)
-                   "rds" (c.rds/deploy param)
+                   ;; "rds" (c.rds/deploy param)
                    "cognito" (c.cognito/deploy param)
                    "s3" (c.s3/deploy param)
                    "vm-import" (c.vm-import/deploy param)
@@ -48,7 +47,7 @@
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
                            (run ["deploy" "security-group"] param)
-                           (run ["deploy" "rds"] param)
+                           ;; (run ["deploy" "rds"] param)
                            (run ["deploy" "cognito"] param)
                            (run ["deploy" "cluster"] param)
                            (run ["deploy" "ssh-tunnel"] param)
