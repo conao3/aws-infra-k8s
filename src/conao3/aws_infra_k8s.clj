@@ -1,5 +1,6 @@
 (ns conao3.aws-infra-k8s
   (:require
+   [clojure.string :as str]
    [conao3.aws-infra-k8s.network :as c.network]
    [conao3.aws-infra-k8s.routing :as c.routing]
    [conao3.aws-infra-k8s.security-group :as c.security-group]
@@ -7,7 +8,8 @@
    [conao3.aws-infra-k8s.ssh-tunnel :as c.ssh-tunnel]
    [conao3.aws-infra-k8s.eice :as c.eice]
    [conao3.aws-infra-k8s.rds :as c.rds]
-   [conao3.aws-infra-k8s.cognito :as c.cognito])
+   [conao3.aws-infra-k8s.cognito :as c.cognito]
+   [conao3.aws-infra-k8s.vm-import :as c.vm-import])
   (:gen-class))
 
 (defn parse-args [args]
@@ -37,7 +39,9 @@
                    "eice" (c.eice/deploy param)
                    "rds" (c.rds/deploy param)
                    "cognito" (c.cognito/deploy param)
+                   "vm-import" (c.vm-import/deploy param)
                    "all" (do
+                           (run ["deploy" "vm-import"] param)
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
                            (run ["deploy" "security-group"] param)
@@ -50,6 +54,7 @@
 (defn -main [& args]
   (let [env "dev"
         prefix (format "%s-%s" env "k8s")
-        param {:env env :prefix prefix}]
+        s3-bucket "aws-sam-cli-managed-default-samclisourcebucket-9ipbfd2ab3os"
+        param {:env env :prefix prefix :s3-bucket s3-bucket}]
     (run args param)
     (shutdown-agents)))

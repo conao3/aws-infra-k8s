@@ -8,14 +8,21 @@ This project provides a modular approach to deploying AWS infrastructure compone
 
 ## Pre-requires
 
-Add keypair.
+### Add keypair
 
-```
+```bash
 aws ec2 create-key-pair --key-name dev-k8s-keypair --query 'KeyMaterial' --output text --profile conao3.k8s > ~/.ssh/dev-k8s-keypair.pem
 chmod 400 ~/.ssh/dev-k8s-keypair.pem
 ```
 
-Add secret for RDS.
+### Add VM Import role
+
+Deploy VM Import role (required for custom AMI upload):
+```bash
+AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy vm-import
+```
+
+### Add secret for RDS
 
 ```
 cat <<EOF > /tmp/dev-k8s-secret.json
@@ -47,6 +54,7 @@ AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy all
 Deploy each modules like this.
 Currently below modules are provided.
 
+- `vm-import` (VM Import IAM role for custom AMI upload)
 - `network`
 - `routing`
 - `security-group`
