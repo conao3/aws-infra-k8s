@@ -51,18 +51,23 @@
           overlays = [overlay];
         };
       in {
-        packages = {
-          imageAmazon = inputs.nixos-generators.nixosGenerate {
+        packages = let
+          amazonImage = inputs.nixos-generators.nixosGenerate {
             system = "x86_64-linux";
             format = "amazon";
             modules = [
               {
                 nix.registry.nixpkgs.flake = inputs.nixpkgs;
-                virtualisation.diskSize = 20 * 1024;
+                virtualisation.diskSize = 25 * 1024;
               }
               "${self}/nixos/hosts/ec2-image.nix"
             ];
           };
+        in {
+          imageAmazon = pkgs.runCommand "nixos-amazon-image" {} ''
+            mkdir -p $out
+            cp ${amazonImage}/*.vhd $out/nixos.vhd
+          '';
           vm = self.nixosConfigurations.vm.config.system.build.vm;
         };
 
