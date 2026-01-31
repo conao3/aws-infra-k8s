@@ -35,20 +35,6 @@ aws secretsmanager update-secret --secret-id dev-k8s-secret --secret-string file
 rm /tmp/dev-k8s-secret.json
 ```
 
-## Deploy
-
-Deploy all via this command.
-
-## Available Modules
-
-| Module | Description |
-|--------|-------------|
-| `network` | VPC, subnets, and core networking resources |
-| `routing` | Route tables and internet gateway configuration |
-| `security-group` | Security group rules and policies |
-| `ssh-tunnel` | SSH tunneling configuration |
-| `eice` | EC2 Instance Connect Endpoint setup |
-
 ## Deployment
 
 ### Deploy All Modules
