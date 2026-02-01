@@ -21,6 +21,7 @@
 
     patchPhase = ''
       substituteInPlace src/bin/eic_curl_authorized_keys \
+        --replace-fail 'OPENSSL=/usr/bin/openssl' 'OPENSSL=${pkgs.openssl}/bin/openssl' \
         --replace-fail '/usr/bin/curl' '${pkgs.curl}/bin/curl' \
         --replace-fail '/usr/bin/logger' '${pkgs.util-linux}/bin/logger' \
         --replace-fail '/usr/bin/printf' '${pkgs.coreutils}/bin/printf' \
