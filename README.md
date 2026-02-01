@@ -223,6 +223,8 @@ k8s/
 │   ├── deployment.yaml
 │   └── service.yaml
 └── grafana/
+    ├── pvc.yaml
+    ├── datasource-configmap.yaml
     ├── deployment.yaml
     └── service.yaml
 ```
@@ -292,7 +294,9 @@ The monitoring stack consists of:
 - Visualizes Prometheus metrics
 - Default credentials: admin/admin
 - Access at: http://localhost:30300 (local) or via CloudFront
-- Add Prometheus data source: http://prometheus:9090
+- Data persistence: PersistentVolumeClaim (1Gi)
+- Auto-configured: Prometheus data source at http://prometheus:9090
+- All dashboards, settings, and users are persisted across Pod restarts
 
 To view host metrics in Prometheus:
 1. Open http://localhost:30900
@@ -308,12 +312,20 @@ To view host metrics in Prometheus:
 - Local: http://localhost:30300
 - Login: admin/admin (change password on first login)
 
-#### 2. Add Prometheus Data Source
-1. Click "Connections" → "Data sources" in the left menu
-2. Click "Add data source"
-3. Select "Prometheus"
-4. Set Prometheus server URL: `http://prometheus:9090`
-5. Click "Save & test"
+**Data Persistence:**
+- Grafana settings are stored in PersistentVolumeClaim (1Gi)
+- Dashboards, data sources, user settings, alerts are all persisted
+- Settings are retained after Pod restart/deletion
+- Local (kind): uses local-path-provisioner
+- AWS (k3s): uses local-path storage
+
+#### 2. Prometheus Data Source (Auto-configured)
+
+The Prometheus data source is automatically configured. No manual setup required.
+
+To verify:
+1. Open "Connections" → "Data sources"
+2. Confirm "Prometheus" is already configured
 
 #### 3. Create Dashboard for Host Metrics
 
@@ -442,7 +454,6 @@ Import these dashboards for comprehensive monitoring:
 - Use **variables** to filter by node, pod, namespace
 - Click on graph legends to show/hide series
 - Use **Explore** view to test PromQL queries before adding to dashboard
-```
 
 ### Deploy to AWS
 
