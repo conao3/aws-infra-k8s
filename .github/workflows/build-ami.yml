@@ -41,10 +41,7 @@ jobs:
       - run: |
           set -euxo pipefail -o posix
 
-          echo "Building NixOS AMI image for aarch64..."
-          nix build .#imageAmazon
-
-          echo "Uploading and registering AMI..."
+          ./bin/image build
           ./bin/image upload
 
           AMI_ID=$(aws ssm get-parameter --name "/${PREFIX}/custom-ami-id" --query 'Parameter.Value' --output text)
