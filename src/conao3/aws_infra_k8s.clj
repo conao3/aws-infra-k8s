@@ -10,6 +10,7 @@
    [conao3.aws-infra-k8s.eice :as c.eice]
    [conao3.aws-infra-k8s.cognito :as c.cognito]
    [conao3.aws-infra-k8s.s3 :as c.s3]
+   [conao3.aws-infra-k8s.rds :as c.rds]
    [conao3.aws-infra-k8s.vm-import :as c.vm-import]
    [conao3.aws-infra-k8s.github-oidc :as c.github-oidc])
   (:gen-class))
@@ -48,7 +49,7 @@
                    "ssh-tunnel" (c.ssh-tunnel/deploy param)
                    "ami-builder" (c.ami-builder/deploy param)
                    "eice" (c.eice/deploy param)
-                   ;; "rds" (c.rds/deploy param)
+                   "rds" (c.rds/deploy param)
                    "all" (do
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
@@ -59,8 +60,10 @@
                            (run ["deploy" "github-oidc"] param)
                            (run ["deploy" "cluster"] param)
                            (run ["deploy" "ssh-tunnel"] param)
-                           (run ["deploy" "ami-builder"] param)
-                           (run ["deploy" "eice"] param)))))))
+                           ;; (run ["deploy" "ami-builder"] param)
+                           (run ["deploy" "eice"] param)
+                           ;; (run ["deploy" "rds"] param)
+                           )))))
 
 (defn -main [& args]
   (let [env "dev"
