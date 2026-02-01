@@ -15,7 +15,7 @@
     :ThumbprintList ["6938fd4d98bab03faadb97b34396831e3780aea1"
                      "1c58a3a8518e8759bf075b76b750d4f2df264fcd"]}})
 
-(defn resource-github-actions-role [repo-owner repo-name]
+(defn resource-github-actions-role []
   {:Type "AWS::IAM::Role"
    :Properties
    {:RoleName (a.cfn/prefix "github-actions")
@@ -30,7 +30,7 @@
         {"token.actions.githubusercontent.com:aud" "sts.amazonaws.com"}
         :StringLike
         {"token.actions.githubusercontent.com:sub"
-         (format "repo:%s/%s:*" repo-owner repo-name)}}}]}
+         {"Fn::Sub" "repo:${GitHubRepoOwner}/${GitHubRepoName}:*"}}}}]}
     :ManagedPolicyArns
     ["arn:aws:iam::aws:policy/AmazonEC2FullAccess"
      "arn:aws:iam::aws:policy/AmazonS3FullAccess"]
@@ -75,9 +75,7 @@
 
     :Resources
     {:GitHubOIDCProvider (resource-oidc-provider)
-     :GitHubActionsRole (resource-github-actions-role
-                         {:Ref :GitHubRepoOwner}
-                         {:Ref :GitHubRepoName})}
+     :GitHubActionsRole (resource-github-actions-role)}
 
     :Outputs
     (a.cfn/list-outputs
