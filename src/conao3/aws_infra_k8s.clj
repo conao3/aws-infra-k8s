@@ -59,7 +59,7 @@
                            (run ["deploy" "vm-import"] param)
                            (run ["deploy" "github-oidc"] param)
                            (run ["deploy" "cluster"] param)
-                           (run ["deploy" "ssh-tunnel"] param)
+                           ;; (run ["deploy" "ssh-tunnel"] param)
                            ;; (run ["deploy" "ami-builder"] param)
                            (run ["deploy" "eice"] param)
                            ;; (run ["deploy" "rds"] param)
