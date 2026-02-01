@@ -133,7 +133,7 @@ The cluster deployment automatically uses the AMI ID from SSM Parameter Store (`
 gh workflow run build-ami.yml
 sleep 5
 gh run watch $(gh run list --workflow=build-ami.yml --limit=1 --json databaseId --jq '.[0].databaseId')
-./bin/image deploy
+AWS_PROFILE=conao3.k8s ./bin/image deploy
 ```
 
 ### Test Custom Image with VM
