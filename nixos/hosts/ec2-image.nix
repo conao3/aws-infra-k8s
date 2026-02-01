@@ -1,14 +1,27 @@
 {
   modulesPath,
   pkgs,
+  lib,
   ...
-}: {
+}: let
+  eiceAuthorizedKeysCommand = pkgs.writeShellScript "eice-authorized-keys" ''
+    set -euo pipefail
+    USER="$1"
+    TOKEN=$(${pkgs.curl}/bin/curl -X PUT -s http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" 2>/dev/null || echo "")
+    if [ -n "$TOKEN" ]; then
+      ${pkgs.curl}/bin/curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/managed-ssh-keys/active-keys/"$USER" 2>/dev/null || true
+    fi
+  '';
+in {
   imports = [
     "${modulesPath}/virtualisation/amazon-image.nix"
     ../nixos-configuration.nix
   ];
 
   ec2.hvm = true;
+
+  services.openssh.authorizedKeysCommand = lib.mkForce "${eiceAuthorizedKeysCommand} %u";
+  services.openssh.authorizedKeysCommandUser = "root";
 
   systemd.services.fetch-ec2-ssh-key = {
     description = "Fetch EC2 SSH key from metadata service";
