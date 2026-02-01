@@ -45,14 +45,14 @@
          :FromPort 30000
          :ToPort 32767
          :SourceSecurityGroupId {:Ref :SecurityGroupAlb}}}
-       :SecurityGroupIngressAlbFromInternet
+       :SecurityGroupIngressAlbFromCloudFront
        {:Type "AWS::EC2::SecurityGroupIngress"
         :Properties
         {:GroupId {:Ref :SecurityGroupAlb}
          :IpProtocol "tcp"
          :FromPort 80
          :ToPort 80
-         :CidrIp "0.0.0.0/0"}}
+         :SourcePrefixListId "pl-58a04531"}}
        :SecurityGroupIngressSshTunnelFromIpv6
        {:Type "AWS::EC2::SecurityGroupIngress"
         :Properties
