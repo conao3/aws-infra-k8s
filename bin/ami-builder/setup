@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euxo pipefail -o posix
+
+sudo dnf update -y
+sudo dnf install -y git
+
+mkdir -p ~/dev
+cd ~/dev
+if [ ! -d aws-infra-k8s ]; then
+  git clone https://github.com/conao3/aws-infra-k8s.git
+fi
+cd aws-infra-k8s
+git pull origin master
