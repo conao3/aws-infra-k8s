@@ -156,6 +156,22 @@ aws ec2 describe-images --owners 427812963091 --filter 'Name=name,Values=nixos/2
 
 Default AMI: `ami-00ce0dbbbd1a71d5b` (nixos/25.05.813814.ac62194c3917-aarch64-linux)
 
+## SSH Access
+
+Connect to instances via EC2 Instance Connect Endpoint (EICE):
+
+### AMI Builder Instance
+```bash
+AWS_PROFILE=conao3.k8s bin/ssh/ami-builder
+```
+
+### Cluster Node Instance
+```bash
+AWS_PROFILE=conao3.k8s bin/ssh/node
+```
+
+Both scripts use EICE to establish secure SSH connections without requiring public IP addresses.
+
 ## License
 
 See LICENSE file for details.

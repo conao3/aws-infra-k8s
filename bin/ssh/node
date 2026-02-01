@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euxo pipefail -o posix
+
+PREFIX="${PREFIX:-dev-k8s}"
+ASG_NAME="${PREFIX}-node"
+
+INSTANCE_ID=$(aws autoscaling describe-auto-scaling-groups \
+  --auto-scaling-group-names "${ASG_NAME}" \
+  --query 'AutoScalingGroups[0].Instances[0].InstanceId' \
+  --output text)
+
+if [ -z "${INSTANCE_ID}" ] || [ "${INSTANCE_ID}" = "None" ]; then
+  echo "Error: Could not find instance in AutoScalingGroup ${ASG_NAME}" >&2
+  exit 1
+fi
+
+echo "Connecting to node instance: ${INSTANCE_ID}" >&2
+
+GPG_TTY=$(tty) SSH_ASKPASS="" aws ec2-instance-connect ssh \
+  --instance-id "${INSTANCE_ID}" \
+  --os-user root \
+  --connection-type eice \
+  "$@"
