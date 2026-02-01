@@ -74,6 +74,7 @@
           (json/generate-stream writer)))
 
     (c.util/eshell "sam" "validate" "--template-file" (str (fs/path file)))
+    (c.util/ensure-stack-deployable stack-name)
     (c.util/eshell "sam" "deploy"
                    "--template-file" (str (fs/path file))
                    "--stack-name" stack-name

@@ -93,19 +93,8 @@
           (json/generate-stream writer)))
 
     (c.util/eshell "sam" "validate" "--template-file" (str (fs/path file)))
-    (let [get-status (fn []
-                       (->> (or (-> (c.util/eshell {:out :string :continue true} "aws" "cloudformation" "describe-stacks" "--stack-name" stack-name)
-                                    :out
-                                    (json/parse-string keyword)
-                                    :Stacks)
-                                [])
-                            first
-                            :StackStatus))
-          status (get-status)]
-      (when (= status "DELETE_IN_PROGRESS")
-        (c.util/eprintln "Waiting for stack deletion to complete...")
-        (c.util/eshell "aws" "cloudformation" "wait" "stack-delete-complete" "--stack-name" stack-name))
-      (c.util/eshell "sam" "deploy"
+    (c.util/ensure-stack-deployable stack-name)
+    (c.util/eshell "sam" "deploy"
                      "--template-file" (str (fs/path file))
                      "--stack-name" stack-name
                      "--capabilities" "CAPABILITY_NAMED_IAM"
@@ -119,4 +108,4 @@
                            :GitHubRepoName (or (-> param :github-repo-name) "aws-infra-k8s")}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))
-                          (str/join " "))))))
+                          (str/join " ")))))
