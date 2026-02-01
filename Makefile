@@ -21,22 +21,3 @@ run:
 .PHONY: test
 test:
 	./aws-infra-k8s
-
-.PHONY: build-image
-build-image:
-	./bin/image build
-
-.PHONY: upload-image
-upload-image:
-	./bin/image upload
-
-.PHONY: deploy-cluster-custom
-deploy-cluster-custom:
-	./bin/image deploy
-
-.PHONY: run-vm
-run-vm:
-	@echo "Starting NixOS VM..."
-	@echo "To exit: Press Ctrl-A then X"
-	@echo ""
-	QEMU_OPTS="${QEMU_OPTS:--m 4096 -smp 4}" nix run .#vm

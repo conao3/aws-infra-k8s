@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 set -euxo pipefail -o posix
 
-PROFILE="${PROFILE:-conao3.k8s}"
 STACK_NAME="${STACK_NAME:-dev-k8s-ami-builder}"
 
 INSTANCE_ID=$(aws cloudformation describe-stacks \
   --stack-name "${STACK_NAME}" \
-  --profile "${PROFILE}" \
   --query 'Stacks[0].Outputs[?OutputKey==`InstanceAmiBuilder`].OutputValue' \
   --output text)
 
@@ -19,6 +17,5 @@ echo "Connecting to ami-builder instance: ${INSTANCE_ID}" >&2
 
 GPG_TTY=$(tty) SSH_ASKPASS="" aws ec2-instance-connect ssh \
   --instance-id "${INSTANCE_ID}" \
-  --profile "${PROFILE}" \
   --connection-type eice \
   "$@"

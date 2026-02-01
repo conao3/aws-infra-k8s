@@ -1,0 +1,63 @@
+name: Build NixOS AMI
+
+on:
+  workflow_dispatch:
+    inputs:
+      prefix:
+        description: 'Resource prefix'
+        required: false
+        default: 'dev-k8s'
+
+env:
+  PREFIX: ${{ github.event.inputs.prefix || 'dev-k8s' }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - uses: cachix/cachix-action@v15
+        with:
+          name: nix-community
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+          skipPush: true
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::418272767854:role/dev-k8s-github-actions
+          aws-region: ap-northeast-1
+
+      - run: |
+          echo "Building NixOS AMI image for aarch64..."
+          nix build .#imageAmazon
+
+          echo "Uploading and registering AMI..."
+          ./bin/image upload
+
+          AMI_ID=$(aws ssm get-parameter --name "/${PREFIX}/custom-ami-id" --query 'Parameter.Value' --output text)
+          TIMESTAMP=$(aws ec2 describe-images --image-ids "${AMI_ID}" --query 'Images[0].CreationDate' --output text | cut -d'T' -f1)
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## NixOS AMI Build Complete
+
+          - **AMI ID**: ${AMI_ID}
+          - **Timestamp**: ${TIMESTAMP}
+          - **Architecture**: arm64
+          - **SSM Parameter**: /${PREFIX}/custom-ami-id
+
+          The AMI has been registered and saved to SSM Parameter Store.
+          You can now deploy the cluster with:
+          \`\`\`bash
+          bin/image deploy
+          \`\`\`
+          EOF

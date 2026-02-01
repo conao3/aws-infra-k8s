@@ -6,6 +6,14 @@ AWS infrastructure management for Kubernetes using Clojure and CloudFormation.
 
 This project provides a modular approach to deploying AWS infrastructure components. Each module handles a specific aspect of the infrastructure and can be deployed independently or all at once.
 
+All AWS operations use the `AWS_PROFILE` environment variable to specify credentials. Set it before running any commands:
+
+```bash
+export AWS_PROFILE=conao3.k8s
+# or prefix each command:
+AWS_PROFILE=conao3.k8s <command>
+```
+
 ## Pre-requires
 
 ### Add keypair
@@ -69,6 +77,7 @@ Currently below modules are provided.
 - `ssh-tunnel`
 - `ami-builder` (AMI builder instance, not included in `deploy all`)
 - `eice`
+- `github-oidc` (GitHub Actions OIDC provider and IAM role)
 - `rds`
 - `cognito`
 
@@ -90,52 +99,46 @@ AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy routing
 nixos/
 ├── nixos-configuration.nix  # Common configuration
 └── hosts/
-    ├── ec2-image.nix        # EC2-specific configuration (x86_64)
+    ├── ec2-image.nix        # EC2-specific configuration (aarch64)
     └── vm.nix               # VM-specific configuration (x86_64)
 ```
 
 ### Build and Deploy Custom AMI
 
-You can build and deploy a custom NixOS AMI (x86_64) using the configuration in `nixos/hosts/ec2-image.nix`.
+You can build and deploy a custom NixOS AMI (aarch64) using the configuration in `nixos/hosts/ec2-image.nix`.
 
-Using the `bin/image` script:
+#### Local Build (requires Nix with aarch64 support)
+
 ```bash
-bin/image build    # Build the custom image
-bin/image upload   # Upload to S3, import snapshot, and register as AMI
-bin/image deploy   # Deploy cluster with custom AMI
+AWS_PROFILE=conao3.k8s bin/image build    # Build the custom image
+AWS_PROFILE=conao3.k8s bin/image upload   # Upload to S3, import snapshot, and register as AMI
+AWS_PROFILE=conao3.k8s bin/image deploy   # Deploy cluster with custom AMI
 ```
 
-Or using make:
-```bash
-make build-image
-make upload-image
-make deploy-cluster-custom
-```
+The `upload` command:
+- Saves the AMI ID to SSM Parameter Store (`/dev-k8s/custom-ami-id`)
+- Creates a local file `target/ami-id.txt` with the AMI ID
 
-The `upload` command creates a file `target/ami-id.txt` with the new AMI ID.
+#### GitHub Actions Build (Recommended)
 
-Or manually specify AMI ID for cluster:
-```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy cluster --ami-id ami-xxxxx
-```
+Use the **Build NixOS AMI** workflow in the GitHub Actions tab to build the AMI on ARM64 runners. The workflow automatically:
+1. Builds the NixOS image natively on aarch64
+2. Uploads to S3 and imports as a snapshot
+3. Registers the AMI
+4. Saves the AMI ID to SSM Parameter Store
 
-Or deploy all modules with custom AMI:
-```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy all --ami-id ami-xxxxx
-```
+The cluster deployment automatically uses the AMI ID from SSM Parameter Store (`/dev-k8s/custom-ami-id`).
 
 ### Test Custom Image with VM
 
 You can test your custom NixOS configuration locally using QEMU before deploying to AWS.
 
-Using make:
-```bash
-make run-vm
-```
-
-Or directly with nix:
 ```bash
 nix run .#vm
+```
+
+Or with custom resources:
+```bash
 QEMU_OPTS="-m 8192 -smp 8" nix run .#vm
 ```
 
