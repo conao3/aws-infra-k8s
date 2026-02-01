@@ -41,7 +41,8 @@ cmd_upload() {
   local s3_key="nixos-custom-${timestamp}.vhd"
 
   echo "Uploading image to S3 as ${s3_key}..."
-  aws s3 cp "${vhd_file}" "s3://${s3_bucket}/${s3_key}"  echo "Image uploaded successfully"
+  aws s3 cp "${vhd_file}" "s3://${s3_bucket}/${s3_key}"
+  echo "Image uploaded successfully"
 
   echo "Starting snapshot import..."
   local import_task_id
