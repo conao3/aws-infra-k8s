@@ -23,24 +23,37 @@
       substituteInPlace src/bin/eic_curl_authorized_keys \
         --replace-fail '/usr/bin/curl' '${pkgs.curl}/bin/curl' \
         --replace-fail '/usr/bin/logger' '${pkgs.util-linux}/bin/logger' \
-        --replace-fail '/bin/echo' '${pkgs.coreutils}/bin/echo' \
+        --replace-fail '/usr/bin/printf' '${pkgs.coreutils}/bin/printf' \
         --replace-fail '/usr/bin/head' '${pkgs.coreutils}/bin/head' \
-        --replace-fail '/bin/grep' '${pkgs.gnugrep}/bin/grep' \
-        --replace-fail '/bin/cat' '${pkgs.coreutils}/bin/cat' \
+        --replace-fail '/usr/bin/cut' '${pkgs.coreutils}/bin/cut' \
         --replace-fail '/usr/bin/id' '${pkgs.coreutils}/bin/id' \
-        --replace-fail '/bin/mktemp' '${pkgs.coreutils}/bin/mktemp' \
-        --replace-fail '/bin/chmod' '${pkgs.coreutils}/bin/chmod' \
         --replace-fail '/usr/bin/base64' '${pkgs.coreutils}/bin/base64' \
-        --replace-fail '/usr/bin/openssl' '${pkgs.openssl}/bin/openssl'
+        --replace-fail '/bin/echo' '${pkgs.coreutils}/bin/echo' \
+        --replace-fail '/bin/grep' '${pkgs.gnugrep}/bin/grep' \
+        --replace-fail '/bin/sed' '${pkgs.gnused}/bin/sed' \
+        --replace-fail '/bin/cat' '${pkgs.coreutils}/bin/cat' \
+        --replace-fail '/bin/mktemp' '${pkgs.coreutils}/bin/mktemp' \
+        --replace-fail '/bin/chmod' '${pkgs.coreutils}/bin/chmod'
 
       substituteInPlace src/bin/eic_parse_authorized_keys \
-        --replace-fail '/usr/bin/openssl' '${pkgs.openssl}/bin/openssl' \
         --replace-fail '/usr/bin/logger' '${pkgs.util-linux}/bin/logger' \
+        --replace-fail '/usr/bin/printf' '${pkgs.coreutils}/bin/printf' \
+        --replace-fail '/usr/bin/awk' '${pkgs.gawk}/bin/awk' \
+        --replace-fail '/usr/bin/find' '${pkgs.findutils}/bin/find' \
+        --replace-fail '/usr/bin/seq' '${pkgs.coreutils}/bin/seq' \
+        --replace-fail '/usr/bin/tr' '${pkgs.coreutils}/bin/tr' \
+        --replace-fail '/usr/bin/cp' '${pkgs.coreutils}/bin/cp' \
+        --replace-fail '/usr/bin/ssh-keygen' '${pkgs.openssh}/bin/ssh-keygen' \
         --replace-fail '/bin/echo' '${pkgs.coreutils}/bin/echo' \
+        --replace-fail '/bin/sed' '${pkgs.gnused}/bin/sed' \
+        --replace-fail '/bin/cat' '${pkgs.coreutils}/bin/cat' \
         --replace-fail '/bin/mktemp' '${pkgs.coreutils}/bin/mktemp' \
         --replace-fail '/bin/chmod' '${pkgs.coreutils}/bin/chmod' \
-        --replace-fail '/bin/cat' '${pkgs.coreutils}/bin/cat' \
-        --replace-fail '/bin/grep' '${pkgs.gnugrep}/bin/grep'
+        --replace-fail '/bin/cp' '${pkgs.coreutils}/bin/cp' \
+        --replace-fail '/bin/rm' '${pkgs.coreutils}/bin/rm' \
+        --replace-fail '/bin/mv' '${pkgs.coreutils}/bin/mv' \
+        --replace-fail '/bin/touch' '${pkgs.coreutils}/bin/touch' \
+        --replace-fail '/bin/date' '${pkgs.coreutils}/bin/date'
 
       substituteInPlace src/bin/eic_run_authorized_keys \
         --replace-fail '/usr/bin/timeout' '${pkgs.coreutils}/bin/timeout'
