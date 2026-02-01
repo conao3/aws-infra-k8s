@@ -7,6 +7,8 @@ data:
     global:
       scrape_interval: 15s
       evaluation_interval: 15s
+      external_labels:
+        cluster: dev-k8s-local
 
     scrape_configs:
     - job_name: 'prometheus'
@@ -60,3 +62,22 @@ data:
       - source_labels: [__meta_kubernetes_pod_node_name]
         action: replace
         target_label: node
+
+    - job_name: 'kube-state-metrics'
+      kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+          - kube-system
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: kube-state-metrics
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: pod
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: namespace
+      - target_label: cluster
+        replacement: dev-k8s-local

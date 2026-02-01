@@ -211,6 +211,12 @@ k8s/
 ├── node-exporter/
 │   ├── daemonset.yaml
 │   └── service.yaml
+├── kube-state-metrics/
+│   ├── service-account.yaml
+│   ├── cluster-role.yaml
+│   ├── cluster-role-binding.yaml
+│   ├── deployment.yaml
+│   └── service.yaml
 ├── prometheus/
 │   ├── configmap.yaml
 │   ├── rbac.yaml
@@ -261,11 +267,23 @@ The monitoring stack consists of:
 - Uses `hostNetwork: true` and `hostPID: true` for accurate host metrics
 - Mounts `/proc`, `/sys`, and `/` from the host
 
+**kube-state-metrics**
+- Exposes Kubernetes object state metrics
+- Provides information about:
+  - Deployments (replicas, conditions, status)
+  - Pods (phase, conditions, restarts, resource requests/limits)
+  - Nodes (capacity, allocatable, conditions)
+  - Services, ConfigMaps, Secrets
+  - Jobs, CronJobs, DaemonSets, StatefulSets
+- Runs in kube-system namespace
+- Exposes metrics on port 8080
+
 **Prometheus**
 - Scrapes metrics from:
   - Kubernetes API server
   - Kubernetes nodes
-  - Node Exporter pods
+  - Node Exporter pods (host metrics)
+  - kube-state-metrics (Kubernetes object metrics)
   - Pods with `prometheus.io/scrape: "true"` annotation
 - Stores time-series data locally
 - Query metrics at: http://localhost:30900 (local) or via CloudFront
@@ -352,44 +370,70 @@ rate(node_network_transmit_bytes_total{device!~"lo|veth.*"}[5m])
 
 #### 4. Create Dashboard for Kubernetes Deployments
 
+**Option A: Import Pre-built Dashboard**
+
 1. Click "Dashboards" → "Import" in the left menu
 2. Enter dashboard ID: `15661` (Kubernetes Deployments)
-3. Or create custom dashboard with these queries:
+3. Select Prometheus data source
+4. Click "Import"
 
-**Pod Count by Deployment:**
-```promql
-count(kube_pod_info) by (created_by_name)
-```
+**Option B: Create Custom Dashboard**
 
-**CPU Usage by Pod:**
-```promql
-sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (pod)
-```
+1. Click "Dashboards" → "New" → "New Dashboard"
+2. Add these visualizations:
 
-**Memory Usage by Pod:**
-```promql
-sum(container_memory_working_set_bytes{container!=""}) by (pod)
-```
-
-**Deployment Replicas:**
+**Deployment Replicas (Available vs Desired):**
 ```promql
 kube_deployment_status_replicas_available
+```
+```promql
+kube_deployment_spec_replicas
+```
+
+**Pod Status by Deployment:**
+```promql
+sum(kube_pod_status_phase{phase="Running"}) by (namespace)
 ```
 
 **Pod Restart Count:**
 ```promql
-kube_pod_container_status_restarts_total
+sum(kube_pod_container_status_restarts_total) by (namespace, pod)
 ```
 
-**Note:** These queries require kube-state-metrics to be installed (not currently deployed).
+**Pods by Phase:**
+```promql
+count(kube_pod_status_phase) by (phase)
+```
+
+**Deployment Conditions:**
+```promql
+kube_deployment_status_condition{condition="Available"}
+```
+
+**Container Resource Requests (CPU):**
+```promql
+sum(kube_pod_container_resource_requests{resource="cpu"}) by (namespace, pod)
+```
+
+**Container Resource Limits (Memory):**
+```promql
+sum(kube_pod_container_resource_limits{resource="memory"}) by (namespace, pod)
+```
+
+**Failed Pods:**
+```promql
+count(kube_pod_status_phase{phase="Failed"})
+```
 
 #### 5. Useful Dashboard IDs
 
 Import these dashboards for comprehensive monitoring:
 - **1860**: Node Exporter Full (host metrics)
-- **315**: Kubernetes Cluster Monitoring
+- **315**: Kubernetes Cluster Monitoring (kube-state-metrics)
 - **6417**: Kubernetes Cluster (Prometheus)
-- **15661**: Kubernetes Deployments
+- **15661**: Kubernetes Deployments (kube-state-metrics)
+- **13332**: Kube State Metrics v2
+- **8588**: Kubernetes Deployment Statefulset Daemonset metrics
 
 #### 6. Tips
 
@@ -412,6 +456,7 @@ This deploys:
 - nginx (NodePort 30924)
 - Kubernetes Dashboard (NodePort 31353)
 - Node Exporter (DaemonSet, monitors host metrics)
+- kube-state-metrics (exposes Kubernetes object metrics)
 - Prometheus (NodePort 30900, collects metrics)
 - Grafana (NodePort 30300, visualizes metrics)
 
