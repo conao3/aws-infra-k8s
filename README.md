@@ -471,27 +471,51 @@ This deploys:
 - Prometheus (NodePort 30900, collects metrics)
 - Grafana (NodePort 30300, visualizes metrics)
 
-### Access Kubernetes Dashboard
+### Access Applications on AWS
 
+#### Grafana
+```bash
+# Port forward Grafana (runs in foreground)
+AWS_PROFILE=conao3.k8s bin/ssh/node grafana
+
+# Access: http://localhost:30300
+# Login: admin/admin
+```
+
+#### Prometheus
+```bash
+# Port forward Prometheus (runs in foreground)
+AWS_PROFILE=conao3.k8s bin/ssh/node prometheus
+
+# Access: http://localhost:30900
+```
+
+#### Kubernetes Dashboard
 1. Get the admin token:
 ```bash
 AWS_PROFILE=conao3.k8s bin/k8s/get-dashboard-token
 ```
 
-2. Create SSH tunnel:
+2. Port forward Dashboard:
 ```bash
-AWS_PROFILE=conao3.k8s ssh -i ~/.ssh/dev-k8s-keypair.pem \
-  -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id $(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names dev-k8s-node --query 'AutoScalingGroups[0].Instances[0].InstanceId' --output text) --remote-port 22" \
-  -L 8443:localhost:31353 \
-  -N root@$(aws ec2 describe-instances --instance-ids $(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names dev-k8s-node --query 'AutoScalingGroups[0].Instances[0].InstanceId' --output text) --query 'Reservations[0].Instances[0].PrivateIpAddress' --output text)
+AWS_PROFILE=conao3.k8s bin/ssh/node dashboard
 ```
 
-3. Open browser:
-```bash
-open https://localhost:8443
-```
+3. Access: https://localhost:31353
 
 4. Login with the token from step 1
+
+#### kubectl Access to AWS Cluster
+```bash
+# In terminal 1: Port forward Kubernetes API
+AWS_PROFILE=conao3.k8s bin/ssh/node k8s
+
+# In terminal 2: Get kubeconfig and use kubectl
+bin/ssh/node login 'cat /etc/rancher/k3s/k3s.yaml' > /tmp/k3s.yaml
+sed -i 's|https://127.0.0.1:6443|https://localhost:6443|g' /tmp/k3s.yaml
+export KUBECONFIG=/tmp/k3s.yaml
+kubectl get pods -A
+```
 
 ### Access via CloudFront
 
@@ -501,7 +525,7 @@ Applications are accessible via:
 
 ## SSH Access
 
-Connect to instances via EC2 Instance Connect Endpoint (EICE):
+Connect to instances via EC2 Instance Connect Endpoint (EICE).
 
 ### AMI Builder Instance
 ```bash
@@ -509,11 +533,30 @@ AWS_PROFILE=conao3.k8s bin/ssh/ami-builder
 ```
 
 ### Cluster Node Instance
+
+**Available Commands:**
 ```bash
+# SSH login (default)
 AWS_PROFILE=conao3.k8s bin/ssh/node
+AWS_PROFILE=conao3.k8s bin/ssh/node login
+
+# Port forward Grafana web console
+AWS_PROFILE=conao3.k8s bin/ssh/node grafana
+
+# Port forward Prometheus web console
+AWS_PROFILE=conao3.k8s bin/ssh/node prometheus
+
+# Port forward Kubernetes Dashboard
+AWS_PROFILE=conao3.k8s bin/ssh/node dashboard
+
+# Port forward Kubernetes API (for kubectl access)
+AWS_PROFILE=conao3.k8s bin/ssh/node k8s
+
+# Show help
+AWS_PROFILE=conao3.k8s bin/ssh/node help
 ```
 
-Both scripts use EICE to establish secure SSH connections without requiring public IP addresses.
+All scripts use EICE to establish secure SSH connections without requiring public IP addresses.
 
 ## License
 
