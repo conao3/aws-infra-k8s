@@ -63,7 +63,7 @@
                            ;; (run ["deploy" "ami-builder"] param)
                            (run ["deploy" "eice"] param)
                            ;; (run ["deploy" "rds"] param)
-                           )))))
+                           ))))))
 
 (defn -main [& args]
   (let [env "dev"
