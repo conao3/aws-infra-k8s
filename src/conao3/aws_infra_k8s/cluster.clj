@@ -20,7 +20,19 @@
     :ManagedPolicyArns
     ["arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
      "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
-     "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"]}})
+     "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"]
+    :Policies
+    [{:PolicyName "DataVolumeAccess"
+      :PolicyDocument
+      {:Version "2012-10-17"
+       :Statement
+       [{:Effect "Allow"
+         :Action ["ec2:DescribeVolumes"]
+         :Resource "*"}
+        {:Effect "Allow"
+         :Action ["ec2:AttachVolume" "ec2:DetachVolume"]
+         :Resource ["arn:aws:ec2:*:*:volume/*"
+                    "arn:aws:ec2:*:*:instance/*"]}]}}]}})
 
 (defn resource-instance-profile []
   {:Type "AWS::IAM::InstanceProfile"
@@ -50,6 +62,18 @@
      [{:ResourceType "instance"
        :Tags [{:Key "Name" :Value (a.cfn/prefix name)}]}]}}})
 
+(defn resource-data-volume []
+  {:Type "AWS::EC2::Volume"
+   :DeletionPolicy "Retain"
+   :UpdateReplacePolicy "Retain"
+   :Properties
+   {:AvailabilityZone "ap-northeast-1a"
+    :Size 20
+    :VolumeType "gp3"
+    :Encrypted true
+    :Tags [{:Key "Name" :Value (a.cfn/prefix "data")}
+           {:Key "k3s-data-volume" :Value "true"}]}})
+
 (defn resource-autoscaling-group [name subnet-id launch-template-ref target-group-arn]
   {:Type "AWS::AutoScaling::AutoScalingGroup"
    :Properties
@@ -77,6 +101,7 @@
     :Resources
     {:IamRole (resource-iam-role)
      :InstanceProfile (resource-instance-profile)
+     :DataVolume (resource-data-volume)
      :LaunchTemplateNode (resource-launch-template "node" "t4g.medium" {:Ref :AmiId})
      :AutoScalingGroupNode (resource-autoscaling-group "node" :SubnetPubA :LaunchTemplateNode nil)}
 
