@@ -437,15 +437,31 @@ sum(kube_pod_container_resource_limits{resource="memory"}) by (namespace, pod)
 count(kube_pod_status_phase{phase="Failed"})
 ```
 
-#### 5. Useful Dashboard IDs
+#### 5. Recommended Dashboards
 
-Import these dashboards for comprehensive monitoring:
+**Essential (Import these first):**
 - **1860**: Node Exporter Full (host metrics)
-- **315**: Kubernetes Cluster Monitoring (kube-state-metrics)
-- **6417**: Kubernetes Cluster (Prometheus)
-- **15661**: Kubernetes Deployments (kube-state-metrics)
+- **15172**: Kubernetes Cluster Monitoring (deployments, pods)
+
+**Optional (for detailed metrics):**
 - **13332**: Kube State Metrics v2
+- **315**: Kubernetes Cluster Monitoring
+- **6417**: Kubernetes Cluster (Prometheus)
+- **15661**: Kubernetes Deployments
 - **8588**: Kubernetes Deployment Statefulset Daemonset metrics
+
+**Troubleshooting Gateway Timeout:**
+
+If importing by dashboard ID fails with "gateway timeout", use pre-downloaded JSON files:
+
+1. Navigate to `grafana-dashboards/` directory
+2. In Grafana, click "Dashboards" → "Import"
+3. Click "Upload JSON file"
+4. Select the JSON file (e.g., `1860-node-exporter-full.json`)
+5. Choose Prometheus data source
+6. Click "Import"
+
+See `grafana-dashboards/README.md` for detailed instructions.
 
 #### 6. Tips
 

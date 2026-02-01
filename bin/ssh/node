@@ -5,31 +5,145 @@ PREFIX="${PREFIX:-dev-k8s}"
 ASG_NAME="${PREFIX}-node"
 KEY_FILE="${HOME}/.ssh/${PREFIX}-keypair.pem"
 
-INSTANCE_ID=$(aws autoscaling describe-auto-scaling-groups \
-  --auto-scaling-group-names "${ASG_NAME}" \
-  --query 'AutoScalingGroups[0].Instances[0].InstanceId' \
-  --output text)
+get_instance_info() {
+  INSTANCE_ID=$(aws autoscaling describe-auto-scaling-groups \
+    --auto-scaling-group-names "${ASG_NAME}" \
+    --query 'AutoScalingGroups[0].Instances[0].InstanceId' \
+    --output text)
 
-if [ -z "${INSTANCE_ID}" ] || [ "${INSTANCE_ID}" = "None" ]; then
-  echo "Error: Could not find instance in AutoScalingGroup ${ASG_NAME}" >&2
-  exit 1
-fi
+  if [ -z "${INSTANCE_ID}" ] || [ "${INSTANCE_ID}" = "None" ]; then
+    echo "Error: Could not find instance in AutoScalingGroup ${ASG_NAME}" >&2
+    exit 1
+  fi
 
-PRIVATE_IP=$(aws ec2 describe-instances \
-  --instance-ids "${INSTANCE_ID}" \
-  --query 'Reservations[0].Instances[0].PrivateIpAddress' \
-  --output text)
+  PRIVATE_IP=$(aws ec2 describe-instances \
+    --instance-ids "${INSTANCE_ID}" \
+    --query 'Reservations[0].Instances[0].PrivateIpAddress' \
+    --output text)
+}
 
-EICE_ID=$(aws cloudformation list-exports \
-  --query "Exports[?Name=='${PREFIX}-InstanceConnectEndpoint'].Value" \
-  --output text)
+cmd_login() {
+  get_instance_info
 
-echo "Connecting to node instance: ${INSTANCE_ID} (${PRIVATE_IP}) via EICE ${EICE_ID}" >&2
+  exec ssh -i "${KEY_FILE}" \
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o LogLevel=ERROR \
+    "root@${PRIVATE_IP}" \
+    "$@"
+}
 
-exec ssh -i "${KEY_FILE}" \
-  -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
-  -o StrictHostKeyChecking=no \
-  -o UserKnownHostsFile=/dev/null \
-  -o LogLevel=ERROR \
-  root@${PRIVATE_IP} \
-  "$@"
+cmd_grafana() {
+  get_instance_info
+
+  echo "Forwarding Grafana: http://localhost:30300" >&2
+
+  exec ssh -i "${KEY_FILE}" \
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o LogLevel=ERROR \
+    -L 30300:localhost:30300 \
+    -N \
+    "root@${PRIVATE_IP}"
+}
+
+cmd_prometheus() {
+  get_instance_info
+
+  echo "Forwarding Prometheus: http://localhost:30900" >&2
+
+  exec ssh -i "${KEY_FILE}" \
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o LogLevel=ERROR \
+    -L 30900:localhost:30900 \
+    -N \
+    "root@${PRIVATE_IP}"
+}
+
+cmd_dashboard() {
+  get_instance_info
+
+  echo "Forwarding Kubernetes Dashboard: https://localhost:31353" >&2
+
+  exec ssh -i "${KEY_FILE}" \
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o LogLevel=ERROR \
+    -L 31353:localhost:31353 \
+    -N \
+    "root@${PRIVATE_IP}"
+}
+
+cmd_k8s() {
+  get_instance_info
+
+  echo "Forwarding Kubernetes API: https://localhost:6443" >&2
+  echo "To use kubectl:" >&2
+  echo "  1. Copy kubeconfig: bin/ssh/node login 'cat /etc/rancher/k3s/k3s.yaml' > /tmp/k3s.yaml" >&2
+  echo "  2. Update server URL: sed -i 's|https://127.0.0.1:6443|https://localhost:6443|g' /tmp/k3s.yaml" >&2
+  echo "  3. Use: export KUBECONFIG=/tmp/k3s.yaml" >&2
+
+  exec ssh -i "${KEY_FILE}" \
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o LogLevel=ERROR \
+    -L 6443:localhost:6443 \
+    -N \
+    "root@${PRIVATE_IP}"
+}
+
+cmd_help() {
+  cat <<EOF
+Usage: bin/ssh/node <command> [args...]
+
+Commands:
+  login       SSH login to node instance (default)
+  grafana     Port forward Grafana web console (30300)
+  prometheus  Port forward Prometheus web console (30900)
+  dashboard   Port forward Kubernetes Dashboard (31353)
+  k8s         Port forward Kubernetes API (6443) for kubectl access
+  help        Show this help message
+
+Environment Variables:
+  PREFIX      Prefix for resources (default: dev-k8s)
+
+Examples:
+  bin/ssh/node login
+  bin/ssh/node grafana
+  bin/ssh/node k8s
+EOF
+}
+
+case "${1:-login}" in
+  login)
+    shift || true
+    cmd_login "$@"
+    ;;
+  grafana)
+    cmd_grafana
+    ;;
+  prometheus)
+    cmd_prometheus
+    ;;
+  dashboard)
+    cmd_dashboard
+    ;;
+  k8s)
+    cmd_k8s
+    ;;
+  help|--help|-h)
+    cmd_help
+    ;;
+  *)
+    echo "Error: Unknown command '${1}'" >&2
+    echo "" >&2
+    cmd_help
+    exit 1
+    ;;
+esac
