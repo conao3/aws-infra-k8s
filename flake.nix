@@ -87,6 +87,7 @@
             # k8s tools
             kubectl
             kind
+            k9s
           ];
         };
 

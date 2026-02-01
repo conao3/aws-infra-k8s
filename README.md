@@ -204,10 +204,21 @@ k8s/
 ├── nginx/
 │   ├── deployment.yaml
 │   └── service.yaml
-└── kubernetes-dashboard/
-    ├── kustomization.yaml
-    ├── admin-user.yaml
-    └── service-patch.yaml
+├── kubernetes-dashboard/
+│   ├── kustomization.yaml
+│   ├── admin-user.yaml
+│   └── service-patch.yaml
+├── node-exporter/
+│   ├── daemonset.yaml
+│   └── service.yaml
+├── prometheus/
+│   ├── configmap.yaml
+│   ├── rbac.yaml
+│   ├── deployment.yaml
+│   └── service.yaml
+└── grafana/
+    ├── deployment.yaml
+    └── service.yaml
 ```
 
 ### Local Development (kind)
@@ -227,9 +238,51 @@ bin/k8s/local token
 # Access points
 # nginx: http://localhost:30924
 # Dashboard: https://localhost:31353
+# Prometheus: http://localhost:30900
+# Grafana: http://localhost:30300 (admin/admin)
 
 # Delete cluster
 bin/k8s/local down
+```
+
+### Monitoring Stack
+
+The monitoring stack consists of:
+
+**Node Exporter (DaemonSet)**
+- Runs on every node in the cluster
+- Collects host machine metrics:
+  - CPU usage and load
+  - Memory and swap usage
+  - Disk I/O and space
+  - Network traffic
+  - Filesystem statistics
+- Exposes metrics on port 9100
+- Uses `hostNetwork: true` and `hostPID: true` for accurate host metrics
+- Mounts `/proc`, `/sys`, and `/` from the host
+
+**Prometheus**
+- Scrapes metrics from:
+  - Kubernetes API server
+  - Kubernetes nodes
+  - Node Exporter pods
+  - Pods with `prometheus.io/scrape: "true"` annotation
+- Stores time-series data locally
+- Query metrics at: http://localhost:30900 (local) or via CloudFront
+
+**Grafana**
+- Visualizes Prometheus metrics
+- Default credentials: admin/admin
+- Access at: http://localhost:30300 (local) or via CloudFront
+- Add Prometheus data source: http://prometheus:9090
+
+To view host metrics in Prometheus:
+1. Open http://localhost:30900
+2. Query examples:
+   - `node_cpu_seconds_total` - CPU usage
+   - `node_memory_MemAvailable_bytes` - Available memory
+   - `node_disk_io_time_seconds_total` - Disk I/O
+   - `node_network_receive_bytes_total` - Network received
 ```
 
 ### Deploy to AWS
@@ -243,6 +296,9 @@ AWS_PROFILE=conao3.k8s bin/k8s/deploy
 This deploys:
 - nginx (NodePort 30924)
 - Kubernetes Dashboard (NodePort 31353)
+- Node Exporter (DaemonSet, monitors host metrics)
+- Prometheus (NodePort 30900, collects metrics)
+- Grafana (NodePort 30300, visualizes metrics)
 
 ### Access Kubernetes Dashboard
 

@@ -20,6 +20,12 @@ nodes:
   - containerPort: 31353
     hostPort: 31353
     protocol: TCP
+  - containerPort: 30900
+    hostPort: 30900
+    protocol: TCP
+  - containerPort: 30300
+    hostPort: 30300
+    protocol: TCP
 EOF
 }
 
@@ -35,9 +41,15 @@ cmd_deploy() {
 
   kubectl apply -f "${MANIFESTS_DIR}/nginx/"
   kubectl apply -k "${MANIFESTS_DIR}/kubernetes-dashboard/"
+  kubectl apply -f "${MANIFESTS_DIR}/node-exporter/"
+  kubectl apply -f "${MANIFESTS_DIR}/prometheus/"
+  kubectl apply -f "${MANIFESTS_DIR}/grafana/"
 
   kubectl wait --for=condition=ready pod -l app=nginx --timeout=60s
   kubectl wait --for=condition=ready pod -l k8s-app=kubernetes-dashboard -n kubernetes-dashboard --timeout=60s
+  kubectl wait --for=condition=ready pod -l app=node-exporter --timeout=60s
+  kubectl wait --for=condition=ready pod -l app=prometheus --timeout=60s
+  kubectl wait --for=condition=ready pod -l app=grafana --timeout=60s
 
   kubectl get pods -A
 }
