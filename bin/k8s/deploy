@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euxo pipefail -o posix
+
+PREFIX="${PREFIX:-dev-k8s}"
+ASG_NAME="${PREFIX}-node"
+
+INSTANCE_ID=$(aws autoscaling describe-auto-scaling-groups \
+  --auto-scaling-group-names "${ASG_NAME}" \
+  --query 'AutoScalingGroups[0].Instances[0].InstanceId' \
+  --output text)
+
+if [ -z "${INSTANCE_ID}" ] || [ "${INSTANCE_ID}" = "None" ]; then
+  echo "Error: No running instance found in AutoScaling Group ${ASG_NAME}" >&2
+  exit 1
+fi
+
+PRIVATE_IP=$(aws ec2 describe-instances \
+  --instance-ids "${INSTANCE_ID}" \
+  --query 'Reservations[0].Instances[0].PrivateIpAddress' \
+  --output text)
+
+EICE_ID=$(aws cloudformation list-exports \
+  --query "Exports[?Name=='${PREFIX}-InstanceConnectEndpoint'].Value" \
+  --output text)
+
+KEY_FILE="${HOME}/.ssh/${PREFIX}-keypair.pem"
+
+echo "Deploying Kubernetes manifests to instance: ${INSTANCE_ID} (${PRIVATE_IP})" >&2
+
+MANIFESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/k8s"
+
+ssh -i "${KEY_FILE}" \
+  -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/dev/null \
+  -o LogLevel=ERROR \
+  "root@${PRIVATE_IP}" \
+  "mkdir -p /tmp/k8s-manifests"
+
+scp -i "${KEY_FILE}" \
+  -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/dev/null \
+  -o LogLevel=ERROR \
+  -r "${MANIFESTS_DIR}"/* \
+  "root@${PRIVATE_IP}:/tmp/k8s-manifests/"
+
+ssh -i "${KEY_FILE}" \
+  -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/dev/null \
+  -o LogLevel=ERROR \
+  "root@${PRIVATE_IP}" \
+  'kubectl apply -f /tmp/k8s-manifests/nginx/ && kubectl apply -k /tmp/k8s-manifests/kubernetes-dashboard/'

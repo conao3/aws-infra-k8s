@@ -195,6 +195,61 @@ aws ec2 describe-images --owners 427812963091 --filter 'Name=name,Values=nixos/2
 
 Default AMI: `ami-00ce0dbbbd1a71d5b` (nixos/25.05.813814.ac62194c3917-aarch64-linux)
 
+## Kubernetes Applications
+
+### Directory Structure
+
+```
+k8s/
+├── nginx/
+│   ├── deployment.yaml
+│   └── service.yaml
+└── kubernetes-dashboard/
+    ├── kustomization.yaml
+    ├── admin-user.yaml
+    └── service-patch.yaml
+```
+
+### Deploy Applications
+
+Deploy all Kubernetes applications:
+
+```bash
+AWS_PROFILE=conao3.k8s bin/k8s/deploy
+```
+
+This deploys:
+- nginx (NodePort 30924)
+- Kubernetes Dashboard (NodePort 31353)
+
+### Access Kubernetes Dashboard
+
+1. Get the admin token:
+```bash
+AWS_PROFILE=conao3.k8s bin/k8s/get-dashboard-token
+```
+
+2. Create SSH tunnel:
+```bash
+AWS_PROFILE=conao3.k8s ssh -i ~/.ssh/dev-k8s-keypair.pem \
+  -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id $(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names dev-k8s-node --query 'AutoScalingGroups[0].Instances[0].InstanceId' --output text) --remote-port 22" \
+  -L 8443:localhost:31353 \
+  -N root@$(aws ec2 describe-instances --instance-ids $(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names dev-k8s-node --query 'AutoScalingGroups[0].Instances[0].InstanceId' --output text) --query 'Reservations[0].Instances[0].PrivateIpAddress' --output text)
+```
+
+3. Open browser:
+```bash
+open https://localhost:8443
+```
+
+4. Login with the token from step 1
+
+### Access via CloudFront
+
+Applications are accessible via:
+- nginx: https://xxx.cloudfront.net/
+- Kubernetes Dashboard: Configure ALB listener rules to route `/dashboard` path
+
 ## SSH Access
 
 Connect to instances via EC2 Instance Connect Endpoint (EICE):
