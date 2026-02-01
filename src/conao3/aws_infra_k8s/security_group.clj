@@ -25,6 +25,7 @@
 
       :Resources
       {:SecurityGroupApp (security-group "App")
+       :SecurityGroupAlb (security-group "Alb")
        :SecurityGroupSshTunnel (security-group "SshTunnel")
        :SecurityGroupEice (security-group "Eice")
        :SecurityGroupRds (security-group "Rds")
@@ -36,6 +37,22 @@
          :FromPort 22
          :ToPort 22
          :SourceSecurityGroupId {:Ref :SecurityGroupEice}}}
+       :SecurityGroupIngressAppFromAlb
+       {:Type "AWS::EC2::SecurityGroupIngress"
+        :Properties
+        {:GroupId {:Ref :SecurityGroupApp}
+         :IpProtocol "tcp"
+         :FromPort 30000
+         :ToPort 32767
+         :SourceSecurityGroupId {:Ref :SecurityGroupAlb}}}
+       :SecurityGroupIngressAlbFromInternet
+       {:Type "AWS::EC2::SecurityGroupIngress"
+        :Properties
+        {:GroupId {:Ref :SecurityGroupAlb}
+         :IpProtocol "tcp"
+         :FromPort 80
+         :ToPort 80
+         :CidrIp "0.0.0.0/0"}}
        :SecurityGroupIngressSshTunnelFromIpv6
        {:Type "AWS::EC2::SecurityGroupIngress"
         :Properties
@@ -64,6 +81,7 @@
       :Outputs
       (a.cfn/list-outputs
        {:SecurityGroupApp {:Ref :SecurityGroupApp}
+        :SecurityGroupAlb {:Ref :SecurityGroupAlb}
         :SecurityGroupSshTunnel {:Ref :SecurityGroupSshTunnel}
         :SecurityGroupEice {:Ref :SecurityGroupEice}
         :SecurityGroupRds {:Ref :SecurityGroupRds}})})))

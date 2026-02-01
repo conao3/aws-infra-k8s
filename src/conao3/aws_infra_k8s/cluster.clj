@@ -50,17 +50,18 @@
      [{:ResourceType "instance"
        :Tags [{:Key "Name" :Value (a.cfn/prefix name)}]}]}}})
 
-(defn resource-autoscaling-group [name subnet-id launch-template-ref]
+(defn resource-autoscaling-group [name subnet-id launch-template-ref target-group-arn]
   {:Type "AWS::AutoScaling::AutoScalingGroup"
    :Properties
-   {:AutoScalingGroupName (a.cfn/prefix name)
-    :MinSize 1
-    :MaxSize 1
-    :DesiredCapacity 1
-    :VPCZoneIdentifier [{:Ref subnet-id}]
-    :LaunchTemplate
-    {:LaunchTemplateId {:Ref launch-template-ref}
-     :Version {"Fn::GetAtt" [launch-template-ref :LatestVersionNumber]}}}})
+   (cond-> {:AutoScalingGroupName (a.cfn/prefix name)
+            :MinSize 1
+            :MaxSize 1
+            :DesiredCapacity 1
+            :VPCZoneIdentifier [{:Ref subnet-id}]
+            :LaunchTemplate
+            {:LaunchTemplateId {:Ref launch-template-ref}
+             :Version {"Fn::GetAtt" [launch-template-ref :LatestVersionNumber]}}}
+     target-group-arn (assoc :TargetGroupARNs [target-group-arn]))})
 
 (defn cfn [param]
   (a.cfn/template
@@ -77,7 +78,7 @@
     {:IamRole (resource-iam-role)
      :InstanceProfile (resource-instance-profile)
      :LaunchTemplateNode (resource-launch-template "node" "t4g.medium" {:Ref :AmiId})
-     :AutoScalingGroupNode (resource-autoscaling-group "node" :SubnetPubA :LaunchTemplateNode)}
+     :AutoScalingGroupNode (resource-autoscaling-group "node" :SubnetPubA :LaunchTemplateNode nil)}
 
     :Outputs
     (a.cfn/list-outputs

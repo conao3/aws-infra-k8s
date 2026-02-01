@@ -5,6 +5,7 @@
    [conao3.aws-infra-k8s.routing :as c.routing]
    [conao3.aws-infra-k8s.security-group :as c.security-group]
    [conao3.aws-infra-k8s.cluster :as c.cluster]
+   [conao3.aws-infra-k8s.alb :as c.alb]
    [conao3.aws-infra-k8s.ssh-tunnel :as c.ssh-tunnel]
    [conao3.aws-infra-k8s.ami-builder :as c.ami-builder]
    [conao3.aws-infra-k8s.eice :as c.eice]
@@ -46,6 +47,7 @@
 
                    ;; depends on network
                    "cluster" (c.cluster/deploy param)
+                   "alb" (c.alb/deploy param)
                    "ssh-tunnel" (c.ssh-tunnel/deploy param)
                    "ami-builder" (c.ami-builder/deploy param)
                    "eice" (c.eice/deploy param)
@@ -59,6 +61,7 @@
                            (run ["deploy" "vm-import"] param)
                            (run ["deploy" "github-oidc"] param)
                            (run ["deploy" "cluster"] param)
+                           (run ["deploy" "alb"] param)
                            ;; (run ["deploy" "ssh-tunnel"] param)
                            ;; (run ["deploy" "ami-builder"] param)
                            (run ["deploy" "eice"] param)
