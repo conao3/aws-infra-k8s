@@ -17,9 +17,15 @@ EOF'
 
   curl -L https://nixos.org/nix/install | sh -s -- --daemon --yes
 
-  echo "Nix installation complete. Starting nix-daemon..."
-  sudo systemctl start nix-daemon.socket
-  sudo systemctl start nix-daemon.service
+  echo "Nix installation complete. Enabling experimental features..."
+  sudo mkdir -p /etc/nix
+  sudo sh -c 'cat >> /etc/nix/nix.conf << EOF
+experimental-features = nix-command flakes
+EOF'
+
+  echo "Starting nix-daemon..."
+  sudo systemctl restart nix-daemon.socket
+  sudo systemctl restart nix-daemon.service
 
   if [ -e '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' ]; then
     source '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
