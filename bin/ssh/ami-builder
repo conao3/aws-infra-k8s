@@ -2,6 +2,8 @@
 set -euxo pipefail -o posix
 
 STACK_NAME="${STACK_NAME:-dev-k8s-ami-builder}"
+PREFIX="${PREFIX:-dev-k8s}"
+KEY_FILE="${HOME}/.ssh/${PREFIX}-keypair.pem"
 
 INSTANCE_ID=$(aws cloudformation describe-stacks \
   --stack-name "${STACK_NAME}" \
@@ -13,9 +15,17 @@ if [ -z "${INSTANCE_ID}" ]; then
   exit 1
 fi
 
-echo "Connecting to ami-builder instance: ${INSTANCE_ID}" >&2
+PRIVATE_IP=$(aws ec2 describe-instances \
+  --instance-ids "${INSTANCE_ID}" \
+  --query 'Reservations[0].Instances[0].PrivateIpAddress' \
+  --output text)
 
-GPG_TTY=$(tty) SSH_ASKPASS="" aws ec2-instance-connect ssh \
-  --instance-id "${INSTANCE_ID}" \
-  --connection-type eice \
+echo "Connecting to ami-builder instance: ${INSTANCE_ID} (${PRIVATE_IP})" >&2
+
+exec ssh -i "${KEY_FILE}" \
+  -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+  -o StrictHostKeyChecking=no \
+  -o UserKnownHostsFile=/dev/null \
+  -o LogLevel=ERROR \
+  root@${PRIVATE_IP} \
   "$@"
