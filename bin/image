@@ -58,7 +58,7 @@ cmd_upload() {
     local status
     status=$(aws ec2 describe-import-snapshot-tasks \
       --import-task-ids "${import_task_id}" \
-        --query 'ImportSnapshotTasks[0].SnapshotTaskDetail.Status' \
+      --query 'ImportSnapshotTasks[0].SnapshotTaskDetail.Status' \
       --output text)
     echo "Current status: ${status}"
 
