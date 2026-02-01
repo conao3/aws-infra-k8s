@@ -20,7 +20,8 @@
 (defn resources-pri-route-table [suffix]
   (let [route-table-key (keyword (format "RouteTablePri%s" suffix))
         association-key (keyword (format "SubnetRouteTableAssociationPri%s" suffix))
-        route-key (keyword (format "RoutePri%sIpv6EgressOnly" suffix))
+        route-ipv4-key (keyword (format "RoutePri%sIpv4NatGateway" suffix))
+        route-ipv6-key (keyword (format "RoutePri%sIpv6EgressOnly" suffix))
         subnet-key (keyword (format "SubnetPri%s" suffix))]
     {route-table-key
      {:Type "AWS::EC2::RouteTable"
@@ -35,7 +36,14 @@
       {:RouteTableId {:Ref route-table-key}
        :SubnetId {:Ref subnet-key}}}
 
-     route-key
+     route-ipv4-key
+     {:Type "AWS::EC2::Route"
+      :Properties
+      {:DestinationCidrBlock "0.0.0.0/0"
+       :RouteTableId {:Ref route-table-key}
+       :NatGatewayId {:Ref :NatGateway}}}
+
+     route-ipv6-key
      {:Type "AWS::EC2::Route"
       :Properties
       {:DestinationIpv6CidrBlock "::/0"
@@ -73,6 +81,21 @@
         {:TagName (a.cfn/prefix "eigw")
          :VpcId {:Ref :Vpc}})}
 
+      :NatGatewayEip
+      {:Type "AWS::EC2::EIP"
+       :DependsOn :AttachGateway
+       :Properties
+       {:Domain "vpc"
+        :Tags [{:Key "Name" :Value (a.cfn/prefix "nat-gw-eip")}]}}
+
+      :NatGateway
+      {:Type "AWS::EC2::NatGateway"
+       :Properties
+       (a.cfn/tag-name
+        {:TagName (a.cfn/prefix "nat-gw")
+         :AllocationId {"Fn::GetAtt" [:NatGatewayEip :AllocationId]}
+         :SubnetId {:Ref :SubnetPubA}})}
+
       :RouteTablePub
       {:Type "AWS::EC2::RouteTable"
        :Properties
@@ -107,6 +130,7 @@
     (a.cfn/list-outputs
      {:InternetGateway {:Ref :InternetGateway}
       :EgressOnlyInternetGateway {:Ref :EgressOnlyInternetGateway}
+      :NatGateway {:Ref :NatGateway}
       :RouteTablePub {:Ref :RouteTablePub}
       :RouteTablePriA {:Ref :RouteTablePriA}
       :RouteTablePriC {:Ref :RouteTablePriC}
