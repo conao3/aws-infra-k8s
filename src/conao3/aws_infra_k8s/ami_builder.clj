@@ -18,7 +18,33 @@
        :Principal {:Service "ec2.amazonaws.com"}
        :Action "sts:AssumeRole"}]}
     :ManagedPolicyArns
-    ["arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"]}})
+    ["arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"]
+    :Policies
+    [{:PolicyName "AmiBuilderPolicy"
+      :PolicyDocument
+      {:Version "2012-10-17"
+       :Statement
+       [{:Effect "Allow"
+         :Action
+         ["ec2:CreateImage"
+          "ec2:CreateSnapshot"
+          "ec2:CreateTags"
+          "ec2:DescribeImages"
+          "ec2:DescribeSnapshots"
+          "ec2:DescribeInstances"
+          "ec2:RegisterImage"
+          "ec2:DeregisterImage"
+          "ec2:DeleteSnapshot"
+          "ec2:CopySnapshot"
+          "ec2:ExportImage"]
+         :Resource "*"}
+        {:Effect "Allow"
+         :Action
+         ["s3:PutObject"
+          "s3:GetObject"
+          "s3:ListBucket"
+          "s3:DeleteObject"]
+         :Resource "*"}]}}]}})
 
 (defn resource-instance-profile []
   {:Type "AWS::IAM::InstanceProfile"

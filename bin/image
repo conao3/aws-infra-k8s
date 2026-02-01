@@ -23,7 +23,7 @@ get_vhd_file() {
 }
 
 cmd_build() {
-  echo "Building Amazon AMI image (x86_64)..."
+  echo "Building Amazon AMI image (aarch64)..."
   nix build .#imageAmazon
   local vhd_file
   vhd_file=$(get_vhd_file)
@@ -88,7 +88,7 @@ cmd_upload() {
   ami_id=$(aws ec2 register-image \
     --name "nixos-custom-${timestamp}" \
     --description "NixOS Custom Image ${timestamp}" \
-    --architecture x86_64 \
+    --architecture arm64 \
     --root-device-name '/dev/xvda' \
     --block-device-mappings "DeviceName=/dev/xvda,Ebs={SnapshotId=${snapshot_id},VolumeSize=20,VolumeType=gp3}" \
     --virtualization-type hvm \
@@ -159,7 +159,7 @@ cmd_help() {
 Usage: bin/image <command>
 
 Commands:
-  build     Build the Amazon AMI image (x86_64)
+  build     Build the Amazon AMI image (aarch64)
   upload    Upload image to S3, import snapshot, and register AMI
   deploy    Deploy cluster with custom AMI and refresh instances
   help      Show this help message

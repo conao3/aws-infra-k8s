@@ -12,7 +12,7 @@
     ...
   }:
     flake-parts.lib.mkFlake {inherit inputs;} {
-      systems = ["x86_64-linux" "aarch64-darwin"];
+      systems = ["x86_64-linux" "aarch64-linux" "aarch64-darwin"];
       imports = [
         inputs.treefmt-nix.flakeModule
       ];
@@ -31,7 +31,7 @@
         };
 
         nixosConfigurations.ec2 = nixpkgs.lib.nixosSystem {
-          system = "x86_64-linux";
+          system = "aarch64-linux";
           modules = [
             "${inputs.nixpkgs}/nixos/modules/virtualisation/amazon-image.nix"
             {

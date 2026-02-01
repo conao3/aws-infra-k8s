@@ -148,10 +148,10 @@ To exit, press `Ctrl-A` then `X`.
 Ref: https://nixos.org/download/#nixos-amazon
 
 ```bash
-aws ec2 describe-images --owners 427812963091 --filter 'Name=name,Values=nixos/25.05*' 'Name=architecture,Values=x86_64' --query 'sort_by(Images, &CreationDate)[-1].[ImageId,Name]' --output text --profile conao3.k8s
+aws ec2 describe-images --owners 427812963091 --filter 'Name=name,Values=nixos/25.05*' 'Name=architecture,Values=arm64' --query 'sort_by(Images, &CreationDate)[-1].[ImageId,Name]' --output text --profile conao3.k8s
 ```
 
-Default AMI: `ami-0e08d1626421f5ec4` (nixos/25.05.813814.ac62194c3917-x86_64-linux)
+Default AMI: `ami-00ce0dbbbd1a71d5b` (nixos/25.05.813814.ac62194c3917-aarch64-linux)
 
 ## License
 
