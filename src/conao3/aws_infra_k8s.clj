@@ -10,7 +10,8 @@
    [conao3.aws-infra-k8s.eice :as c.eice]
    [conao3.aws-infra-k8s.cognito :as c.cognito]
    [conao3.aws-infra-k8s.s3 :as c.s3]
-   [conao3.aws-infra-k8s.vm-import :as c.vm-import])
+   [conao3.aws-infra-k8s.vm-import :as c.vm-import]
+   [conao3.aws-infra-k8s.github-oidc :as c.github-oidc])
   (:gen-class))
 
 (defn parse-args [args]
@@ -30,29 +31,35 @@
                      parsed-args (parse-args (rest rest-args))
                      param (merge param parsed-args)]
                  (case target
-                   "network" (c.network/deploy (merge
-                                                param
-                                                {:vpc "10.0.0.0/16"}))
+                   ;; network
+                   "network" (c.network/deploy
+                              (merge param {:vpc "10.0.0.0/16"}))
                    "routing" (c.routing/deploy param)
                    "security-group" (c.security-group/deploy param)
+
+                   ;; other independent stacks
+                   "cognito" (c.cognito/deploy param)
+                   "s3" (c.s3/deploy param)
+                   "vm-import" (c.vm-import/deploy param)
+                   "github-oidc" (c.github-oidc/deploy param)
+
+                   ;; depends on network
                    "cluster" (c.cluster/deploy param)
                    "ssh-tunnel" (c.ssh-tunnel/deploy param)
                    "ami-builder" (c.ami-builder/deploy param)
                    "eice" (c.eice/deploy param)
                    ;; "rds" (c.rds/deploy param)
-                   "cognito" (c.cognito/deploy param)
-                   "s3" (c.s3/deploy param)
-                   "vm-import" (c.vm-import/deploy param)
                    "all" (do
-                           (run ["deploy" "s3"] param)
-                           (run ["deploy" "vm-import"] param)
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
                            (run ["deploy" "security-group"] param)
-                           ;; (run ["deploy" "rds"] param)
                            (run ["deploy" "cognito"] param)
+                           (run ["deploy" "s3"] param)
+                           (run ["deploy" "vm-import"] param)
+                           (run ["deploy" "github-oidc"] param)
                            (run ["deploy" "cluster"] param)
                            (run ["deploy" "ssh-tunnel"] param)
+                           (run ["deploy" "ami-builder"] param)
                            (run ["deploy" "eice"] param)))))))
 
 (defn -main [& args]
