@@ -83,7 +83,8 @@ in {
   };
   users.groups.ec2-instance-connect = {};
 
-  services.openssh.authorizedKeysCommand = lib.mkForce "${ec2-instance-connect-scripts}/bin/eic_run_authorized_keys %u";
+  services.openssh.settings.AuthorizedKeysFile = lib.mkForce ".ssh/authorized_keys";
+  services.openssh.authorizedKeysCommand = lib.mkForce "${ec2-instance-connect-scripts}/bin/eic_run_authorized_keys %u %f";
   services.openssh.authorizedKeysCommandUser = "ec2-instance-connect";
 
   systemd.services.fetch-ec2-ssh-key = {

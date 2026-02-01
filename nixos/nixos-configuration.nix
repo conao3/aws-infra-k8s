@@ -4,6 +4,7 @@
     settings = {
       PermitRootLogin = "prohibit-password";
       PasswordAuthentication = false;
+      PubkeyAuthentication = true;
     };
   };
 
