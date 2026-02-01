@@ -5,6 +5,7 @@
       PermitRootLogin = "prohibit-password";
       PasswordAuthentication = false;
       PubkeyAuthentication = true;
+      LogLevel = "DEBUG3";
     };
   };
 
