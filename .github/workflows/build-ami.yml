@@ -38,6 +38,8 @@ jobs:
           aws-region: ap-northeast-1
 
       - run: |
+          set -euxo pipefail -o posix
+
           echo "Building NixOS AMI image for aarch64..."
           nix build .#imageAmazon
 
