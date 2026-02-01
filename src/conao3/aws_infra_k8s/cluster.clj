@@ -62,14 +62,16 @@
     {:LaunchTemplateId {:Ref launch-template-ref}
      :Version {"Fn::GetAtt" [launch-template-ref :LatestVersionNumber]}}}})
 
-(defn cfn [_param]
+(defn cfn [param]
   (a.cfn/template
    {:Parameters
-    (a.cfn/list-string-parameters
-     [:Env :Prefix
-      :SubnetPubA
-      :SecurityGroupApp
-      :AmiId])
+    (-> [:Env :Prefix
+         :SubnetPubA
+         :SecurityGroupApp]
+        a.cfn/list-string-parameters
+        (assoc :AmiId
+               {:Type "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
+                :Default (format "/%s/custom-ami-id" (-> param :prefix))}))
 
     :Resources
     {:IamRole (resource-iam-role)
@@ -121,8 +123,7 @@
                      (->> {:Env (-> param :env)
                            :Prefix (-> param :prefix)
                            :SubnetPubA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPubA))))
-                           :SecurityGroupApp (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupApp))))
-                           :AmiId (or (-> param :ami-id) "ami-00ce0dbbbd1a71d5b")}
+                           :SecurityGroupApp (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupApp))))}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))
                           (str/join " "))))))

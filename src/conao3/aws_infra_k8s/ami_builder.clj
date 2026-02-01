@@ -44,6 +44,13 @@
           "s3:GetObject"
           "s3:ListBucket"
           "s3:DeleteObject"]
+         :Resource "*"}
+        {:Effect "Allow"
+         :Action
+         ["ssm:PutParameter"
+          "ssm:GetParameter"
+          "ssm:GetParameters"
+          "ssm:DescribeParameters"]
          :Resource "*"}]}}]}})
 
 (defn resource-instance-profile []
