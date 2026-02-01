@@ -30,7 +30,18 @@
           ];
         };
 
-        nixosConfigurations.ec2 = nixpkgs.lib.nixosSystem {
+        nixosConfigurations.ec2-x86_64 = nixpkgs.lib.nixosSystem {
+          system = "x86_64-linux";
+          modules = [
+            "${inputs.nixpkgs}/nixos/modules/virtualisation/amazon-image.nix"
+            {
+              nix.registry.nixpkgs.flake = inputs.nixpkgs;
+            }
+            "${self}/nixos/hosts/ec2-image.nix"
+          ];
+        };
+
+        nixosConfigurations.ec2-aarch64 = nixpkgs.lib.nixosSystem {
           system = "aarch64-linux";
           modules = [
             "${inputs.nixpkgs}/nixos/modules/virtualisation/amazon-image.nix"
@@ -40,6 +51,11 @@
             "${self}/nixos/hosts/ec2-image.nix"
           ];
         };
+
+        nixosConfigurations.ec2 = self.nixosConfigurations.ec2-aarch64;
+
+        packages.x86_64-linux.imageAmazon = self.nixosConfigurations.ec2-x86_64.config.system.build.images.amazon;
+        packages.aarch64-linux.imageAmazon = self.nixosConfigurations.ec2-aarch64.config.system.build.images.amazon;
       };
 
       perSystem = {
@@ -59,7 +75,6 @@
         };
       in {
         packages = {
-          imageAmazon = self.nixosConfigurations.ec2.config.system.build.images.amazon;
           vm = self.nixosConfigurations.vm.config.system.build.vm;
         };
 
