@@ -210,9 +210,31 @@ k8s/
     └── service-patch.yaml
 ```
 
-### Deploy Applications
+### Local Development (kind)
 
-Deploy all Kubernetes applications:
+Test Kubernetes manifests locally using kind:
+
+```bash
+# Create local cluster
+bin/k8s/local up
+
+# Deploy applications
+bin/k8s/local deploy
+
+# Get Dashboard token
+bin/k8s/local token
+
+# Access points
+# nginx: http://localhost:30924
+# Dashboard: https://localhost:31353
+
+# Delete cluster
+bin/k8s/local down
+```
+
+### Deploy to AWS
+
+Deploy all Kubernetes applications to AWS:
 
 ```bash
 AWS_PROFILE=conao3.k8s bin/k8s/deploy

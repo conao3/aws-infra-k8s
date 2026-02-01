@@ -83,6 +83,10 @@
             awscli2
             aws-sam-cli
             qemu
+
+            # k8s tools
+            kubectl
+            kind
           ];
         };
 

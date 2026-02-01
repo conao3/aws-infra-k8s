@@ -20,9 +20,6 @@ PRIVATE_IP=$(aws ec2 describe-instances \
   --output text)
 
 KEY_FILE="${HOME}/.ssh/${PREFIX}-keypair.pem"
-
-echo "Deploying Kubernetes manifests to instance: ${INSTANCE_ID} (${PRIVATE_IP})" >&2
-
 MANIFESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/k8s"
 
 ssh -i "${KEY_FILE}" \

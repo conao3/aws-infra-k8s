@@ -15,8 +15,6 @@ PRIVATE_IP=$(aws ec2 describe-instances \
   --query 'Reservations[0].Instances[0].PrivateIpAddress' \
   --output text)
 
-echo "Getting Kubernetes Dashboard token from instance: ${INSTANCE_ID} (${PRIVATE_IP})" >&2
-
 exec ssh -i "${KEY_FILE}" \
   -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
   -o StrictHostKeyChecking=no \

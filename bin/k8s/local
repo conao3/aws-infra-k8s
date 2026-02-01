@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+set -euxo pipefail -o posix
+
+CLUSTER_NAME="${CLUSTER_NAME:-dev-k8s-local}"
+
+cmd_up() {
+  if kind get clusters | grep -q "^${CLUSTER_NAME}$"; then
+    return
+  fi
+
+  kind create cluster --name "${CLUSTER_NAME}" --config - <<EOF
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+  extraPortMappings:
+  - containerPort: 30924
+    hostPort: 30924
+    protocol: TCP
+  - containerPort: 31353
+    hostPort: 31353
+    protocol: TCP
+EOF
+}
+
+cmd_deploy() {
+  if ! kind get clusters | grep -q "^${CLUSTER_NAME}$"; then
+    echo "Error: Cluster ${CLUSTER_NAME} does not exist. Run 'bin/k8s/local up' first." >&2
+    exit 1
+  fi
+
+  kubectl config use-context "kind-${CLUSTER_NAME}"
+
+  MANIFESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/k8s"
+
+  kubectl apply -f "${MANIFESTS_DIR}/nginx/"
+  kubectl apply -k "${MANIFESTS_DIR}/kubernetes-dashboard/"
+
+  kubectl wait --for=condition=ready pod -l app=nginx --timeout=60s
+  kubectl wait --for=condition=ready pod -l k8s-app=kubernetes-dashboard -n kubernetes-dashboard --timeout=60s
+
+  kubectl get pods -A
+}
+
+cmd_token() {
+  if ! kind get clusters | grep -q "^${CLUSTER_NAME}$"; then
+    echo "Error: Cluster ${CLUSTER_NAME} does not exist. Run 'bin/k8s/local up' first." >&2
+    exit 1
+  fi
+
+  kubectl config use-context "kind-${CLUSTER_NAME}"
+
+  kubectl create token dashboard-admin -n kubernetes-dashboard --duration=87600h
+}
+
+cmd_down() {
+  if ! kind get clusters | grep -q "^${CLUSTER_NAME}$"; then
+    return
+  fi
+
+  kind delete cluster --name "${CLUSTER_NAME}"
+}
+
+cmd_help() {
+  cat <<EOF
+Usage: bin/k8s/local <command>
+
+Commands:
+  up       Create local kind cluster
+  deploy   Deploy applications to local cluster
+  token    Get Kubernetes Dashboard token
+  down     Delete local cluster
+  help     Show this help message
+
+Environment Variables:
+  CLUSTER_NAME   Name of the kind cluster (default: dev-k8s-local)
+
+Examples:
+  bin/k8s/local up
+  bin/k8s/local deploy
+  bin/k8s/local token
+  bin/k8s/local down
+EOF
+}
+
+case "${1:-help}" in
+  up)
+    cmd_up
+    ;;
+  deploy)
+    cmd_deploy
+    ;;
+  token)
+    cmd_token
+    ;;
+  down)
+    cmd_down
+    ;;
+  help|--help|-h)
+    cmd_help
+    ;;
+  *)
+    echo "Error: Unknown command '${1}'"
+    echo ""
+    cmd_help
+    exit 1
+    ;;
+esac

@@ -21,11 +21,7 @@ get_vhd_file() {
 }
 
 cmd_build() {
-  echo "Building Amazon AMI image (aarch64)..."
   nix build .#imageAmazon
-  local vhd_file
-  vhd_file=$(get_vhd_file)
-  echo "Image built successfully: ${vhd_file}"
 }
 
 cmd_upload() {
@@ -34,38 +30,31 @@ cmd_upload() {
 
   local s3_bucket
   s3_bucket=$(get_s3_bucket)
-  echo "Using S3 bucket: ${s3_bucket}"
 
   local timestamp
   timestamp=$(date +%Y%m%d-%H%M%S)
   local s3_key="nixos-custom-${timestamp}.vhd"
 
-  echo "Uploading image to S3 as ${s3_key}..."
   aws s3 cp "${vhd_file}" "s3://${s3_bucket}/${s3_key}"
-  echo "Image uploaded successfully"
 
-  echo "Starting snapshot import..."
   local import_task_id
   import_task_id=$(aws ec2 import-snapshot \
     --description "NixOS Custom EC2 Image ${timestamp}" \
     --disk-container "Format=VHD,UserBucket={S3Bucket=${s3_bucket},S3Key=${s3_key}}" \
     --query 'ImportTaskId' \
     --output text)
-  echo "Import task ID: ${import_task_id}"
 
-  echo "Waiting for snapshot import to complete..."
   while true; do
     local status
     status=$(aws ec2 describe-import-snapshot-tasks \
       --import-task-ids "${import_task_id}" \
       --query 'ImportSnapshotTasks[0].SnapshotTaskDetail.Status' \
       --output text)
-    echo "Current status: ${status}"
 
     if [ "${status}" = "completed" ]; then
       break
     elif [ "${status}" = "deleted" ] || [ "${status}" = "deleting" ]; then
-      echo "Import failed with status: ${status}"
+      echo "Error: Import failed with status: ${status}" >&2
       exit 1
     fi
     sleep 30
@@ -76,9 +65,7 @@ cmd_upload() {
     --import-task-ids "${import_task_id}" \
     --query 'ImportSnapshotTasks[0].SnapshotTaskDetail.SnapshotId' \
     --output text)
-  echo "Snapshot created: ${snapshot_id}"
 
-  echo "Registering AMI..."
   local ami_id
   ami_id=$(aws ec2 register-image \
     --name "nixos-custom-${timestamp}" \
@@ -90,13 +77,10 @@ cmd_upload() {
     --ena-support \
     --query 'ImageId' \
     --output text)
-  echo "AMI created: ${ami_id}"
 
   mkdir -p target
   echo "${ami_id}" > "${AMI_ID_FILE}"
-  echo "AMI ID saved to ${AMI_ID_FILE}"
 
-  echo "Saving AMI ID to SSM Parameter Store..."
   local parameter_name="/${PREFIX}/custom-ami-id"
   aws ssm put-parameter \
     --name "${parameter_name}" \
@@ -104,28 +88,22 @@ cmd_upload() {
     --type String \
     --overwrite \
     --description "Custom NixOS AMI created at ${timestamp}"
-  echo "AMI ID saved to SSM Parameter Store: ${parameter_name}"
 }
 
 cmd_deploy() {
   local parameter_name="/${PREFIX}/custom-ami-id"
 
-  echo "Checking if custom AMI is registered in SSM Parameter Store..."
   if ! aws ssm get-parameter --name "${parameter_name}" &>/dev/null; then
-    echo "Error: AMI ID not found in SSM Parameter Store (${parameter_name}). Run 'bin/image upload' first."
+    echo "Error: AMI ID not found in SSM Parameter Store (${parameter_name}). Run 'bin/image upload' first." >&2
     exit 1
   fi
 
-  echo "Deploying cluster with custom AMI from SSM Parameter Store (${parameter_name})..."
   clojure -M -m conao3.aws-infra-k8s deploy cluster
 
-  echo ""
-  echo "Starting instance refresh to update running instances..."
   local asg_name="${PREFIX}-node"
   aws autoscaling start-instance-refresh \
     --auto-scaling-group-name "${asg_name}"
 
-  echo "Instance refresh started. Waiting for completion..."
   while true; do
     local status
     status=$(aws autoscaling describe-instance-refreshes \
@@ -133,27 +111,15 @@ cmd_deploy() {
       --query 'InstanceRefreshes[0].Status' \
       --output text)
 
-    local percentage
-    percentage=$(aws autoscaling describe-instance-refreshes \
-      --auto-scaling-group-name "${asg_name}" \
-      --query 'InstanceRefreshes[0].PercentageComplete' \
-      --output text)
-
-    echo "Status: ${status}, Progress: ${percentage}%"
-
     if [ "${status}" = "Successful" ]; then
-      echo "Instance refresh completed successfully!"
       break
     elif [ "${status}" = "Failed" ] || [ "${status}" = "Cancelled" ]; then
-      echo "Instance refresh failed with status: ${status}"
+      echo "Error: Instance refresh failed with status: ${status}" >&2
       exit 1
     fi
 
     sleep 10
   done
-
-  echo ""
-  echo "Deployment complete! New instance is now running with custom AMI."
 }
 
 cmd_help() {
