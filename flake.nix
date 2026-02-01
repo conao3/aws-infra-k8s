@@ -52,8 +52,6 @@
           ];
         };
 
-        nixosConfigurations.ec2 = self.nixosConfigurations.ec2-aarch64;
-
         packages.x86_64-linux.imageAmazon = self.nixosConfigurations.ec2-x86_64.config.system.build.images.amazon;
         packages.aarch64-linux.imageAmazon = self.nixosConfigurations.ec2-aarch64.config.system.build.images.amazon;
       };
