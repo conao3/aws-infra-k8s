@@ -283,6 +283,121 @@ To view host metrics in Prometheus:
    - `node_memory_MemAvailable_bytes` - Available memory
    - `node_disk_io_time_seconds_total` - Disk I/O
    - `node_network_receive_bytes_total` - Network received
+
+### Using Grafana
+
+#### 1. Access Grafana
+- Local: http://localhost:30300
+- Login: admin/admin (change password on first login)
+
+#### 2. Add Prometheus Data Source
+1. Click "Connections" → "Data sources" in the left menu
+2. Click "Add data source"
+3. Select "Prometheus"
+4. Set Prometheus server URL: `http://prometheus:9090`
+5. Click "Save & test"
+
+#### 3. Create Dashboard for Host Metrics
+
+**Option A: Import Pre-built Dashboard**
+
+1. Click "Dashboards" → "Import" in the left menu
+2. Enter dashboard ID: `1860` (Node Exporter Full)
+3. Click "Load"
+4. Select Prometheus data source
+5. Click "Import"
+
+This dashboard includes:
+- CPU usage (per core and total)
+- Memory usage and available
+- Disk I/O and space
+- Network traffic
+- System load
+- Filesystem statistics
+
+**Option B: Create Custom Dashboard**
+
+1. Click "Dashboards" → "New" → "New Dashboard"
+2. Click "Add visualization"
+3. Select Prometheus data source
+4. Add queries:
+
+**CPU Usage:**
+```promql
+100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+```
+
+**Memory Usage:**
+```promql
+100 - ((node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)
+```
+
+**Disk Usage:**
+```promql
+100 - ((node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100)
+```
+
+**Network Traffic (Received):**
+```promql
+rate(node_network_receive_bytes_total{device!~"lo|veth.*"}[5m])
+```
+
+**Network Traffic (Transmitted):**
+```promql
+rate(node_network_transmit_bytes_total{device!~"lo|veth.*"}[5m])
+```
+
+5. Customize visualization type (Graph, Gauge, Stat, etc.)
+6. Click "Save dashboard"
+
+#### 4. Create Dashboard for Kubernetes Deployments
+
+1. Click "Dashboards" → "Import" in the left menu
+2. Enter dashboard ID: `15661` (Kubernetes Deployments)
+3. Or create custom dashboard with these queries:
+
+**Pod Count by Deployment:**
+```promql
+count(kube_pod_info) by (created_by_name)
+```
+
+**CPU Usage by Pod:**
+```promql
+sum(rate(container_cpu_usage_seconds_total{container!=""}[5m])) by (pod)
+```
+
+**Memory Usage by Pod:**
+```promql
+sum(container_memory_working_set_bytes{container!=""}) by (pod)
+```
+
+**Deployment Replicas:**
+```promql
+kube_deployment_status_replicas_available
+```
+
+**Pod Restart Count:**
+```promql
+kube_pod_container_status_restarts_total
+```
+
+**Note:** These queries require kube-state-metrics to be installed (not currently deployed).
+
+#### 5. Useful Dashboard IDs
+
+Import these dashboards for comprehensive monitoring:
+- **1860**: Node Exporter Full (host metrics)
+- **315**: Kubernetes Cluster Monitoring
+- **6417**: Kubernetes Cluster (Prometheus)
+- **15661**: Kubernetes Deployments
+
+#### 6. Tips
+
+- Use **time range selector** (top right) to change time window
+- Use **refresh interval** dropdown to auto-refresh
+- Use **variables** to filter by node, pod, namespace
+- Click on graph legends to show/hide series
+- Use **Explore** view to test PromQL queries before adding to dashboard
 ```
 
 ### Deploy to AWS
