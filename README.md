@@ -129,6 +129,13 @@ Use the **Build NixOS AMI** workflow in the GitHub Actions tab to build the AMI 
 
 The cluster deployment automatically uses the AMI ID from SSM Parameter Store (`/dev-k8s/custom-ami-id`).
 
+```sh
+gh workflow run build-ami.yml
+sleep 5
+gh run watch $(gh run list --workflow=build-ami.yml --limit=1 --json databaseId --jq '.[0].databaseId')
+./bin/image deploy
+```
+
 ### Test Custom Image with VM
 
 You can test your custom NixOS configuration locally using QEMU before deploying to AWS.
