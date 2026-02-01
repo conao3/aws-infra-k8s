@@ -22,19 +22,19 @@
     :AmazonProvidedIpv6CidrBlock true}})
 
 (defn resources-subnet []
-  (let [subnet (fn [m ipv6-index]
-                 {:Type "AWS::EC2::Subnet"
-                  :Properties
-                  (-> m
-                      (assoc :VpcId {:Ref :Vpc})
-                      (assoc :Ipv6CidrBlock
-                             {"Fn::Select" [ipv6-index
-                                            {"Fn::Cidr" [{"Fn::Select" [0 {"Fn::GetAtt" [:Vpc :Ipv6CidrBlocks]}]}
-                                                         256
-                                                         64]}]})
-                      (assoc :Ipv6Native true)
-                      (assoc :AssignIpv6AddressOnCreation true))
-                  :DependsOn [:VpcIpv6CidrBlock]})
+  (let [_subnet (fn [m ipv6-index]
+                  {:Type "AWS::EC2::Subnet"
+                   :Properties
+                   (-> m
+                       (assoc :VpcId {:Ref :Vpc})
+                       (assoc :Ipv6CidrBlock
+                              {"Fn::Select" [ipv6-index
+                                             {"Fn::Cidr" [{"Fn::Select" [0 {"Fn::GetAtt" [:Vpc :Ipv6CidrBlocks]}]}
+                                                          256
+                                                          64]}]})
+                       (assoc :Ipv6Native true)
+                       (assoc :AssignIpv6AddressOnCreation true))
+                   :DependsOn [:VpcIpv6CidrBlock]})
         subnet-dual (fn [m ipv4-cidr ipv6-index]
                       {:Type "AWS::EC2::Subnet"
                        :Properties

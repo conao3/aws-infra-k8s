@@ -59,7 +59,7 @@
           "cloudformation:DescribeStacks"]
          :Resource "*"}]}}]}})
 
-(defn cfn [param]
+(defn cfn [_param]
   (a.cfn/template
    {:Parameters
     (-> [:Env :Prefix]
