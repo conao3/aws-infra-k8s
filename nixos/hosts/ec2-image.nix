@@ -14,7 +14,7 @@
       owner = "aws";
       repo = "aws-ec2-instance-connect-config";
       rev = "1.1.17";
-      sha256 = "sha256-EFJe8mj+Z7ls+Aq1fvP9Ll6fH/bYM6FYiF6hSNaXvhM=";
+      sha256 = "sha256-XXrVcmgsYFOj/1cD45ulFry5gY7XOkyhmDV7yXvgNhI=";
     };
 
     nativeBuildInputs = with pkgs; [makeWrapper];
