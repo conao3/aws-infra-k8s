@@ -4,6 +4,32 @@ set -euxo pipefail -o posix
 sudo dnf update -y
 sudo dnf install -y git
 
+if ! command -v nix &> /dev/null; then
+  echo "Installing Nix..."
+
+  echo "Setting ulimit for Nix installation..."
+  sudo sh -c 'cat >> /etc/security/limits.conf << EOF
+ec2-user soft stack 65536
+ec2-user hard stack 65536
+EOF'
+
+  ulimit -s 65536 2>/dev/null || true
+
+  curl -L https://nixos.org/nix/install | sh -s -- --daemon --yes
+
+  echo "Nix installation complete. Starting nix-daemon..."
+  sudo systemctl start nix-daemon.socket
+  sudo systemctl start nix-daemon.service
+
+  if [ -e '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh' ]; then
+    source '/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh'
+  fi
+
+  nix --version
+else
+  echo "Nix is already installed: $(nix --version)"
+fi
+
 mkdir -p ~/dev
 cd ~/dev
 if [ ! -d aws-infra-k8s ]; then
