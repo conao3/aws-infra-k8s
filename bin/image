@@ -116,9 +116,7 @@ cmd_deploy() {
     exit 1
   fi
 
-  local ami_id
-  ami_id=$(aws ssm get-parameter --name "${parameter_name}" --query 'Parameter.Value' --output text)
-  echo "Deploying cluster with custom AMI: ${ami_id} (from SSM Parameter Store)"
+  echo "Deploying cluster with custom AMI from SSM Parameter Store (${parameter_name})..."
   clojure -M -m conao3.aws-infra-k8s deploy cluster
 
   echo ""
