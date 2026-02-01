@@ -6,6 +6,26 @@ AWS infrastructure management for Kubernetes using Clojure and CloudFormation.
 
 This project provides a modular approach to deploying AWS infrastructure components. Each module handles a specific aspect of the infrastructure and can be deployed independently or all at once.
 
+## Architecture
+
+```
+Internet
+  ↓ HTTPS
+CloudFront (CDN + WAF Free Plan)
+  ↓ HTTP (CloudFront Prefix List only)
+Application Load Balancer
+  ↓ NodePort 30000-32767
+EC2 (k3s cluster on NixOS)
+  ↓
+Kubernetes Pods
+```
+
+**Security Features:**
+- CloudFront WAF with 3 rules (Rate Limit, Geo Block, SQLi Protection)
+- ALB accessible only from CloudFront (Managed Prefix List)
+- DDoS protection enabled by default
+- HTTPS enforced at CloudFront edge
+
 All AWS operations use the `AWS_PROFILE` environment variable to specify credentials. Set it before running any commands:
 
 ```bash
@@ -55,31 +75,43 @@ rm /tmp/dev-k8s-secret.json
 
 ### Deploy All Modules
 
+Deploy all infrastructure components:
+
 ```bash
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy all
 ```
 
-With custom AMI:
-```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy all --ami-id ami-xxxxx
-```
+This deploys:
+- **ap-northeast-1**: Network, ALB, Cluster (k3s), etc.
+- **us-east-1**: CloudFront + WAF (automatically deployed to us-east-1)
+
+**CloudFront Free Plan Limits:**
+- 1M requests/month
+- 100GB data transfer/month
+- 5 WAF rules max (currently using 3)
+- No overage charges (performance throttling instead)
 
 ### Deploy Individual Module
-Deploy each modules like this.
-Currently below modules are provided.
 
+Available modules:
+
+**Infrastructure (ap-northeast-1):**
 - `s3` (S3 bucket for VM Import)
 - `vm-import` (VM Import IAM role for custom AMI upload)
 - `network`
 - `routing`
 - `security-group`
-- `cluster`
-- `ssh-tunnel`
-- `ami-builder` (AMI builder instance, not included in `deploy all`)
-- `eice`
+- `cluster` (k3s on NixOS)
+- `alb` (Application Load Balancer)
+- `eice` (EC2 Instance Connect Endpoint)
 - `github-oidc` (GitHub Actions OIDC provider and IAM role)
 - `rds`
 - `cognito`
+- `ssh-tunnel` (not included in `deploy all`)
+- `ami-builder` (not included in `deploy all`)
+
+**Global Resources (us-east-1):**
+- `cloudfront` (CloudFront + WAF, automatically deployed to us-east-1)
 
 ```bash
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy <module-name>
