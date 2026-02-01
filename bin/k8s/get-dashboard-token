@@ -15,10 +15,6 @@ PRIVATE_IP=$(aws ec2 describe-instances \
   --query 'Reservations[0].Instances[0].PrivateIpAddress' \
   --output text)
 
-EICE_ID=$(aws cloudformation list-exports \
-  --query "Exports[?Name=='${PREFIX}-InstanceConnectEndpoint'].Value" \
-  --output text)
-
 echo "Getting Kubernetes Dashboard token from instance: ${INSTANCE_ID} (${PRIVATE_IP})" >&2
 
 exec ssh -i "${KEY_FILE}" \
@@ -26,5 +22,5 @@ exec ssh -i "${KEY_FILE}" \
   -o StrictHostKeyChecking=no \
   -o UserKnownHostsFile=/dev/null \
   -o LogLevel=ERROR \
-  root@${PRIVATE_IP} \
+  "root@${PRIVATE_IP}" \
   'kubectl create token dashboard-admin -n kubernetes-dashboard --duration=87600h'
