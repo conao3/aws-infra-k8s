@@ -18,18 +18,6 @@
       ];
 
       flake = {
-        nixosConfigurations.vm = nixpkgs.lib.nixosSystem {
-          system = "x86_64-linux";
-          modules = [
-            {
-              networking.hostName = "nixos-vm";
-              nix.registry.nixpkgs.flake = inputs.nixpkgs;
-              virtualisation.diskSize = 20 * 1024;
-            }
-            "${self}/nixos/hosts/vm.nix"
-          ];
-        };
-
         nixosConfigurations.ec2-x86_64 = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
           modules = [
@@ -71,9 +59,28 @@
           inherit system;
           overlays = [overlay];
         };
+        guestSystem =
+          if system == "aarch64-darwin"
+          then "aarch64-linux"
+          else system;
       in {
         packages = {
-          vm = self.nixosConfigurations.vm.config.system.build.vm;
+          vm =
+            (nixpkgs.lib.nixosSystem {
+              system = guestSystem;
+              modules =
+                [
+                  {
+                    networking.hostName = "nixos-vm";
+                    nix.registry.nixpkgs.flake = inputs.nixpkgs;
+                    virtualisation.diskSize = 20 * 1024;
+                  }
+                  "${self}/nixos/hosts/vm.nix"
+                ]
+                ++ nixpkgs.lib.optionals (guestSystem != system) [
+                  {virtualisation.host.pkgs = import inputs.nixpkgs {inherit system;};}
+                ];
+            }).config.system.build.vm;
         };
 
         devShells.default = pkgs.mkShell {
