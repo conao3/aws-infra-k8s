@@ -6,11 +6,11 @@ ASG_NAME="${PREFIX}-node"
 
 INSTANCE_ID=$(aws autoscaling describe-auto-scaling-groups \
   --auto-scaling-group-names "${ASG_NAME}" \
-  --query 'AutoScalingGroups[0].Instances[0].InstanceId' \
+  --query 'AutoScalingGroups[0].Instances[?HealthStatus==`Healthy` && LifecycleState==`InService`].InstanceId | [0]' \
   --output text)
 
 if [ -z "${INSTANCE_ID}" ] || [ "${INSTANCE_ID}" = "None" ]; then
-  echo "Error: No running instance found in AutoScaling Group ${ASG_NAME}" >&2
+  echo "Error: No healthy InService instance found in AutoScaling Group ${ASG_NAME}" >&2
   exit 1
 fi
 
