@@ -8,9 +8,16 @@
     vim
   ];
 
-  networking.localCommands = ''
-    ip route add 169.254.169.254/32 dev eth0 metric 100
-  '';
+  systemd.services.fix-metadata-route = {
+    description = "Fix route to EC2 metadata service";
+    after = ["network.target" "k3s.service"];
+    wantedBy = ["multi-user.target"];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = "${pkgs.iproute2}/bin/ip route add 169.254.169.254/32 dev ens5 metric 50 || true";
+    };
+  };
 
   services.k3s = {
     enable = true;

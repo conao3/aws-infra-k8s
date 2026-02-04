@@ -20,7 +20,22 @@
     :ManagedPolicyArns
     ["arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
      "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
-     "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"]}})
+     "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"]
+    :Policies
+    [{:PolicyName "EFSCSIDriverPolicy"
+      :PolicyDocument
+      {:Version "2012-10-17"
+       :Statement
+       [{:Effect "Allow"
+         :Action
+         ["elasticfilesystem:CreateAccessPoint"
+          "elasticfilesystem:DeleteAccessPoint"
+          "elasticfilesystem:DescribeAccessPoints"
+          "elasticfilesystem:DescribeFileSystems"
+          "elasticfilesystem:DescribeMountTargets"
+          "elasticfilesystem:TagResource"
+          "elasticfilesystem:ListTagsForResource"]
+         :Resource "*"}]}}]}})
 
 (defn resource-instance-profile []
   {:Type "AWS::IAM::InstanceProfile"
