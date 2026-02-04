@@ -11,7 +11,7 @@
   (a.cfn/template
    {:Parameters
     (a.cfn/list-string-parameters
-     [:Env :Prefix :EmailAddress :SnsTopicArn])
+     [:Env :Prefix :SnsTopicArn])
 
     :Resources
     {:MainBudget
@@ -29,22 +29,22 @@
           :ComparisonOperator "GREATER_THAN"
           :Threshold 80}
          :Subscribers
-         [{:SubscriptionType "EMAIL"
-           :Address {:Ref :EmailAddress}}]}
+         [{:SubscriptionType "SNS"
+           :Address {:Ref :SnsTopicArn}}]}
         {:Notification
          {:NotificationType "ACTUAL"
           :ComparisonOperator "GREATER_THAN"
           :Threshold 100}
          :Subscribers
-         [{:SubscriptionType "EMAIL"
-           :Address {:Ref :EmailAddress}}]}
+         [{:SubscriptionType "SNS"
+           :Address {:Ref :SnsTopicArn}}]}
         {:Notification
          {:NotificationType "FORECASTED"
           :ComparisonOperator "GREATER_THAN"
           :Threshold 100}
          :Subscribers
-         [{:SubscriptionType "EMAIL"
-           :Address {:Ref :EmailAddress}}]}]}}
+         [{:SubscriptionType "SNS"
+           :Address {:Ref :SnsTopicArn}}]}]}}
 
      :CostAnomalyMonitor
      {:Type "AWS::CE::AnomalyMonitor"
@@ -100,7 +100,6 @@
                      "--parameter-overrides"
                      (->> {:Env (-> param :env)
                            :Prefix (-> param :prefix)
-                           :EmailAddress (get param :email-address "conao3@sancode.dev")
                            :SnsTopicArn (get exports (keyword (format "%s-%s" (-> param :prefix) "CostAnomalySnsTopicArn")))}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))
