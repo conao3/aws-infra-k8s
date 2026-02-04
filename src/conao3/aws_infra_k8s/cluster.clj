@@ -52,6 +52,12 @@
      :KeyName (a.cfn/prefix "keypair")
      :InstanceType instance-type
      :IamInstanceProfile {:Arn {"Fn::GetAtt" [:InstanceProfile :Arn]}}
+     :BlockDeviceMappings
+     [{:DeviceName "/dev/xvda"
+       :Ebs
+       {:VolumeSize 10
+        :VolumeType "gp3"
+        :DeleteOnTermination true}}]
      :MetadataOptions
      {:HttpTokens "required"
       :HttpPutResponseHopLimit 2
