@@ -44,7 +44,6 @@
      :NetworkInterfaces
      [{:DeviceIndex 0
        :AssociatePublicIpAddress false
-       :Ipv6AddressCount 1
        :Groups [{:Ref :SecurityGroupApp}]}]
      :TagSpecifications
      [{:ResourceType "instance"
@@ -67,7 +66,7 @@
   (a.cfn/template
    {:Parameters
     (-> [:Env :Prefix
-         :SubnetPubA
+         :SubnetPriA
          :SecurityGroupApp]
         a.cfn/list-string-parameters
         (assoc :AmiId
@@ -78,7 +77,7 @@
     {:IamRole (resource-iam-role)
      :InstanceProfile (resource-instance-profile)
      :LaunchTemplateNode (resource-launch-template "node" "t4g.medium" {:Ref :AmiId})
-     :AutoScalingGroupNode (resource-autoscaling-group "node" :SubnetPubA :LaunchTemplateNode nil)}
+     :AutoScalingGroupNode (resource-autoscaling-group "node" :SubnetPriA :LaunchTemplateNode nil)}
 
     :Outputs
     (a.cfn/list-outputs
@@ -112,7 +111,7 @@
                      "--parameter-overrides"
                      (->> {:Env (-> param :env)
                            :Prefix (-> param :prefix)
-                           :SubnetPubA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPubA))))
+                           :SubnetPriA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPriA))))
                            :SecurityGroupApp (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupApp))))}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))
