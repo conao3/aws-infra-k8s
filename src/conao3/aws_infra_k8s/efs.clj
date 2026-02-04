@@ -19,12 +19,13 @@
     {:EfsFileSystem
      {:Type "AWS::EFS::FileSystem"
       :Properties
-      (a.cfn/tag-name
-       {:TagName (a.cfn/prefix "efs")
-        :AvailabilityZoneName "ap-northeast-1a"
-        :PerformanceMode "generalPurpose"
-        :ThroughputMode "bursting"
-        :Encrypted true})}
+      {:AvailabilityZoneName "ap-northeast-1a"
+       :PerformanceMode "generalPurpose"
+       :ThroughputMode "bursting"
+       :Encrypted true
+       :FileSystemTags
+       [{:Key "Name"
+         :Value (a.cfn/prefix "efs")}]}}
 
      :EfsMountTargetA
      {:Type "AWS::EFS::MountTarget"
