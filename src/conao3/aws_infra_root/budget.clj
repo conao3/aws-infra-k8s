@@ -27,6 +27,13 @@
        [{:Notification
          {:NotificationType "ACTUAL"
           :ComparisonOperator "GREATER_THAN"
+          :Threshold 50}
+         :Subscribers
+         [{:SubscriptionType "SNS"
+           :Address {:Ref :SnsTopicArn}}]}
+        {:Notification
+         {:NotificationType "ACTUAL"
+          :ComparisonOperator "GREATER_THAN"
           :Threshold 80}
          :Subscribers
          [{:SubscriptionType "SNS"
@@ -61,7 +68,7 @@
        :Subscribers
        [{:Type "SNS"
          :Address {:Ref :SnsTopicArn}}]
-       :Threshold 100
+       :Threshold 10
        :Frequency "IMMEDIATE"}}}
 
     :Outputs
