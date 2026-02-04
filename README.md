@@ -107,7 +107,7 @@ Available modules:
 - `github-oidc` (GitHub Actions OIDC provider and IAM role)
 - `rds`
 - `cognito`
-- `efs` (Elastic File System for persistent storage)
+- `efs` (EFS One Zone for cost-effective persistent storage)
 - `ssh-tunnel` (not included in `deploy all`)
 - `ami-builder` (not included in `deploy all`)
 
@@ -198,13 +198,14 @@ Default AMI: `ami-00ce0dbbbd1a71d5b` (nixos/25.05.813814.ac62194c3917-aarch64-li
 
 ## Persistent Storage with EFS
 
-This project uses AWS Elastic File System (EFS) with the AWS EFS CSI Driver for persistent storage in Kubernetes.
+This project uses AWS Elastic File System (EFS) One Zone with the AWS EFS CSI Driver for persistent storage in Kubernetes.
 
 ### Features
 
+- **EFS One Zone**: Cost-effective single-AZ storage (~$0.19/GB/month, about 47% cheaper than Standard)
 - **ReadWriteMany**: Multiple pods can read and write to the same volume simultaneously
 - **Automatic Provisioning**: StorageClass automatically creates EFS Access Points
-- **Multi-AZ**: EFS mount targets in multiple availability zones for high availability
+- **Single-AZ Deployment**: EFS in ap-northeast-1a (same AZ as cluster)
 - **Encrypted**: EFS file system is encrypted at rest
 - **Bursting Performance**: Throughput scales with file system size
 
@@ -215,10 +216,18 @@ Kubernetes Pod
   ↓ (mount)
 EFS CSI Driver (DaemonSet on each node)
   ↓ (NFS mount)
-EFS Mount Target (in each AZ)
+EFS Mount Target (ap-northeast-1a)
   ↓
-EFS File System
+EFS One Zone File System (ap-northeast-1a)
 ```
+
+### Cost Comparison
+
+**EFS Pricing in ap-northeast-1:**
+- EFS Standard: ~$0.36/GB/month (multi-AZ replication)
+- EFS One Zone: ~$0.19/GB/month (single-AZ, 47% cheaper)
+
+For a single-node cluster in one AZ, EFS One Zone provides significant cost savings without sacrificing functionality.
 
 ### Usage
 

@@ -13,8 +13,6 @@
     (a.cfn/list-string-parameters
      [:Env :Prefix
       :SubnetPriA
-      :SubnetPriC
-      :SubnetPriD
       :SecurityGroupEfs])
 
     :Resources
@@ -23,6 +21,7 @@
       :Properties
       (a.cfn/tag-name
        {:TagName (a.cfn/prefix "efs")
+        :AvailabilityZoneName "ap-northeast-1a"
         :PerformanceMode "generalPurpose"
         :ThroughputMode "bursting"
         :Encrypted true})}
@@ -32,20 +31,6 @@
       :Properties
       {:FileSystemId {:Ref :EfsFileSystem}
        :SubnetId {:Ref :SubnetPriA}
-       :SecurityGroups [{:Ref :SecurityGroupEfs}]}}
-
-     :EfsMountTargetC
-     {:Type "AWS::EFS::MountTarget"
-      :Properties
-      {:FileSystemId {:Ref :EfsFileSystem}
-       :SubnetId {:Ref :SubnetPriC}
-       :SecurityGroups [{:Ref :SecurityGroupEfs}]}}
-
-     :EfsMountTargetD
-     {:Type "AWS::EFS::MountTarget"
-      :Properties
-      {:FileSystemId {:Ref :EfsFileSystem}
-       :SubnetId {:Ref :SubnetPriD}
        :SecurityGroups [{:Ref :SecurityGroupEfs}]}}}
 
     :Outputs
@@ -81,8 +66,6 @@
                      (->> {:Env (-> param :env)
                            :Prefix (-> param :prefix)
                            :SubnetPriA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPriA))))
-                           :SubnetPriC (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPriC))))
-                           :SubnetPriD (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPriD))))
                            :SecurityGroupEfs (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupEfs))))}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))
