@@ -15,7 +15,7 @@
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      ExecStart = "${pkgs.iproute2}/bin/ip route add 169.254.169.254/32 dev ens5 metric 50 || true";
+      ExecStart = "${pkgs.bash}/bin/bash -c '${pkgs.iproute2}/bin/ip route add 169.254.169.254/32 dev ens5 metric 50 || true'";
     };
   };
 
