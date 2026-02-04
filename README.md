@@ -113,6 +113,7 @@ Available modules:
 
 **Global Resources (us-east-1):**
 - `cloudfront` (CloudFront + WAF, automatically deployed to us-east-1)
+- `budget` (AWS Budget with email notifications, automatically deployed to us-east-1)
 
 ```bash
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy <module-name>

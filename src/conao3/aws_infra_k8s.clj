@@ -15,7 +15,8 @@
    [conao3.aws-infra-k8s.rds :as c.rds]
    [conao3.aws-infra-k8s.efs :as c.efs]
    [conao3.aws-infra-k8s.vm-import :as c.vm-import]
-   [conao3.aws-infra-k8s.github-oidc :as c.github-oidc])
+   [conao3.aws-infra-k8s.github-oidc :as c.github-oidc]
+   [conao3.aws-infra-k8s.budget :as c.budget])
   (:gen-class))
 
 (defn parse-args [args]
@@ -46,6 +47,7 @@
                    "s3" (c.s3/deploy param)
                    "vm-import" (c.vm-import/deploy param)
                    "github-oidc" (c.github-oidc/deploy param)
+                   "budget" (c.budget/deploy param)
 
                    ;; depends on network
                    "cluster" (c.cluster/deploy param)
@@ -64,6 +66,7 @@
                            (run ["deploy" "s3"] param)
                            (run ["deploy" "vm-import"] param)
                            (run ["deploy" "github-oidc"] param)
+                           ;; (run ["deploy" "budget"] param)
                            (run ["deploy" "cluster"] param)
                            (run ["deploy" "alb"] param)
                            (run ["deploy" "cloudfront"] param)
