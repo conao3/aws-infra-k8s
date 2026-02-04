@@ -13,6 +13,7 @@
    [conao3.aws-infra-k8s.cognito :as c.cognito]
    [conao3.aws-infra-k8s.s3 :as c.s3]
    [conao3.aws-infra-k8s.rds :as c.rds]
+   [conao3.aws-infra-k8s.efs :as c.efs]
    [conao3.aws-infra-k8s.vm-import :as c.vm-import]
    [conao3.aws-infra-k8s.github-oidc :as c.github-oidc])
   (:gen-class))
@@ -54,6 +55,7 @@
                    "ami-builder" (c.ami-builder/deploy param)
                    "eice" (c.eice/deploy param)
                    "rds" (c.rds/deploy param)
+                   "efs" (c.efs/deploy param)
                    "all" (do
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
@@ -69,6 +71,7 @@
                            ;; (run ["deploy" "ami-builder"] param)
                            (run ["deploy" "eice"] param)
                            ;; (run ["deploy" "rds"] param)
+                           (run ["deploy" "efs"] param)
                            ))))))
 
 (defn -main [& args]

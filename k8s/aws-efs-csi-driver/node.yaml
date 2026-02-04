@@ -1,0 +1,91 @@
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: efs-csi-node
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: aws-efs-csi-driver
+spec:
+  selector:
+    matchLabels:
+      app: efs-csi-node
+      app.kubernetes.io/name: aws-efs-csi-driver
+  template:
+    metadata:
+      labels:
+        app: efs-csi-node
+        app.kubernetes.io/name: aws-efs-csi-driver
+    spec:
+      serviceAccountName: efs-csi-node-sa
+      priorityClassName: system-node-critical
+      hostNetwork: true
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: efs-plugin
+        image: public.ecr.aws/efs-csi-driver/amazon/aws-efs-csi-driver:v2.2.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - --endpoint=$(CSI_ENDPOINT)
+        - --logtostderr
+        - --v=2
+        env:
+        - name: CSI_ENDPOINT
+          value: unix:/csi/csi.sock
+        volumeMounts:
+        - name: kubelet-dir
+          mountPath: /var/lib/kubelet
+          mountPropagation: Bidirectional
+        - name: plugin-dir
+          mountPath: /csi
+        - name: efs-state-dir
+          mountPath: /var/run/efs
+        securityContext:
+          privileged: true
+      - name: csi-driver-registrar
+        image: public.ecr.aws/eks-distro/kubernetes-csi/node-driver-registrar:v2.12.0-eks-1-31-11
+        imagePullPolicy: IfNotPresent
+        args:
+        - --csi-address=$(ADDRESS)
+        - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
+        - --v=2
+        env:
+        - name: ADDRESS
+          value: /csi/csi.sock
+        - name: DRIVER_REG_SOCK_PATH
+          value: /var/lib/kubelet/plugins/efs.csi.aws.com/csi.sock
+        - name: KUBE_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: plugin-dir
+          mountPath: /csi
+        - name: registration-dir
+          mountPath: /registration
+      - name: liveness-probe
+        image: public.ecr.aws/eks-distro/kubernetes-csi/livenessprobe:v2.14.0-eks-1-31-11
+        imagePullPolicy: IfNotPresent
+        args:
+        - --csi-address=/csi/csi.sock
+        - --health-port=9809
+        volumeMounts:
+        - name: plugin-dir
+          mountPath: /csi
+      volumes:
+      - name: kubelet-dir
+        hostPath:
+          path: /var/lib/kubelet
+          type: Directory
+      - name: plugin-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins/efs.csi.aws.com/
+          type: DirectoryOrCreate
+      - name: registration-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins_registry/
+          type: Directory
+      - name: efs-state-dir
+        hostPath:
+          path: /var/run/efs
+          type: DirectoryOrCreate

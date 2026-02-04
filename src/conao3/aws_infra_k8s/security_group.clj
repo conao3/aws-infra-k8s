@@ -29,6 +29,7 @@
        :SecurityGroupSshTunnel (security-group "SshTunnel")
        :SecurityGroupEice (security-group "Eice")
        :SecurityGroupRds (security-group "Rds")
+       :SecurityGroupEfs (security-group "Efs")
        :SecurityGroupIngressAppFromEice
        {:Type "AWS::EC2::SecurityGroupIngress"
         :Properties
@@ -76,6 +77,14 @@
          :IpProtocol "tcp"
          :FromPort 5432
          :ToPort 5432
+         :SourceSecurityGroupId {:Ref :SecurityGroupApp}}}
+       :SecurityGroupIngressEfsFromApp
+       {:Type "AWS::EC2::SecurityGroupIngress"
+        :Properties
+        {:GroupId {:Ref :SecurityGroupEfs}
+         :IpProtocol "tcp"
+         :FromPort 2049
+         :ToPort 2049
          :SourceSecurityGroupId {:Ref :SecurityGroupApp}}}}
 
       :Outputs
@@ -84,7 +93,8 @@
         :SecurityGroupAlb {:Ref :SecurityGroupAlb}
         :SecurityGroupSshTunnel {:Ref :SecurityGroupSshTunnel}
         :SecurityGroupEice {:Ref :SecurityGroupEice}
-        :SecurityGroupRds {:Ref :SecurityGroupRds}})})))
+        :SecurityGroupRds {:Ref :SecurityGroupRds}
+        :SecurityGroupEfs {:Ref :SecurityGroupEfs}})})))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/security-group.json")

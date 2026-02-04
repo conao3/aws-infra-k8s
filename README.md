@@ -107,6 +107,7 @@ Available modules:
 - `github-oidc` (GitHub Actions OIDC provider and IAM role)
 - `rds`
 - `cognito`
+- `efs` (Elastic File System for persistent storage)
 - `ssh-tunnel` (not included in `deploy all`)
 - `ami-builder` (not included in `deploy all`)
 
@@ -195,6 +196,50 @@ aws ec2 describe-images --owners 427812963091 --filter 'Name=name,Values=nixos/2
 
 Default AMI: `ami-00ce0dbbbd1a71d5b` (nixos/25.05.813814.ac62194c3917-aarch64-linux)
 
+## Persistent Storage with EFS
+
+This project uses AWS Elastic File System (EFS) with the AWS EFS CSI Driver for persistent storage in Kubernetes.
+
+### Features
+
+- **ReadWriteMany**: Multiple pods can read and write to the same volume simultaneously
+- **Automatic Provisioning**: StorageClass automatically creates EFS Access Points
+- **Multi-AZ**: EFS mount targets in multiple availability zones for high availability
+- **Encrypted**: EFS file system is encrypted at rest
+- **Bursting Performance**: Throughput scales with file system size
+
+### Architecture
+
+```
+Kubernetes Pod
+  ↓ (mount)
+EFS CSI Driver (DaemonSet on each node)
+  ↓ (NFS mount)
+EFS Mount Target (in each AZ)
+  ↓
+EFS File System
+```
+
+### Usage
+
+**Using EFS in your application:**
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-app-storage
+spec:
+  accessModes:
+  - ReadWriteMany
+  storageClassName: efs-sc
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+The EFS CSI Driver automatically creates an EFS Access Point for each PVC.
+
 ## Kubernetes Applications
 
 ### Directory Structure
@@ -222,11 +267,19 @@ k8s/
 │   ├── rbac.yaml
 │   ├── deployment.yaml
 │   └── service.yaml
-└── grafana/
-    ├── pvc.yaml
-    ├── datasource-configmap.yaml
-    ├── deployment.yaml
-    └── service.yaml
+├── grafana/
+│   ├── pvc.yaml
+│   ├── pvc-efs.yaml
+│   ├── datasource-configmap.yaml
+│   ├── deployment.yaml
+│   └── service.yaml
+└── aws-efs-csi-driver/
+    ├── service-account.yaml
+    ├── rbac.yaml
+    ├── csidriver.yaml
+    ├── controller.yaml
+    ├── node.yaml
+    └── storageclass.yaml
 ```
 
 ### Local Development (kind)
@@ -294,7 +347,9 @@ The monitoring stack consists of:
 - Visualizes Prometheus metrics
 - Default credentials: admin/admin
 - Access at: http://localhost:30300 (local) or via CloudFront
-- Data persistence: PersistentVolumeClaim (1Gi)
+- Data persistence:
+  - Local (kind): PersistentVolumeClaim with local-path-provisioner (1Gi)
+  - AWS (k3s): PersistentVolumeClaim with EFS CSI Driver (5Gi, ReadWriteMany)
 - Auto-configured: Prometheus data source at http://prometheus:9090
 - All dashboards, settings, and users are persisted across Pod restarts
 
@@ -313,11 +368,11 @@ To view host metrics in Prometheus:
 - Login: admin/admin (change password on first login)
 
 **Data Persistence:**
-- Grafana settings are stored in PersistentVolumeClaim (1Gi)
+- Grafana settings are stored in PersistentVolumeClaim
 - Dashboards, data sources, user settings, alerts are all persisted
 - Settings are retained after Pod restart/deletion
-- Local (kind): uses local-path-provisioner
-- AWS (k3s): uses local-path storage
+- Local (kind): 1Gi, uses local-path-provisioner
+- AWS (k3s): 5Gi, uses AWS EFS with CSI Driver (ReadWriteMany)
 
 #### 2. Prometheus Data Source (Auto-configured)
 
@@ -485,7 +540,8 @@ This deploys:
 - Node Exporter (DaemonSet, monitors host metrics)
 - kube-state-metrics (exposes Kubernetes object metrics)
 - Prometheus (NodePort 30900, collects metrics)
-- Grafana (NodePort 30300, visualizes metrics)
+- AWS EFS CSI Driver (persistent storage with EFS)
+- Grafana (NodePort 30300, visualizes metrics, data stored in EFS)
 
 ### Access Applications on AWS
 

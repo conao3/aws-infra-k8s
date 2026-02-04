@@ -1,6 +1,8 @@
 {pkgs, ...}: {
   system.stateVersion = "25.05";
 
+  boot.supportedFilesystems = ["nfs"];
+
   environment.systemPackages = with pkgs; [
     curl
     vim

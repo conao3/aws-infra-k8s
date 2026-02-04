@@ -38,10 +38,30 @@ scp -i "${KEY_FILE}" \
   -r "${MANIFESTS_DIR}"/* \
   "root@${PRIVATE_IP}:/tmp/k8s-manifests/"
 
+EFS_FILE_SYSTEM_ID=$(aws cloudformation list-exports \
+  --query "Exports[?Name=='${PREFIX}-EfsFileSystemId'].Value" \
+  --output text)
+
+if [ -z "${EFS_FILE_SYSTEM_ID}" ] || [ "${EFS_FILE_SYSTEM_ID}" = "None" ]; then
+  echo "Error: EFS File System ID not found in CloudFormation exports" >&2
+  exit 1
+fi
+
 ssh -i "${KEY_FILE}" \
   -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
   -o StrictHostKeyChecking=no \
   -o UserKnownHostsFile=/dev/null \
   -o LogLevel=ERROR \
   "root@${PRIVATE_IP}" \
-  'kubectl apply -f /tmp/k8s-manifests/nginx/ && kubectl apply -k /tmp/k8s-manifests/kubernetes-dashboard/ && kubectl apply -f /tmp/k8s-manifests/node-exporter/ && kubectl apply -f /tmp/k8s-manifests/kube-state-metrics/ && kubectl apply -f /tmp/k8s-manifests/prometheus/ && kubectl apply -f /tmp/k8s-manifests/grafana/'
+  "kubectl apply -f /tmp/k8s-manifests/nginx/ && \
+   kubectl apply -k /tmp/k8s-manifests/kubernetes-dashboard/ && \
+   kubectl apply -f /tmp/k8s-manifests/node-exporter/ && \
+   kubectl apply -f /tmp/k8s-manifests/kube-state-metrics/ && \
+   kubectl apply -f /tmp/k8s-manifests/prometheus/ && \
+   kubectl apply -f /tmp/k8s-manifests/aws-efs-csi-driver/service-account.yaml && \
+   kubectl apply -f /tmp/k8s-manifests/aws-efs-csi-driver/rbac.yaml && \
+   kubectl apply -f /tmp/k8s-manifests/aws-efs-csi-driver/csidriver.yaml && \
+   kubectl apply -f /tmp/k8s-manifests/aws-efs-csi-driver/controller.yaml && \
+   kubectl apply -f /tmp/k8s-manifests/aws-efs-csi-driver/node.yaml && \
+   sed 's/\${EFS_FILE_SYSTEM_ID}/${EFS_FILE_SYSTEM_ID}/g' /tmp/k8s-manifests/aws-efs-csi-driver/storageclass.yaml | kubectl apply -f - && \
+   kubectl apply -f /tmp/k8s-manifests/grafana/"

@@ -1,0 +1,8 @@
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: efs.csi.aws.com
+  labels:
+    app.kubernetes.io/name: aws-efs-csi-driver
+spec:
+  attachRequired: false
