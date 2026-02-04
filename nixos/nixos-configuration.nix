@@ -8,13 +8,18 @@
     vim
   ];
 
+  networking.localCommands = ''
+    ip route add 169.254.169.254/32 dev eth0 metric 100
+  '';
+
   services.k3s = {
     enable = true;
     role = "server";
     extraFlags = toString [
-      "--disable=traefik" # use ALB instead
-      "--disable=servicelb" # use ALB/NLB instead
-      "--write-kubeconfig-mode=644" # allow non-root users to access kubeconfig
+      "--disable=traefik"
+      "--disable=servicelb"
+      "--write-kubeconfig-mode=644"
+      "--kubelet-arg=cloud-provider=external"
     ];
   };
 

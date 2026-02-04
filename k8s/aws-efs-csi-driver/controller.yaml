@@ -19,6 +19,8 @@ spec:
     spec:
       serviceAccountName: efs-csi-controller-sa
       priorityClassName: system-cluster-critical
+      hostNetwork: true
+      dnsPolicy: ClusterFirst
       tolerations:
       - key: CriticalAddonsOnly
         operator: Exists
@@ -37,6 +39,8 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: spec.nodeName
+        - name: AWS_REGION
+          value: ap-northeast-1
         volumeMounts:
         - name: socket-dir
           mountPath: /var/lib/csi/sockets/pluginproxy/
