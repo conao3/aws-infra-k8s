@@ -85,6 +85,8 @@ This deploys:
 - **ap-northeast-1**: Network, ALB, Cluster (k3s), etc.
 - **us-east-1**: CloudFront + WAF (automatically deployed to us-east-1)
 
+Note: Root account resources (Budget, SNS, Chatbot) are managed separately via `aws-infra-root` module.
+
 **CloudFront Free Plan Limits:**
 - 1M requests/month
 - 100GB data transfer/month
@@ -113,7 +115,6 @@ Available modules:
 
 **Global Resources (us-east-1):**
 - `cloudfront` (CloudFront + WAF, automatically deployed to us-east-1)
-- `budget` (AWS Budget with email notifications, automatically deployed to us-east-1)
 
 ```bash
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy <module-name>
@@ -124,6 +125,40 @@ For example, to deploy only the routing module:
 ```bash
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy routing
 ```
+
+## Root Account Resources
+
+Root account resources (Budget, Cost Anomaly Detection, SNS, Chatbot) are managed separately using the `aws-infra-root` module.
+
+### Deploy All Root Resources
+
+```bash
+clojure -M -m conao3.aws-infra-root deploy all
+```
+
+This deploys:
+- **ap-northeast-1**: SNS Topic for cost alerts, IAM Role for Chatbot
+- **us-east-1**: AWS Budget, Cost Anomaly Monitor/Subscription, Chatbot Slack Configuration
+
+### Deploy Individual Root Module
+
+Available root modules:
+- `sns` (SNS Topic and IAM Role in ap-northeast-1)
+- `budget` (AWS Budget and Cost Anomaly Detection in us-east-1)
+- `chatbot` (Chatbot Slack Configuration in us-east-1)
+
+```bash
+clojure -M -m conao3.aws-infra-root deploy <module-name>
+```
+
+For example:
+```bash
+clojure -M -m conao3.aws-infra-root deploy sns
+clojure -M -m conao3.aws-infra-root deploy budget
+clojure -M -m conao3.aws-infra-root deploy chatbot --slack-workspace-id T123456 --slack-channel-id C123456
+```
+
+All root modules automatically use the `conao3.root` AWS profile.
 
 ## Custom NixOS AMI
 
