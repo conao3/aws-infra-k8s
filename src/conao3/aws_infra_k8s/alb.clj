@@ -20,8 +20,8 @@
     {:TargetGroup
      {:Type "AWS::ElasticLoadBalancingV2::TargetGroup"
       :Properties
-      {:Name (a.cfn/prefix "nginx")
-       :Port 30924
+      {:Name (a.cfn/prefix "traefik")
+       :Port 30080
        :Protocol "HTTP"
        :VpcId {:Ref :Vpc}
        :TargetType "instance"
@@ -32,7 +32,7 @@
        :HealthCheckTimeoutSeconds 5
        :HealthyThresholdCount 2
        :UnhealthyThresholdCount 2
-       :Tags [{:Key "Name" :Value (a.cfn/prefix "nginx")}]}}
+       :Tags [{:Key "Name" :Value (a.cfn/prefix "traefik")}]}}
 
      :LoadBalancer
      {:Type "AWS::ElasticLoadBalancingV2::LoadBalancer"

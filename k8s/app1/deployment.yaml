@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app1
+  labels:
+    app: app1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app1
+  template:
+    metadata:
+      labels:
+        app: app1
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: html
+          mountPath: /usr/share/nginx/html
+      volumes:
+      - name: html
+        configMap:
+          name: app1-html
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app1-html
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <head><title>App1</title></head>
+    <body>
+      <h1>Welcome to App1</h1>
+      <p>This is the first application running on k8s cluster.</p>
+    </body>
+    </html>

@@ -14,8 +14,11 @@ apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
 - role: control-plane
   extraPortMappings:
-  - containerPort: 30924
-    hostPort: 30924
+  - containerPort: 30080
+    hostPort: 30080
+    protocol: TCP
+  - containerPort: 30081
+    hostPort: 30081
     protocol: TCP
   - containerPort: 31353
     hostPort: 31353
@@ -39,14 +42,20 @@ cmd_deploy() {
 
   MANIFESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/k8s"
 
-  kubectl apply -f "${MANIFESTS_DIR}/nginx/"
+  kubectl apply -f "${MANIFESTS_DIR}/traefik/"
+  kubectl apply -f "${MANIFESTS_DIR}/app1/"
+  kubectl apply -f "${MANIFESTS_DIR}/app2/"
+  kubectl apply -f "${MANIFESTS_DIR}/app3/"
   kubectl apply -k "${MANIFESTS_DIR}/kubernetes-dashboard/"
   kubectl apply -f "${MANIFESTS_DIR}/node-exporter/"
   kubectl apply -f "${MANIFESTS_DIR}/kube-state-metrics/"
   kubectl apply -f "${MANIFESTS_DIR}/prometheus/"
   kubectl apply -f "${MANIFESTS_DIR}/grafana/"
 
-  kubectl wait --for=condition=ready pod -l app=nginx --timeout=60s
+  kubectl wait --for=condition=ready pod -l app=traefik -n traefik --timeout=60s
+  kubectl wait --for=condition=ready pod -l app=app1 --timeout=60s
+  kubectl wait --for=condition=ready pod -l app=app2 --timeout=60s
+  kubectl wait --for=condition=ready pod -l app=app3 --timeout=60s
   kubectl wait --for=condition=ready pod -l k8s-app=kubernetes-dashboard -n kubernetes-dashboard --timeout=60s
   kubectl wait --for=condition=ready pod -l app=node-exporter --timeout=60s
   kubectl wait --for=condition=ready pod -l app=kube-state-metrics -n kube-system --timeout=60s

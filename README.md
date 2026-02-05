@@ -287,13 +287,190 @@ The EFS CSI Driver automatically creates an EFS Access Point for each PVC.
 
 ## Kubernetes Applications
 
+### Ingress Controller (Traefik)
+
+This project uses **Traefik** as an Ingress Controller to route traffic to multiple applications based on subdomain.
+
+**Architecture:**
+```
+Internet → CloudFront → ALB → Traefik (NodePort 30080) → Ingress Rules → Services → Pods
+```
+
+**Routing Example:**
+- `app1.example.com` → nginx service
+- `app2.example.com` → app2 service
+- `app3.example.com` → app3 service
+
+Traefik automatically discovers Ingress resources and configures routing based on the `host` field.
+
+### Multi-Subdomain Setup
+
+To set up multiple applications with subdomain routing, follow these steps:
+
+#### 1. Create ACM Certificate
+
+Create a wildcard certificate in **us-east-1** (required for CloudFront):
+
+```bash
+aws acm request-certificate \
+  --domain-name "*.example.com" \
+  --validation-method DNS \
+  --region us-east-1 \
+  --profile conao3.k8s
+```
+
+Add the DNS validation record to Route53 and wait for validation to complete.
+
+#### 2. Configure Route53
+
+Create A records for each subdomain pointing to CloudFront:
+
+```bash
+DISTRIBUTION_DOMAIN=$(aws cloudformation describe-stacks \
+  --stack-name dev-k8s-cloudfront \
+  --region us-east-1 \
+  --query 'Stacks[0].Outputs[?OutputKey==`DistributionDomainName`].OutputValue' \
+  --output text \
+  --profile conao3.k8s)
+
+aws route53 change-resource-record-sets \
+  --hosted-zone-id ZXXXXXXXXXXXXX \
+  --change-batch '{
+    "Changes": [
+      {
+        "Action": "CREATE",
+        "ResourceRecordSet": {
+          "Name": "app1.example.com",
+          "Type": "A",
+          "AliasTarget": {
+            "HostedZoneId": "Z2FDTNDATAQYW2",
+            "DNSName": "'${DISTRIBUTION_DOMAIN}'",
+            "EvaluateTargetHealth": false
+          }
+        }
+      },
+      {
+        "Action": "CREATE",
+        "ResourceRecordSet": {
+          "Name": "app2.example.com",
+          "Type": "A",
+          "AliasTarget": {
+            "HostedZoneId": "Z2FDTNDATAQYW2",
+            "DNSName": "'${DISTRIBUTION_DOMAIN}'",
+            "EvaluateTargetHealth": false
+          }
+        }
+      },
+      {
+        "Action": "CREATE",
+        "ResourceRecordSet": {
+          "Name": "app3.example.com",
+          "Type": "A",
+          "AliasTarget": {
+            "HostedZoneId": "Z2FDTNDATAQYW2",
+            "DNSName": "'${DISTRIBUTION_DOMAIN}'",
+            "EvaluateTargetHealth": false
+          }
+        }
+      }
+    ]
+  }' \
+  --profile conao3.k8s
+```
+
+Note: `Z2FDTNDATAQYW2` is the CloudFront hosted zone ID (constant for all CloudFront distributions).
+
+#### 3. Update CloudFront Distribution
+
+Add the ACM certificate and alternate domain names to CloudFront:
+
+**Manual Steps (AWS Console):**
+1. Go to CloudFront console
+2. Select your distribution
+3. Click "Edit"
+4. Add alternate domain names: `app1.example.com`, `app2.example.com`, `app3.example.com`
+5. Select the ACM certificate created in step 1
+6. Save changes
+
+**Automated (Update cloudfront.clj):**
+
+Add the following to `src/conao3/aws_infra_k8s/cloudfront.clj`:
+
+```clojure
+:ViewerCertificate
+{:AcmCertificateArn "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERT_ID"
+ :SslSupportMethod "sni-only"
+ :MinimumProtocolVersion "TLSv1.2_2021"}
+:Aliases ["app1.example.com" "app2.example.com" "app3.example.com"]
+```
+
+Then redeploy:
+```bash
+AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy cloudfront
+```
+
+#### 4. Deploy Applications
+
+Deploy Traefik and applications:
+
+```bash
+AWS_PROFILE=conao3.k8s bin/k8s/deploy
+```
+
+#### 5. Add New Applications
+
+To add a new application with a subdomain:
+
+1. Create application manifests in `k8s/my-app/`:
+   - `deployment.yaml` - Application deployment
+   - `service.yaml` - ClusterIP service
+   - `ingress.yaml` - Ingress resource with host
+
+Example `ingress.yaml`:
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: my-app
+spec:
+  rules:
+  - host: my-app.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: my-app
+            port:
+              number: 80
+```
+
+2. Add Route53 A record for the new subdomain (see step 2)
+3. Add subdomain to CloudFront Aliases (see step 3)
+4. Deploy: `AWS_PROFILE=conao3.k8s bin/k8s/deploy`
+
 ### Directory Structure
 
 ```
 k8s/
-├── nginx/
+├── traefik/
+│   ├── namespace.yaml
+│   ├── rbac.yaml
 │   ├── deployment.yaml
 │   └── service.yaml
+├── nginx/
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── ingress.yaml
+├── app2/
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── ingress.yaml
+├── app3/
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   └── ingress.yaml
 ├── kubernetes-dashboard/
 │   ├── kustomization.yaml
 │   ├── admin-user.yaml
@@ -342,10 +519,23 @@ bin/k8s/local deploy
 bin/k8s/local token
 
 # Access points
-# nginx: http://localhost:30924
+# Traefik Dashboard: http://localhost:30081
 # Dashboard: https://localhost:31353
 # Prometheus: http://localhost:30900
 # Grafana: http://localhost:30300 (admin/admin)
+
+# Test subdomain routing (add to /etc/hosts)
+echo "127.0.0.1 app1.example.local app2.example.local app3.example.local" | sudo tee -a /etc/hosts
+
+# Access apps via Traefik
+# app1: http://app1.example.local:30080
+# app2: http://app2.example.local:30080
+# app3: http://app3.example.local:30080
+
+# Or use curl with Host header
+curl -H "Host: app1.example.local" http://localhost:30080
+curl -H "Host: app2.example.local" http://localhost:30080
+curl -H "Host: app3.example.local" http://localhost:30080
 
 # Delete cluster
 bin/k8s/local down
@@ -580,7 +770,10 @@ AWS_PROFILE=conao3.k8s bin/k8s/deploy
 ```
 
 This deploys:
-- nginx (NodePort 30924)
+- Traefik (Ingress Controller, NodePort 30080)
+- nginx (via Ingress, host: app1.example.com)
+- app2 (via Ingress, host: app2.example.com)
+- app3 (via Ingress, host: app3.example.com)
 - Kubernetes Dashboard (NodePort 31353)
 - Node Exporter (DaemonSet, monitors host metrics)
 - kube-state-metrics (exposes Kubernetes object metrics)
@@ -636,9 +829,13 @@ kubectl get pods -A
 
 ### Access via CloudFront
 
-Applications are accessible via:
-- nginx: https://xxx.cloudfront.net/
-- Kubernetes Dashboard: Configure ALB listener rules to route `/dashboard` path
+After completing the Multi-Subdomain Setup (see above), applications are accessible via:
+- app1 (nginx): https://app1.example.com/
+- app2: https://app2.example.com/
+- app3: https://app3.example.com/
+
+Without subdomain setup, all apps are accessible via the CloudFront distribution domain:
+- https://xxx.cloudfront.net/ (routes to default backend based on Host header)
 
 ## SSH Access
 

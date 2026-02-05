@@ -53,7 +53,10 @@ ssh -i "${KEY_FILE}" \
   -o UserKnownHostsFile=/dev/null \
   -o LogLevel=ERROR \
   "root@${PRIVATE_IP}" \
-  "kubectl apply -f /tmp/k8s-manifests/nginx/ && \
+  "kubectl apply -f /tmp/k8s-manifests/traefik/ && \
+   kubectl apply -f /tmp/k8s-manifests/app1/ && \
+   kubectl apply -f /tmp/k8s-manifests/app2/ && \
+   kubectl apply -f /tmp/k8s-manifests/app3/ && \
    kubectl apply -k /tmp/k8s-manifests/kubernetes-dashboard/ && \
    kubectl apply -f /tmp/k8s-manifests/node-exporter/ && \
    kubectl apply -f /tmp/k8s-manifests/kube-state-metrics/ && \
