@@ -28,8 +28,7 @@
                    "chatbot" (c.chatbot/deploy param)
                    "all" (do
                            (run ["deploy" "sns"] param)
-                           (run ["deploy" "budget"] param)
-                           (run ["deploy" "chatbot"] param)))))))
+                           (run ["deploy" "budget"] param)))))))
 
 (defn -main [& args]
   (let [env "dev"
