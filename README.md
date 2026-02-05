@@ -117,6 +117,7 @@ AWS_PROFILE=conao3.k8s bin/ssh/node prometheus
 - [007-ingress-subdomain.md](docs/007-ingress-subdomain.md) - Multi-subdomain setup
 - [008-monitoring.md](docs/008-monitoring.md) - Prometheus and Grafana
 - [009-ssh-access.md](docs/009-ssh-access.md) - SSH access via EICE
+- [010-kustomization.md](docs/010-kustomization.md) - Kustomization-based deployment
 
 ## Deployed Applications
 
