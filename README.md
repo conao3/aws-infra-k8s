@@ -4,9 +4,18 @@ AWS infrastructure management for Kubernetes using Clojure and CloudFormation.
 
 ## Overview
 
-This project provides a modular approach to deploying AWS infrastructure components. Each module handles a specific aspect of the infrastructure and can be deployed independently or all at once.
+This project provides a modular, cost-optimized approach to deploying Kubernetes infrastructure on AWS. Built on k3s with NixOS, it delivers a secure, production-ready platform with CloudFront CDN, WAF protection, and integrated monitoring.
 
-## Architecture
+### Key Features
+
+- **Cost-Optimized**: ~$31/month for a complete k8s cluster with monitoring
+- **Secure by Default**: CloudFront WAF, DDoS protection, private subnets, EICE
+- **Production-Ready**: Multi-app hosting with subdomain routing via Traefik
+- **Fully Declarative**: Infrastructure as Code with Clojure + CloudFormation, NixOS for system config
+- **Complete Monitoring**: Prometheus, Grafana, Node Exporter, kube-state-metrics
+- **Easy to Use**: Simple CLI commands for deployment and management
+
+### Architecture
 
 ```
 Internet
@@ -14,499 +23,119 @@ Internet
 CloudFront (CDN + WAF Free Plan)
   ↓ HTTP (CloudFront Prefix List only)
 Application Load Balancer
-  ↓ NodePort 30000-32767
-EC2 (k3s cluster on NixOS)
+  ↓ NodePort 30080
+Traefik Ingress Controller
+  ↓ Host-based Routing
+Kubernetes Services (app1, app2, app3, ...)
   ↓
-Kubernetes Pods
+k3s Cluster on NixOS (EC2)
 ```
 
-**Security Features:**
+**Security Features**:
 - CloudFront WAF with 3 rules (Rate Limit, Geo Block, SQLi Protection)
 - ALB accessible only from CloudFront (Managed Prefix List)
+- No public IPs on EC2 instances (access via EICE)
 - DDoS protection enabled by default
 - HTTPS enforced at CloudFront edge
 
-All AWS operations use the `AWS_PROFILE` environment variable to specify credentials. Set it before running any commands:
+**Cost Breakdown** (~$31/month):
+- EC2 t4g.small: ~$12
+- ALB: ~$18
+- EBS 10GB: ~$1
+- CloudFront & WAF: $0 (Free Plan)
+- EFS: ~$0.19/GB
+
+## Quick Start
+
+### Prerequisites
+
+1. **AWS Profile**: Set up AWS credentials
+   ```bash
+   export AWS_PROFILE=conao3.k8s
+   ```
+
+2. **Required Tools**: Clojure, AWS CLI, SAM CLI, kubectl
+
+3. **Initial Setup**:
+   ```bash
+   # Create EC2 key pair
+   aws ec2 create-key-pair --key-name dev-k8s-keypair \
+     --query 'KeyMaterial' --output text > ~/.ssh/dev-k8s-keypair.pem
+   chmod 400 ~/.ssh/dev-k8s-keypair.pem
+
+   # Deploy S3 bucket and VM Import role
+   clojure -M -m conao3.aws-infra-k8s deploy s3
+   clojure -M -m conao3.aws-infra-k8s deploy vm-import
+   ```
+
+See [docs/002-prerequisites.md](docs/002-prerequisites.md) for full setup instructions.
+
+### Deploy Infrastructure
 
 ```bash
-export AWS_PROFILE=conao3.k8s
-# or prefix each command:
-AWS_PROFILE=conao3.k8s <command>
-```
-
-## Pre-requires
-
-### Add keypair
-
-```bash
-aws ec2 create-key-pair --key-name dev-k8s-keypair --query 'KeyMaterial' --output text --profile conao3.k8s > ~/.ssh/dev-k8s-keypair.pem
-chmod 400 ~/.ssh/dev-k8s-keypair.pem
-```
-
-### Add S3 bucket and VM Import role
-
-Deploy S3 bucket and VM Import role (required for custom AMI upload):
-```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy s3
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy vm-import
-```
-
-### Add secret for RDS
-
-```
-cat <<EOF > /tmp/dev-k8s-secret.json
-{"rds-postgres-password":"ChangeMe12345"}
-EOF
-
-aws secretsmanager create-secret --name dev-k8s-secret --secret-string file:///tmp/dev-k8s-secret.json --profile conao3.k8s
-rm /tmp/dev-k8s-secret.json
-```
-
-Update secret.
-
-```
-aws secretsmanager get-secret-value --secret-id dev-k8s-secret --query SecretString --output text --profile conao3.k8s | jq . > /tmp/dev-k8s-secret.json
-$EDITOR /tmp/dev-k8s-secret.json
-aws secretsmanager update-secret --secret-id dev-k8s-secret --secret-string file:///tmp/dev-k8s-secret.json --profile conao3.k8s
-rm /tmp/dev-k8s-secret.json
-```
-
-## Deployment
-
-### Deploy All Modules
-
-Deploy all infrastructure components:
-
-```bash
+# Deploy all infrastructure (VPC, ALB, k3s cluster, CloudFront, etc.)
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy all
 ```
 
-This deploys:
-- **ap-northeast-1**: Network, ALB, Cluster (k3s), etc.
-- **us-east-1**: CloudFront + WAF (automatically deployed to us-east-1)
-
-Note: Root account resources (Budget, SNS, Chatbot) are managed separately via `aws-infra-root` module.
-
-**CloudFront Free Plan Limits:**
-- 1M requests/month
-- 100GB data transfer/month
-- 5 WAF rules max (currently using 3)
-- No overage charges (performance throttling instead)
-
-### Deploy Individual Module
-
-Available modules:
-
-**Infrastructure (ap-northeast-1):**
-- `s3` (S3 bucket for VM Import)
-- `vm-import` (VM Import IAM role for custom AMI upload)
-- `network`
-- `routing`
-- `security-group`
-- `cluster` (k3s on NixOS)
-- `alb` (Application Load Balancer)
-- `eice` (EC2 Instance Connect Endpoint)
-- `github-oidc` (GitHub Actions OIDC provider and IAM role)
-- `rds`
-- `cognito`
-- `efs` (EFS One Zone for cost-effective persistent storage)
-- `ssh-tunnel` (not included in `deploy all`)
-- `ami-builder` (not included in `deploy all`)
-
-**Global Resources (us-east-1):**
-- `cloudfront` (CloudFront + WAF, automatically deployed to us-east-1)
+### Deploy Applications
 
 ```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy <module-name>
-```
-
-For example, to deploy only the routing module:
-
-```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy routing
-```
-
-## Root Account Resources
-
-Root account resources (Budget, Cost Anomaly Detection, SNS, Chatbot) are managed separately using the `aws-infra-root` module.
-
-### Deploy All Root Resources
-
-```bash
-clojure -M -m conao3.aws-infra-root deploy all
-```
-
-This deploys:
-- **ap-northeast-1**: SNS Topic for cost alerts, IAM Role for Chatbot
-- **us-east-1**: AWS Budget, Cost Anomaly Monitor/Subscription, Chatbot Slack Configuration
-
-### Deploy Individual Root Module
-
-Available root modules:
-- `sns` (SNS Topic and IAM Role in ap-northeast-1)
-- `budget` (AWS Budget and Cost Anomaly Detection in us-east-1)
-- `chatbot` (Chatbot Slack Configuration in us-east-1)
-
-```bash
-clojure -M -m conao3.aws-infra-root deploy <module-name>
-```
-
-For example:
-```bash
-clojure -M -m conao3.aws-infra-root deploy sns
-clojure -M -m conao3.aws-infra-root deploy budget
-clojure -M -m conao3.aws-infra-root deploy chatbot --slack-workspace-id T123456 --slack-channel-id C123456
-```
-
-All root modules automatically use the `conao3.root` AWS profile.
-
-## Custom NixOS AMI
-
-### NixOS Configuration Structure
-
-```
-nixos/
-├── nixos-configuration.nix  # Common configuration
-└── hosts/
-    ├── ec2-image.nix        # EC2-specific configuration (aarch64)
-    └── vm.nix               # VM-specific configuration (x86_64)
-```
-
-### Build and Deploy Custom AMI
-
-You can build and deploy a custom NixOS AMI (aarch64) using the configuration in `nixos/hosts/ec2-image.nix`.
-
-#### Local Build (requires Nix with aarch64 support)
-
-```bash
-AWS_PROFILE=conao3.k8s bin/image build    # Build the custom image
-AWS_PROFILE=conao3.k8s bin/image upload   # Upload to S3, import snapshot, and register as AMI
-AWS_PROFILE=conao3.k8s bin/image deploy   # Deploy cluster with custom AMI
-```
-
-The `upload` command:
-- Saves the AMI ID to SSM Parameter Store (`/dev-k8s/custom-ami-id`)
-- Creates a local file `target/ami-id.txt` with the AMI ID
-
-#### GitHub Actions Build (Recommended)
-
-Use the **Build NixOS AMI** workflow in the GitHub Actions tab to build the AMI on ARM64 runners. The workflow automatically:
-1. Builds the NixOS image natively on aarch64
-2. Uploads to S3 and imports as a snapshot
-3. Registers the AMI
-4. Saves the AMI ID to SSM Parameter Store
-
-The cluster deployment automatically uses the AMI ID from SSM Parameter Store (`/dev-k8s/custom-ami-id`).
-
-```sh
-gh workflow run build-ami.yml
-sleep 5
-gh run watch $(gh run list --workflow=build-ami.yml --limit=1 --json databaseId --jq '.[0].databaseId')
-AWS_PROFILE=conao3.k8s ./bin/image deploy
-```
-
-### Test Custom Image with VM
-
-You can test your custom NixOS configuration locally using QEMU before deploying to AWS.
-
-```bash
-nix run .#vm
-```
-
-Or with custom resources:
-```bash
-QEMU_OPTS="-m 8192 -smp 8" nix run .#vm
-```
-
-Default configuration: 4GB RAM, 4 CPU cores
-
-To exit, press `Ctrl-A` then `X`.
-
-### Search Official NixOS AMI
-
-Ref: https://nixos.org/download/#nixos-amazon
-
-```bash
-aws ec2 describe-images --owners 427812963091 --filter 'Name=name,Values=nixos/25.05*' 'Name=architecture,Values=arm64' --query 'sort_by(Images, &CreationDate)[-1].[ImageId,Name]' --output text --profile conao3.k8s
-```
-
-Default AMI: `ami-00ce0dbbbd1a71d5b` (nixos/25.05.813814.ac62194c3917-aarch64-linux)
-
-## Persistent Storage with EFS
-
-This project uses AWS Elastic File System (EFS) One Zone with the AWS EFS CSI Driver for persistent storage in Kubernetes.
-
-### Features
-
-- **EFS One Zone**: Cost-effective single-AZ storage (~$0.19/GB/month, about 47% cheaper than Standard)
-- **ReadWriteMany**: Multiple pods can read and write to the same volume simultaneously
-- **Automatic Provisioning**: StorageClass automatically creates EFS Access Points
-- **Single-AZ Deployment**: EFS in ap-northeast-1a (same AZ as cluster)
-- **Encrypted**: EFS file system is encrypted at rest
-- **Bursting Performance**: Throughput scales with file system size
-
-### Architecture
-
-```
-Kubernetes Pod
-  ↓ (mount)
-EFS CSI Driver (DaemonSet on each node)
-  ↓ (NFS mount)
-EFS Mount Target (ap-northeast-1a)
-  ↓
-EFS One Zone File System (ap-northeast-1a)
-```
-
-### Cost Comparison
-
-**EFS Pricing in ap-northeast-1:**
-- EFS Standard: ~$0.36/GB/month (multi-AZ replication)
-- EFS One Zone: ~$0.19/GB/month (single-AZ, 47% cheaper)
-
-For a single-node cluster in one AZ, EFS One Zone provides significant cost savings without sacrificing functionality.
-
-### Usage
-
-**Using EFS in your application:**
-
-```yaml
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: my-app-storage
-spec:
-  accessModes:
-  - ReadWriteMany
-  storageClassName: efs-sc
-  resources:
-    requests:
-      storage: 10Gi
-```
-
-The EFS CSI Driver automatically creates an EFS Access Point for each PVC.
-
-## Kubernetes Applications
-
-### Ingress Controller (Traefik)
-
-This project uses **Traefik** as an Ingress Controller to route traffic to multiple applications based on subdomain.
-
-**Architecture:**
-```
-Internet → CloudFront → ALB → Traefik (NodePort 30080) → Ingress Rules → Services → Pods
-```
-
-**Routing Example:**
-- `app1.example.com` → nginx service
-- `app2.example.com` → app2 service
-- `app3.example.com` → app3 service
-
-Traefik automatically discovers Ingress resources and configures routing based on the `host` field.
-
-### Multi-Subdomain Setup
-
-To set up multiple applications with subdomain routing, follow these steps:
-
-#### 1. Create ACM Certificate
-
-Create a wildcard certificate in **us-east-1** (required for CloudFront):
-
-```bash
-aws acm request-certificate \
-  --domain-name "*.example.com" \
-  --validation-method DNS \
-  --region us-east-1 \
-  --profile conao3.k8s
-```
-
-Add the DNS validation record to Route53 and wait for validation to complete.
-
-#### 2. Configure Route53
-
-Create A records for each subdomain pointing to CloudFront:
-
-```bash
-DISTRIBUTION_DOMAIN=$(aws cloudformation describe-stacks \
-  --stack-name dev-k8s-cloudfront \
-  --region us-east-1 \
-  --query 'Stacks[0].Outputs[?OutputKey==`DistributionDomainName`].OutputValue' \
-  --output text \
-  --profile conao3.k8s)
-
-aws route53 change-resource-record-sets \
-  --hosted-zone-id ZXXXXXXXXXXXXX \
-  --change-batch '{
-    "Changes": [
-      {
-        "Action": "CREATE",
-        "ResourceRecordSet": {
-          "Name": "app1.example.com",
-          "Type": "A",
-          "AliasTarget": {
-            "HostedZoneId": "Z2FDTNDATAQYW2",
-            "DNSName": "'${DISTRIBUTION_DOMAIN}'",
-            "EvaluateTargetHealth": false
-          }
-        }
-      },
-      {
-        "Action": "CREATE",
-        "ResourceRecordSet": {
-          "Name": "app2.example.com",
-          "Type": "A",
-          "AliasTarget": {
-            "HostedZoneId": "Z2FDTNDATAQYW2",
-            "DNSName": "'${DISTRIBUTION_DOMAIN}'",
-            "EvaluateTargetHealth": false
-          }
-        }
-      },
-      {
-        "Action": "CREATE",
-        "ResourceRecordSet": {
-          "Name": "app3.example.com",
-          "Type": "A",
-          "AliasTarget": {
-            "HostedZoneId": "Z2FDTNDATAQYW2",
-            "DNSName": "'${DISTRIBUTION_DOMAIN}'",
-            "EvaluateTargetHealth": false
-          }
-        }
-      }
-    ]
-  }' \
-  --profile conao3.k8s
-```
-
-Note: `Z2FDTNDATAQYW2` is the CloudFront hosted zone ID (constant for all CloudFront distributions).
-
-#### 3. Update CloudFront Distribution
-
-Add the ACM certificate and alternate domain names to CloudFront:
-
-**Manual Steps (AWS Console):**
-1. Go to CloudFront console
-2. Select your distribution
-3. Click "Edit"
-4. Add alternate domain names: `app1.example.com`, `app2.example.com`, `app3.example.com`
-5. Select the ACM certificate created in step 1
-6. Save changes
-
-**Automated (Update cloudfront.clj):**
-
-Add the following to `src/conao3/aws_infra_k8s/cloudfront.clj`:
-
-```clojure
-:ViewerCertificate
-{:AcmCertificateArn "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERT_ID"
- :SslSupportMethod "sni-only"
- :MinimumProtocolVersion "TLSv1.2_2021"}
-:Aliases ["app1.example.com" "app2.example.com" "app3.example.com"]
-```
-
-Then redeploy:
-```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy cloudfront
-```
-
-#### 4. Deploy Applications
-
-Deploy Traefik and applications:
-
-```bash
+# Deploy Kubernetes applications (Traefik, apps, monitoring)
 AWS_PROFILE=conao3.k8s bin/k8s/deploy
 ```
 
-#### 5. Add New Applications
+### Access Your Cluster
 
-To add a new application with a subdomain:
+```bash
+# Get CloudFront URL
+AWS_PROFILE=conao3.k8s aws cloudformation describe-stacks \
+  --stack-name dev-k8s-cloudfront --region us-east-1 \
+  --query 'Stacks[0].Outputs[?OutputKey==`DistributionDomainName`].OutputValue' \
+  --output text
 
-1. Create application manifests in `k8s/my-app/`:
-   - `deployment.yaml` - Application deployment
-   - `service.yaml` - ClusterIP service
-   - `ingress.yaml` - Ingress resource with host
+# Access applications: https://xxx.cloudfront.net/
 
-Example `ingress.yaml`:
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: my-app
-spec:
-  rules:
-  - host: my-app.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: my-app
-            port:
-              number: 80
+# Port forward Grafana
+AWS_PROFILE=conao3.k8s bin/ssh/node grafana
+# Open: http://localhost:30300 (admin/admin)
+
+# Port forward Prometheus
+AWS_PROFILE=conao3.k8s bin/ssh/node prometheus
+# Open: http://localhost:30900
 ```
 
-2. Add Route53 A record for the new subdomain (see step 2)
-3. Add subdomain to CloudFront Aliases (see step 3)
-4. Deploy: `AWS_PROFILE=conao3.k8s bin/k8s/deploy`
+## Documentation
 
-### Directory Structure
+### Getting Started
 
-```
-k8s/
-├── traefik/
-│   ├── namespace.yaml
-│   ├── rbac.yaml
-│   ├── deployment.yaml
-│   └── service.yaml
-├── nginx/
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   └── ingress.yaml
-├── app2/
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   └── ingress.yaml
-├── app3/
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   └── ingress.yaml
-├── kubernetes-dashboard/
-│   ├── kustomization.yaml
-│   ├── admin-user.yaml
-│   └── service-patch.yaml
-├── node-exporter/
-│   ├── daemonset.yaml
-│   └── service.yaml
-├── kube-state-metrics/
-│   ├── service-account.yaml
-│   ├── cluster-role.yaml
-│   ├── cluster-role-binding.yaml
-│   ├── deployment.yaml
-│   └── service.yaml
-├── prometheus/
-│   ├── configmap.yaml
-│   ├── rbac.yaml
-│   ├── deployment.yaml
-│   └── service.yaml
-├── grafana/
-│   ├── pvc.yaml
-│   ├── pvc-efs.yaml
-│   ├── datasource-configmap.yaml
-│   ├── deployment.yaml
-│   └── service.yaml
-└── aws-efs-csi-driver/
-    ├── service-account.yaml
-    ├── rbac.yaml
-    ├── csidriver.yaml
-    ├── controller.yaml
-    ├── node.yaml
-    └── storageclass.yaml
-```
+- [001-architecture.md](docs/001-architecture.md) - System architecture and design
+- [002-prerequisites.md](docs/002-prerequisites.md) - Required tools and initial setup
+- [003-deployment.md](docs/003-deployment.md) - Deployment procedures
 
-### Local Development (kind)
+### Advanced Topics
 
-Test Kubernetes manifests locally using kind:
+- [004-nixos-ami.md](docs/004-nixos-ami.md) - Custom NixOS AMI building
+- [005-persistent-storage.md](docs/005-persistent-storage.md) - EFS persistent storage
+- [006-kubernetes-apps.md](docs/006-kubernetes-apps.md) - Kubernetes applications
+- [007-ingress-subdomain.md](docs/007-ingress-subdomain.md) - Multi-subdomain setup
+- [008-monitoring.md](docs/008-monitoring.md) - Prometheus and Grafana
+- [009-ssh-access.md](docs/009-ssh-access.md) - SSH access via EICE
+
+## Deployed Applications
+
+| Application | Purpose | Access |
+|-------------|---------|--------|
+| **app1, app2, app3** | Sample static HTML apps | Via CloudFront (subdomain routing) |
+| **Traefik** | Ingress Controller | Dashboard: NodePort 30081 |
+| **Prometheus** | Metrics collection | NodePort 30900 |
+| **Grafana** | Metrics visualization | NodePort 30300 (admin/admin) |
+| **Kubernetes Dashboard** | Cluster management UI | NodePort 31353 (HTTPS) |
+| **Node Exporter** | Host metrics | Internal (scraped by Prometheus) |
+| **kube-state-metrics** | K8s object metrics | Internal (scraped by Prometheus) |
+
+## Local Development
+
+Test Kubernetes manifests locally with kind:
 
 ```bash
 # Create local cluster
@@ -515,363 +144,178 @@ bin/k8s/local up
 # Deploy applications
 bin/k8s/local deploy
 
-# Get Dashboard token
-bin/k8s/local token
+# Access applications
+# - Traefik Dashboard: http://localhost:30081
+# - Prometheus: http://localhost:30900
+# - Grafana: http://localhost:30300
+# - Dashboard: https://localhost:31353
 
-# Access points
-# Traefik Dashboard: http://localhost:30081
-# Dashboard: https://localhost:31353
-# Prometheus: http://localhost:30900
-# Grafana: http://localhost:30300 (admin/admin)
-
-# Test subdomain routing (add to /etc/hosts)
+# Test subdomain routing
 echo "127.0.0.1 app1.example.local app2.example.local app3.example.local" | sudo tee -a /etc/hosts
-
-# Access apps via Traefik
-# app1: http://app1.example.local:30080
-# app2: http://app2.example.local:30080
-# app3: http://app3.example.local:30080
-
-# Or use curl with Host header
 curl -H "Host: app1.example.local" http://localhost:30080
-curl -H "Host: app2.example.local" http://localhost:30080
-curl -H "Host: app3.example.local" http://localhost:30080
 
 # Delete cluster
 bin/k8s/local down
 ```
 
-### Monitoring Stack
+## Available Modules
 
-The monitoring stack consists of:
+### Infrastructure Modules (ap-northeast-1)
 
-**Node Exporter (DaemonSet)**
-- Runs on every node in the cluster
-- Collects host machine metrics:
-  - CPU usage and load
-  - Memory and swap usage
-  - Disk I/O and space
-  - Network traffic
-  - Filesystem statistics
-- Exposes metrics on port 9100
-- Uses `hostNetwork: true` and `hostPID: true` for accurate host metrics
-- Mounts `/proc`, `/sys`, and `/` from the host
+| Module | Description |
+|--------|-------------|
+| `network` | VPC, Subnets, IGW, NAT Gateway |
+| `routing` | Route Tables |
+| `security-group` | Security Groups |
+| `cluster` | k3s cluster on NixOS |
+| `alb` | Application Load Balancer |
+| `eice` | EC2 Instance Connect Endpoint |
+| `efs` | EFS One Zone for persistent storage |
+| `rds` | RDS PostgreSQL (optional) |
+| `cognito` | Cognito User Pool (optional) |
+| `github-oidc` | GitHub Actions OIDC (optional) |
 
-**kube-state-metrics**
-- Exposes Kubernetes object state metrics
-- Provides information about:
-  - Deployments (replicas, conditions, status)
-  - Pods (phase, conditions, restarts, resource requests/limits)
-  - Nodes (capacity, allocatable, conditions)
-  - Services, ConfigMaps, Secrets
-  - Jobs, CronJobs, DaemonSets, StatefulSets
-- Runs in kube-system namespace
-- Exposes metrics on port 8080
+### Global Modules (us-east-1)
 
-**Prometheus**
-- Scrapes metrics from:
-  - Kubernetes API server
-  - Kubernetes nodes
-  - Node Exporter pods (host metrics)
-  - kube-state-metrics (Kubernetes object metrics)
-  - Pods with `prometheus.io/scrape: "true"` annotation
-- Stores time-series data locally
-- Query metrics at: http://localhost:30900 (local) or via CloudFront
+| Module | Description |
+|--------|-------------|
+| `cloudfront` | CloudFront Distribution + WAF |
 
-**Grafana**
-- Visualizes Prometheus metrics
-- Default credentials: admin/admin
-- Access at: http://localhost:30300 (local) or via CloudFront
-- Data persistence:
-  - Local (kind): PersistentVolumeClaim with local-path-provisioner (1Gi)
-  - AWS (k3s): PersistentVolumeClaim with EFS CSI Driver (5Gi, ReadWriteMany)
-- Auto-configured: Prometheus data source at http://prometheus:9090
-- All dashboards, settings, and users are persisted across Pod restarts
-
-To view host metrics in Prometheus:
-1. Open http://localhost:30900
-2. Query examples:
-   - `node_cpu_seconds_total` - CPU usage
-   - `node_memory_MemAvailable_bytes` - Available memory
-   - `node_disk_io_time_seconds_total` - Disk I/O
-   - `node_network_receive_bytes_total` - Network received
-
-### Using Grafana
-
-#### 1. Access Grafana
-- Local: http://localhost:30300
-- Login: admin/admin (change password on first login)
-
-**Data Persistence:**
-- Grafana settings are stored in PersistentVolumeClaim
-- Dashboards, data sources, user settings, alerts are all persisted
-- Settings are retained after Pod restart/deletion
-- Local (kind): 1Gi, uses local-path-provisioner
-- AWS (k3s): 5Gi, uses AWS EFS with CSI Driver (ReadWriteMany)
-
-#### 2. Prometheus Data Source (Auto-configured)
-
-The Prometheus data source is automatically configured. No manual setup required.
-
-To verify:
-1. Open "Connections" → "Data sources"
-2. Confirm "Prometheus" is already configured
-
-#### 3. Create Dashboard for Host Metrics
-
-**Option A: Import Pre-built Dashboard**
-
-1. Click "Dashboards" → "Import" in the left menu
-2. Enter dashboard ID: `1860` (Node Exporter Full)
-3. Click "Load"
-4. Select Prometheus data source
-5. Click "Import"
-
-This dashboard includes:
-- CPU usage (per core and total)
-- Memory usage and available
-- Disk I/O and space
-- Network traffic
-- System load
-- Filesystem statistics
-
-**Option B: Create Custom Dashboard**
-
-1. Click "Dashboards" → "New" → "New Dashboard"
-2. Click "Add visualization"
-3. Select Prometheus data source
-4. Add queries:
-
-**CPU Usage:**
-```promql
-100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
-```
-
-**Memory Usage:**
-```promql
-100 - ((node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)
-```
-
-**Disk Usage:**
-```promql
-100 - ((node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100)
-```
-
-**Network Traffic (Received):**
-```promql
-rate(node_network_receive_bytes_total{device!~"lo|veth.*"}[5m])
-```
-
-**Network Traffic (Transmitted):**
-```promql
-rate(node_network_transmit_bytes_total{device!~"lo|veth.*"}[5m])
-```
-
-5. Customize visualization type (Graph, Gauge, Stat, etc.)
-6. Click "Save dashboard"
-
-#### 4. Create Dashboard for Kubernetes Deployments
-
-**Option A: Import Pre-built Dashboard**
-
-1. Click "Dashboards" → "Import" in the left menu
-2. Enter dashboard ID: `15661` (Kubernetes Deployments)
-3. Select Prometheus data source
-4. Click "Import"
-
-**Option B: Create Custom Dashboard**
-
-1. Click "Dashboards" → "New" → "New Dashboard"
-2. Add these visualizations:
-
-**Deployment Replicas (Available vs Desired):**
-```promql
-kube_deployment_status_replicas_available
-```
-```promql
-kube_deployment_spec_replicas
-```
-
-**Pod Status by Deployment:**
-```promql
-sum(kube_pod_status_phase{phase="Running"}) by (namespace)
-```
-
-**Pod Restart Count:**
-```promql
-sum(kube_pod_container_status_restarts_total) by (namespace, pod)
-```
-
-**Pods by Phase:**
-```promql
-count(kube_pod_status_phase) by (phase)
-```
-
-**Deployment Conditions:**
-```promql
-kube_deployment_status_condition{condition="Available"}
-```
-
-**Container Resource Requests (CPU):**
-```promql
-sum(kube_pod_container_resource_requests{resource="cpu"}) by (namespace, pod)
-```
-
-**Container Resource Limits (Memory):**
-```promql
-sum(kube_pod_container_resource_limits{resource="memory"}) by (namespace, pod)
-```
-
-**Failed Pods:**
-```promql
-count(kube_pod_status_phase{phase="Failed"})
-```
-
-#### 5. Recommended Dashboards
-
-**Essential (Import these first):**
-- **1860**: Node Exporter Full (host metrics)
-- **15172**: Kubernetes Cluster Monitoring (deployments, pods)
-
-**Optional (for detailed metrics):**
-- **13332**: Kube State Metrics v2
-- **315**: Kubernetes Cluster Monitoring
-- **6417**: Kubernetes Cluster (Prometheus)
-- **15661**: Kubernetes Deployments
-- **8588**: Kubernetes Deployment Statefulset Daemonset metrics
-
-**Troubleshooting Gateway Timeout:**
-
-If importing by dashboard ID fails with "gateway timeout", use pre-downloaded JSON files:
-
-1. Navigate to `grafana-dashboards/` directory
-2. In Grafana, click "Dashboards" → "Import"
-3. Click "Upload JSON file"
-4. Select the JSON file (e.g., `1860-node-exporter-full.json`)
-5. Choose Prometheus data source
-6. Click "Import"
-
-See `grafana-dashboards/README.md` for detailed instructions.
-
-#### 6. Tips
-
-- Use **time range selector** (top right) to change time window
-- Use **refresh interval** dropdown to auto-refresh
-- Use **variables** to filter by node, pod, namespace
-- Click on graph legends to show/hide series
-- Use **Explore** view to test PromQL queries before adding to dashboard
-
-### Deploy to AWS
-
-Deploy all Kubernetes applications to AWS:
+### Deploy Single Module
 
 ```bash
+AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy <module-name>
+```
+
+## Common Tasks
+
+### Update Applications
+
+```bash
+# Edit manifests in k8s/<app-name>/
+# Then redeploy
 AWS_PROFILE=conao3.k8s bin/k8s/deploy
 ```
 
-This deploys:
-- Traefik (Ingress Controller, NodePort 30080)
-- nginx (via Ingress, host: app1.example.com)
-- app2 (via Ingress, host: app2.example.com)
-- app3 (via Ingress, host: app3.example.com)
-- Kubernetes Dashboard (NodePort 31353)
-- Node Exporter (DaemonSet, monitors host metrics)
-- kube-state-metrics (exposes Kubernetes object metrics)
-- Prometheus (NodePort 30900, collects metrics)
-- AWS EFS CSI Driver (persistent storage with EFS)
-- Grafana (NodePort 30300, visualizes metrics, data stored in EFS)
+### Add New Application
 
-### Access Applications on AWS
+1. Create `k8s/my-app/` with deployment.yaml, service.yaml, ingress.yaml
+2. Deploy: `AWS_PROFILE=conao3.k8s bin/k8s/deploy`
 
-#### Grafana
+See [007-ingress-subdomain.md](docs/007-ingress-subdomain.md#add-new-application) for details.
+
+### View Logs
+
 ```bash
-# Port forward Grafana (runs in foreground)
-AWS_PROFILE=conao3.k8s bin/ssh/node grafana
-
-# Access: http://localhost:30300
-# Login: admin/admin
+AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl logs <pod-name> --tail=50'
 ```
 
-#### Prometheus
-```bash
-# Port forward Prometheus (runs in foreground)
-AWS_PROFILE=conao3.k8s bin/ssh/node prometheus
+### Check Resources
 
-# Access: http://localhost:30900
+```bash
+AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get pods -A'
+AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl top nodes'
 ```
 
-#### Kubernetes Dashboard
-1. Get the admin token:
+### Build Custom AMI
+
 ```bash
-AWS_PROFILE=conao3.k8s bin/k8s/get-dashboard-token
+# Using GitHub Actions (recommended)
+gh workflow run build-ami.yml
+gh run watch $(gh run list --workflow=build-ami.yml --limit=1 --json databaseId --jq '.[0].databaseId')
+AWS_PROFILE=conao3.k8s ./bin/image deploy
 ```
 
-2. Port forward Dashboard:
+See [004-nixos-ami.md](docs/004-nixos-ami.md) for details.
+
+## Troubleshooting
+
+### Application Not Accessible
+
+1. Check ALB target health:
+   ```bash
+   AWS_PROFILE=conao3.k8s aws elbv2 describe-target-health \
+     --target-group-arn $(aws cloudformation list-exports \
+       --query "Exports[?Name=='dev-k8s-TargetGroup'].Value" --output text)
+   ```
+
+2. Check Traefik logs:
+   ```bash
+   AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl logs -n traefik -l app=traefik --tail=50'
+   ```
+
+3. Check pod status:
+   ```bash
+   AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get pods -A'
+   ```
+
+### Infrastructure Issues
+
+Check CloudFormation stack events:
+
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node dashboard
+AWS_PROFILE=conao3.k8s aws cloudformation describe-stack-events \
+  --stack-name dev-k8s-<module-name> --max-items 10
 ```
 
-3. Access: https://localhost:31353
+## Technologies Used
 
-4. Login with the token from step 1
+- **Infrastructure**: AWS (EC2, VPC, ALB, CloudFront, EFS, WAF)
+- **Kubernetes**: k3s (lightweight Kubernetes)
+- **OS**: NixOS (declarative system configuration)
+- **Ingress**: Traefik (v2.11)
+- **Monitoring**: Prometheus, Grafana, Node Exporter, kube-state-metrics
+- **IaC**: Clojure + CloudFormation
+- **CI/CD**: GitHub Actions
 
-#### kubectl Access to AWS Cluster
-```bash
-# In terminal 1: Port forward Kubernetes API
-AWS_PROFILE=conao3.k8s bin/ssh/node k8s
+## Project Structure
 
-# In terminal 2: Get kubeconfig and use kubectl
-bin/ssh/node login 'cat /etc/rancher/k3s/k3s.yaml' > /tmp/k3s.yaml
-sed -i 's|https://127.0.0.1:6443|https://localhost:6443|g' /tmp/k3s.yaml
-export KUBECONFIG=/tmp/k3s.yaml
-kubectl get pods -A
+```
+.
+├── docs/                    # Documentation
+├── k8s/                     # Kubernetes manifests
+│   ├── traefik/            # Ingress Controller
+│   ├── app1/, app2/, app3/ # Sample applications
+│   ├── prometheus/         # Metrics collection
+│   ├── grafana/            # Metrics visualization
+│   └── aws-efs-csi-driver/ # EFS storage driver
+├── nixos/                   # NixOS configuration
+│   ├── nixos-configuration.nix  # Common config
+│   └── hosts/              # Host-specific configs
+├── src/                     # Infrastructure code (Clojure)
+│   └── conao3/aws_infra_k8s/
+│       ├── network.clj     # VPC, subnets
+│       ├── alb.clj         # Load balancer
+│       ├── cluster.clj     # k3s cluster
+│       └── cloudfront.clj  # CDN + WAF
+├── bin/                     # Helper scripts
+│   ├── image               # AMI build/upload
+│   ├── k8s/                # k8s deployment scripts
+│   └── ssh/                # SSH access scripts
+└── README.md                # This file
 ```
 
-### Access via CloudFront
+## Contributing
 
-After completing the Multi-Subdomain Setup (see above), applications are accessible via:
-- app1 (nginx): https://app1.example.com/
-- app2: https://app2.example.com/
-- app3: https://app3.example.com/
-
-Without subdomain setup, all apps are accessible via the CloudFront distribution domain:
-- https://xxx.cloudfront.net/ (routes to default backend based on Host header)
-
-## SSH Access
-
-Connect to instances via EC2 Instance Connect Endpoint (EICE).
-
-### AMI Builder Instance
-```bash
-AWS_PROFILE=conao3.k8s bin/ssh/ami-builder
-```
-
-### Cluster Node Instance
-
-**Available Commands:**
-```bash
-# SSH login (default)
-AWS_PROFILE=conao3.k8s bin/ssh/node
-AWS_PROFILE=conao3.k8s bin/ssh/node login
-
-# Port forward Grafana web console
-AWS_PROFILE=conao3.k8s bin/ssh/node grafana
-
-# Port forward Prometheus web console
-AWS_PROFILE=conao3.k8s bin/ssh/node prometheus
-
-# Port forward Kubernetes Dashboard
-AWS_PROFILE=conao3.k8s bin/ssh/node dashboard
-
-# Port forward Kubernetes API (for kubectl access)
-AWS_PROFILE=conao3.k8s bin/ssh/node k8s
-
-# Show help
-AWS_PROFILE=conao3.k8s bin/ssh/node help
-```
-
-All scripts use EICE to establish secure SSH connections without requiring public IP addresses.
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
 ## License
 
 See LICENSE file for details.
+
+## Support
+
+For issues or questions:
+- Check the [documentation](docs/)
+- Search existing GitHub issues
+- Open a new issue with details
+
+## Acknowledgments
+
+- Built with [k3s](https://k3s.io/)
+- Powered by [NixOS](https://nixos.org/)
+- Infrastructure code in [Clojure](https://clojure.org/)
