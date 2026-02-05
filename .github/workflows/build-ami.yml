@@ -7,6 +7,11 @@ on:
         description: 'Resource prefix'
         required: false
         default: 'dev-k8s'
+      auto_deploy:
+        description: 'Auto deploy cluster after AMI upload'
+        required: false
+        type: boolean
+        default: true
 
 env:
   PREFIX: ${{ github.event.inputs.prefix || 'dev-k8s' }}
@@ -54,10 +59,37 @@ jobs:
           - **Timestamp**: ${TIMESTAMP}
           - **Architecture**: arm64
           - **SSM Parameter**: /${PREFIX}/custom-ami-id
+          EOF
+
+      - if: ${{ github.event.inputs.auto_deploy == 'true' }}
+        run: |
+          set -euxo pipefail -o posix
+
+          nix develop --command bash -c './bin/image deploy'
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+
+          ---
+
+          ## Cluster Deployment Complete
+
+          The cluster has been updated with the new AMI and instance refresh completed successfully.
+
+          - **Auto Scaling Group**: ${PREFIX}-node
+          - **Status**: Instance refresh successful
+          EOF
+
+      - if: ${{ github.event.inputs.auto_deploy != 'true' }}
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+
+          ---
+
+          ## Manual Deployment Required
 
           The AMI has been registered and saved to SSM Parameter Store.
           You can now deploy the cluster with:
           \`\`\`bash
-          bin/image deploy
+          AWS_PROFILE=conao3.k8s bin/image deploy
           \`\`\`
           EOF
