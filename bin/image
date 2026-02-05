@@ -102,7 +102,11 @@ cmd_deploy() {
 
   local asg_name="${PREFIX}-node"
   aws autoscaling start-instance-refresh \
-    --auto-scaling-group-name "${asg_name}"
+    --auto-scaling-group-name "${asg_name}" \
+    --preferences '{
+      "MinHealthyPercentage": 100,
+      "InstanceWarmup": 600
+    }'
 
   while true; do
     local status
