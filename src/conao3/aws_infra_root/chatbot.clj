@@ -29,7 +29,10 @@
      {:SlackChannelConfig {:Ref :SlackChannelConfig}})}))
 
 (defn deploy [param]
-  (let [file (fs/file "target/cfn_root/chatbot.json")
+  (let [param (merge {:slack-workspace-id "T0AA4GU73K6"
+                      :slack-channel-id "C0ACP3E39PD"}
+                     param)
+        file (fs/file "target/cfn_root/chatbot.json")
         stack-name (str (-> param :prefix) "-" "chatbot")
         env (merge (into {} (System/getenv))
                    {"AWS_PROFILE" "conao3.root"})]
@@ -58,8 +61,8 @@
                      "--parameter-overrides"
                      (->> {:Env (-> param :env)
                            :Prefix (-> param :prefix)
-                           :SlackWorkspaceId (get param :slack-workspace-id "")
-                           :SlackChannelId (get param :slack-channel-id "")
+                           :SlackWorkspaceId (-> param :slack-workspace-id)
+                           :SlackChannelId (-> param :slack-channel-id)
                            :SnsTopicArn (get exports (keyword (format "%s-%s" (-> param :prefix) "CostAnomalySnsTopicArn")))
                            :ChatbotRoleArn (get exports (keyword (format "%s-%s" (-> param :prefix) "ChatbotRoleArn")))}
                           (map (fn [[k v]]

@@ -34,9 +34,6 @@
 (defn -main [& args]
   (let [env "dev"
         prefix (format "%s-%s" env "root")
-        param {:env env
-               :prefix prefix
-               :slack-workspace-id "T0AA4GU73K6"
-               :slack-channel-id "C0ACP3E39PD"}]
+        param {:env env :prefix prefix}]
     (run args param)
     (shutdown-agents)))
