@@ -6,14 +6,20 @@ ASG_NAME="${PREFIX}-node"
 KEY_FILE="${HOME}/.ssh/${PREFIX}-keypair.pem"
 
 get_instance_info() {
-  local health_filter="${1:-}"
+  local filter="${1:-}"
   local query
 
-  if [ -n "${health_filter}" ]; then
-    query="AutoScalingGroups[0].Instances[?HealthStatus==\`Healthy\` && LifecycleState==\`InService\`].InstanceId | [0]"
-  else
-    query="AutoScalingGroups[0].Instances[0].InstanceId"
-  fi
+  case "${filter}" in
+    healthy)
+      query="AutoScalingGroups[0].Instances[?HealthStatus==\`Healthy\` && LifecycleState==\`InService\`].InstanceId | [0]"
+      ;;
+    warmup)
+      query="AutoScalingGroups[0].Instances[?LifecycleState==\`InService\` || LifecycleState==\`Pending:Wait\`] | sort_by(@, &LaunchTime) | [-1].InstanceId"
+      ;;
+    *)
+      query="AutoScalingGroups[0].Instances[0].InstanceId"
+      ;;
+  esac
 
   INSTANCE_ID=$(aws autoscaling describe-auto-scaling-groups \
     --auto-scaling-group-names "${ASG_NAME}" \
@@ -31,8 +37,11 @@ get_instance_info() {
     --output text)
 }
 
-cmd_deploy() {
-  get_instance_info "healthy"
+do_deploy() {
+  local instance_filter="${1:-healthy}"
+  get_instance_info "${instance_filter}"
+
+  echo "Deploying to instance: ${INSTANCE_ID} (${PRIVATE_IP})"
 
   MANIFESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/k8s"
 
@@ -75,6 +84,14 @@ cmd_deploy() {
     "root@${PRIVATE_IP}" \
     "sed -i 's/\${EFS_FILE_SYSTEM_ID}/${EFS_FILE_SYSTEM_ID}/g' /tmp/k8s-manifests/aws-efs-csi-driver/storageclass.yaml && \
      kubectl apply -k /tmp/k8s-manifests/"
+}
+
+cmd_deploy() {
+  do_deploy "healthy"
+}
+
+cmd_deploy_warmup() {
+  do_deploy "warmup"
 }
 
 cmd_get_dashboard_token() {
@@ -219,7 +236,8 @@ cmd_help() {
 Usage: bin/k8s <command>
 
 Commands:
-  deploy                Deploy all Kubernetes resources
+  deploy                Deploy all Kubernetes resources to healthy instance
+  deploy-warmup         Deploy all Kubernetes resources to newest instance (during warmup)
   get-dashboard-token   Get Kubernetes Dashboard token
   port-forward          Port-forward all management services (Dashboard, Prometheus, Grafana, Traefik)
   help                  Show this help message
@@ -230,6 +248,7 @@ Environment Variables:
 
 Examples:
   AWS_PROFILE=conao3.k8s bin/k8s deploy
+  AWS_PROFILE=conao3.k8s bin/k8s deploy-warmup
   AWS_PROFILE=conao3.k8s bin/k8s get-dashboard-token
   AWS_PROFILE=conao3.k8s bin/k8s port-forward
 EOF
@@ -238,6 +257,9 @@ EOF
 case "${1:-help}" in
   deploy)
     cmd_deploy
+    ;;
+  deploy-warmup)
+    cmd_deploy_warmup
     ;;
   get-dashboard-token)
     cmd_get_dashboard_token
