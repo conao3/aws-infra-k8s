@@ -5,7 +5,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-  - host: app2.example.com
+  - host: app2.sancode.dev
     http:
       paths:
       - path: /

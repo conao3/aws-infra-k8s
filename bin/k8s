@@ -41,6 +41,8 @@ cmd_deploy() {
     -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null \
     -o LogLevel=ERROR \
+    -o BatchMode=yes \
+    -o PasswordAuthentication=no \
     "root@${PRIVATE_IP}" \
     "mkdir -p /tmp/k8s-manifests"
 
@@ -49,6 +51,8 @@ cmd_deploy() {
     -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null \
     -o LogLevel=ERROR \
+    -o BatchMode=yes \
+    -o PasswordAuthentication=no \
     -r "${MANIFESTS_DIR}"/* \
     "root@${PRIVATE_IP}:/tmp/k8s-manifests/"
 
@@ -66,6 +70,8 @@ cmd_deploy() {
     -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null \
     -o LogLevel=ERROR \
+    -o BatchMode=yes \
+    -o PasswordAuthentication=no \
     "root@${PRIVATE_IP}" \
     "sed -i 's/\${EFS_FILE_SYSTEM_ID}/${EFS_FILE_SYSTEM_ID}/g' /tmp/k8s-manifests/aws-efs-csi-driver/storageclass.yaml && \
      kubectl apply -k /tmp/k8s-manifests/"
@@ -79,6 +85,8 @@ cmd_get_dashboard_token() {
     -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null \
     -o LogLevel=ERROR \
+    -o BatchMode=yes \
+    -o PasswordAuthentication=no \
     "root@${PRIVATE_IP}" \
     "kubectl create token dashboard-admin -n kubernetes-dashboard --duration=87600h"
 }
