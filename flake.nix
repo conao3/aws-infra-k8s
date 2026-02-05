@@ -21,7 +21,6 @@
         nixosConfigurations.ec2-x86_64 = nixpkgs.lib.nixosSystem {
           system = "x86_64-linux";
           modules = [
-            "${inputs.nixpkgs}/nixos/modules/virtualisation/amazon-image.nix"
             {
               nix.registry.nixpkgs.flake = inputs.nixpkgs;
             }
@@ -32,7 +31,6 @@
         nixosConfigurations.ec2-aarch64 = nixpkgs.lib.nixosSystem {
           system = "aarch64-linux";
           modules = [
-            "${inputs.nixpkgs}/nixos/modules/virtualisation/amazon-image.nix"
             {
               nix.registry.nixpkgs.flake = inputs.nixpkgs;
             }
