@@ -37,7 +37,7 @@ get_instance_info() {
     --output text)
 }
 
-do_deploy() {
+do_deploy_remote() {
   local instance_filter="${1:-healthy}"
   get_instance_info "${instance_filter}"
 
@@ -45,25 +45,19 @@ do_deploy() {
 
   MANIFESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/k8s"
 
-  ssh -i "${KEY_FILE}" \
-    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o LogLevel=ERROR \
-    -o BatchMode=yes \
-    -o PasswordAuthentication=no \
-    "root@${PRIVATE_IP}" \
-    "mkdir -p /tmp/k8s-manifests"
+  SSH_OPTS=(
+    -i "${KEY_FILE}"
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22"
+    -o StrictHostKeyChecking=no
+    -o UserKnownHostsFile=/dev/null
+    -o LogLevel=ERROR
+    -o BatchMode=yes
+    -o PasswordAuthentication=no
+  )
 
-  scp -i "${KEY_FILE}" \
-    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o LogLevel=ERROR \
-    -o BatchMode=yes \
-    -o PasswordAuthentication=no \
-    -r "${MANIFESTS_DIR}"/* \
-    "root@${PRIVATE_IP}:/tmp/k8s-manifests/"
+  ssh "${SSH_OPTS[@]}" "root@${PRIVATE_IP}" "mkdir -p /tmp/k8s-manifests"
+
+  scp "${SSH_OPTS[@]}" -r "${MANIFESTS_DIR}"/* "root@${PRIVATE_IP}:/tmp/k8s-manifests/"
 
   EFS_FILE_SYSTEM_ID=$(aws cloudformation list-exports \
     --query "Exports[?Name=='${PREFIX}-EfsFileSystemId'].Value" \
@@ -74,6 +68,57 @@ do_deploy() {
     exit 1
   fi
 
+  ssh "${SSH_OPTS[@]}" "root@${PRIVATE_IP}" bash -s "${EFS_FILE_SYSTEM_ID}" <<'EOF'
+sed -i "s/\${EFS_FILE_SYSTEM_ID}/$1/g" /tmp/k8s-manifests/aws-efs-csi-driver/storageclass.yaml
+kubectl apply -k /tmp/k8s-manifests/
+EOF
+}
+
+cmd_deploy() {
+  local kubeconfig_file="kubeconfig"
+
+  if [ ! -f "${kubeconfig_file}" ]; then
+    echo "Error: ${kubeconfig_file} not found. Run 'bin/k8s get-kubeconfig' first." >&2
+    exit 1
+  fi
+
+  if ! nc -z localhost 6443 2>/dev/null; then
+    echo "Error: Kubernetes API server is not available at localhost:6443" >&2
+    echo "Run 'bin/k8s port-forward' first." >&2
+    exit 1
+  fi
+
+  MANIFESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/k8s"
+  TEMP_DIR=$(mktemp -d)
+  trap 'rm -rf "${TEMP_DIR}"' EXIT
+
+  cp -r "${MANIFESTS_DIR}"/* "${TEMP_DIR}/"
+
+  EFS_FILE_SYSTEM_ID=$(aws cloudformation list-exports \
+    --query "Exports[?Name=='${PREFIX}-EfsFileSystemId'].Value" \
+    --output text)
+
+  if [ -z "${EFS_FILE_SYSTEM_ID}" ] || [ "${EFS_FILE_SYSTEM_ID}" = "None" ]; then
+    echo "Error: EFS File System ID not found in CloudFormation exports" >&2
+    exit 1
+  fi
+
+  sed -i.bak "s/\${EFS_FILE_SYSTEM_ID}/${EFS_FILE_SYSTEM_ID}/g" "${TEMP_DIR}/aws-efs-csi-driver/storageclass.yaml"
+
+  KUBECONFIG="${kubeconfig_file}" kubectl apply -k "${TEMP_DIR}/"
+}
+
+cmd_deploy_warmup() {
+  do_deploy_remote "warmup"
+}
+
+cmd_get_kubeconfig() {
+  get_instance_info
+
+  local kubeconfig_file="kubeconfig"
+
+  echo "Fetching kubeconfig from instance: ${INSTANCE_ID}"
+
   ssh -i "${KEY_FILE}" \
     -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
     -o StrictHostKeyChecking=no \
@@ -82,16 +127,16 @@ do_deploy() {
     -o BatchMode=yes \
     -o PasswordAuthentication=no \
     "root@${PRIVATE_IP}" \
-    "sed -i 's/\${EFS_FILE_SYSTEM_ID}/${EFS_FILE_SYSTEM_ID}/g' /tmp/k8s-manifests/aws-efs-csi-driver/storageclass.yaml && \
-     kubectl apply -k /tmp/k8s-manifests/"
-}
+    "cat /etc/kubernetes/admin.conf" | \
+    sed 's|server: https://.*:6443|server: https://localhost:6443|' > "${kubeconfig_file}"
 
-cmd_deploy() {
-  do_deploy "healthy"
-}
+  chmod 600 "${kubeconfig_file}"
 
-cmd_deploy_warmup() {
-  do_deploy "warmup"
+  echo "Kubeconfig saved to: ${kubeconfig_file}"
+  echo ""
+  echo "To use this kubeconfig:"
+  echo "  export KUBECONFIG=\$(pwd)/${kubeconfig_file}"
+  echo "  kubectl get nodes"
 }
 
 cmd_get_dashboard_token() {
@@ -112,6 +157,15 @@ cmd_port_forward() {
   get_instance_info
 
   PIDS=()
+  SSH_OPTS=(
+    -i "${KEY_FILE}"
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22"
+    -o StrictHostKeyChecking=no
+    -o UserKnownHostsFile=/dev/null
+    -o LogLevel=ERROR
+    -o BatchMode=yes
+    -o PasswordAuthentication=no
+  )
 
   cleanup() {
     echo ""
@@ -126,7 +180,8 @@ cmd_port_forward() {
   cleanup_existing_forwards() {
     echo "Checking for existing port-forward processes..."
 
-    local pids=$(ps aux | grep -E "ssh.*kubectl port-forward" | grep -v grep | awk '{print $2}')
+    local pids
+    pids=$(pgrep -f "ssh.*kubectl port-forward" || true)
     if [ -n "${pids}" ]; then
       echo "Found existing local port-forward processes, killing them..."
       echo "${pids}" | xargs kill 2>/dev/null || true
@@ -134,21 +189,14 @@ cmd_port_forward() {
     fi
 
     echo "Checking remote port-forward processes..."
-    ssh -i "${KEY_FILE}" \
-      -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
-      -o StrictHostKeyChecking=no \
-      -o UserKnownHostsFile=/dev/null \
-      -o LogLevel=ERROR \
-      -o BatchMode=yes \
-      -o PasswordAuthentication=no \
-      "root@${PRIVATE_IP}" \
+    ssh "${SSH_OPTS[@]}" "root@${PRIVATE_IP}" \
       "pkill kubectl 2>/dev/null && echo 'Killed remote kubectl processes' || echo 'No remote processes found'"
     sleep 1
   }
 
   check_port() {
     local port=$1
-    if lsof -Pi :${port} -sTCP:LISTEN -t >/dev/null 2>&1 || \
+    if lsof -Pi :"${port}" -sTCP:LISTEN -t >/dev/null 2>&1 || \
        ss -tuln | grep -q ":${port}\s"; then
       echo "Error: Port ${port} is already in use" >&2
       echo "Run this command to find and kill the process:" >&2
@@ -158,9 +206,21 @@ cmd_port_forward() {
     return 0
   }
 
+  start_port_forward() {
+    local port=$1
+    local remote_cmd=$2
+    local label=$3
+
+    ssh "${SSH_OPTS[@]}" \
+      -L "${port}":localhost:"${port}" \
+      "root@${PRIVATE_IP}" \
+      "${remote_cmd}" 2>&1 | sed "s/^/[${label}] /" &
+  }
+
   cleanup_existing_forwards
 
   echo "Checking if ports are available..."
+  check_port 6443 || exit 1
   check_port 8443 || exit 1
   check_port 9090 || exit 1
   check_port 3000 || exit 1
@@ -168,65 +228,33 @@ cmd_port_forward() {
 
   echo ""
   echo "Starting port-forwards..."
+  echo "  - Kubernetes API: https://localhost:6443"
   echo "  - Kubernetes Dashboard: https://localhost:8443"
   echo "  - Prometheus: http://localhost:9090"
   echo "  - Grafana: http://localhost:3000"
   echo "  - Traefik Dashboard: http://localhost:8080/dashboard/"
   echo ""
+  echo "For kubectl access:"
+  echo "  export KUBECONFIG=\$(pwd)/kubeconfig"
+  echo "  kubectl get nodes"
+  echo ""
   echo "Press Ctrl-C to stop all port-forwards"
   echo ""
 
-  ssh -i "${KEY_FILE}" \
-    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o LogLevel=ERROR \
-    -o BatchMode=yes \
-    -o PasswordAuthentication=no \
-    -L 8443:localhost:8443 \
-    "root@${PRIVATE_IP}" \
-    "kubectl port-forward -n kubernetes-dashboard svc/kubernetes-dashboard 8443:443" 2>&1 | sed 's/^/[Dashboard] /' &
+  ssh "${SSH_OPTS[@]}" -L 6443:localhost:6443 -N "root@${PRIVATE_IP}" 2>&1 | sed 's/^/[K8s API] /' &
   PIDS+=($!)
 
-  ssh -i "${KEY_FILE}" \
-    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o LogLevel=ERROR \
-    -o BatchMode=yes \
-    -o PasswordAuthentication=no \
-    -L 9090:localhost:9090 \
-    "root@${PRIVATE_IP}" \
-    "kubectl port-forward svc/prometheus 9090:9090" 2>&1 | sed 's/^/[Prometheus] /' &
+  start_port_forward 8443 "kubectl port-forward -n kubernetes-dashboard svc/kubernetes-dashboard 8443:443" "Dashboard"
   PIDS+=($!)
 
-  ssh -i "${KEY_FILE}" \
-    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o LogLevel=ERROR \
-    -o BatchMode=yes \
-    -o PasswordAuthentication=no \
-    -L 3000:localhost:3000 \
-    "root@${PRIVATE_IP}" \
-    "kubectl port-forward svc/grafana 3000:3000" 2>&1 | sed 's/^/[Grafana] /' &
+  start_port_forward 9090 "kubectl port-forward svc/prometheus 9090:9090" "Prometheus"
   PIDS+=($!)
 
-  ssh -i "${KEY_FILE}" \
-    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o LogLevel=ERROR \
-    -o BatchMode=yes \
-    -o PasswordAuthentication=no \
-    -L 8080:localhost:8080 \
-    "root@${PRIVATE_IP}" \
-    "kubectl port-forward -n traefik svc/traefik 8080:8080" 2>&1 | sed 's/^/[Traefik] /' &
+  start_port_forward 3000 "kubectl port-forward svc/grafana 3000:3000" "Grafana"
   PIDS+=($!)
 
-  echo ""
-  echo "All port-forwards are ready!"
-  echo ""
+  start_port_forward 8080 "kubectl port-forward -n traefik svc/traefik 8080:8080" "Traefik"
+  PIDS+=($!)
 
   wait
 }
@@ -238,8 +266,9 @@ Usage: bin/k8s <command>
 Commands:
   deploy                Deploy all Kubernetes resources to healthy instance
   deploy-warmup         Deploy all Kubernetes resources to newest instance (during warmup)
+  get-kubeconfig        Download kubeconfig for local kubectl access
   get-dashboard-token   Get Kubernetes Dashboard token
-  port-forward          Port-forward all management services (Dashboard, Prometheus, Grafana, Traefik)
+  port-forward          Port-forward all services (K8s API, Dashboard, Prometheus, Grafana, Traefik)
   help                  Show this help message
 
 Environment Variables:
@@ -249,8 +278,15 @@ Environment Variables:
 Examples:
   AWS_PROFILE=conao3.k8s bin/k8s deploy
   AWS_PROFILE=conao3.k8s bin/k8s deploy-warmup
+  AWS_PROFILE=conao3.k8s bin/k8s get-kubeconfig
   AWS_PROFILE=conao3.k8s bin/k8s get-dashboard-token
   AWS_PROFILE=conao3.k8s bin/k8s port-forward
+
+Local kubectl access:
+  Terminal 1: AWS_PROFILE=conao3.k8s bin/k8s port-forward
+  Terminal 2: AWS_PROFILE=conao3.k8s bin/k8s get-kubeconfig
+  Terminal 2: export KUBECONFIG=\$(pwd)/kubeconfig
+  Terminal 2: kubectl apply -k k8s/
 EOF
 }
 
@@ -260,6 +296,9 @@ case "${1:-help}" in
     ;;
   deploy-warmup)
     cmd_deploy_warmup
+    ;;
+  get-kubeconfig)
+    cmd_get_kubeconfig
     ;;
   get-dashboard-token)
     cmd_get_dashboard_token

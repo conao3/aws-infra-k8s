@@ -5,3 +5,4 @@
 /.nrepl-port
 *.qcow2
 /result
+/kubeconfig
