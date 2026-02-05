@@ -37,11 +37,12 @@ get_instance_info() {
     --output text)
 }
 
-do_deploy() {
+cmd_deploy() {
   local kubeconfig_file="kubeconfig"
 
   if [ ! -f "${kubeconfig_file}" ]; then
-    echo "Error: ${kubeconfig_file} not found. Run 'bin/k8s get-kubeconfig' first." >&2
+    echo "Error: ${kubeconfig_file} not found." >&2
+    echo "Run 'bin/k8s port-forward' or 'bin/k8s port-forward-warmup' first." >&2
     exit 1
   fi
 
@@ -71,37 +72,6 @@ do_deploy() {
   KUBECONFIG="${kubeconfig_file}" kubectl apply -k "${TEMP_DIR}/"
 }
 
-cmd_deploy() {
-  do_deploy
-}
-
-cmd_get_kubeconfig() {
-  get_instance_info
-
-  local kubeconfig_file="kubeconfig"
-
-  echo "Fetching kubeconfig from instance: ${INSTANCE_ID}"
-
-  ssh -i "${KEY_FILE}" \
-    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o LogLevel=ERROR \
-    -o BatchMode=yes \
-    -o PasswordAuthentication=no \
-    "root@${PRIVATE_IP}" \
-    "cat /etc/kubernetes/admin.conf" | \
-    sed 's|server: https://.*:6443|server: https://localhost:6443|' > "${kubeconfig_file}"
-
-  chmod 600 "${kubeconfig_file}"
-
-  echo "Kubeconfig saved to: ${kubeconfig_file}"
-  echo ""
-  echo "To use this kubeconfig:"
-  echo "  export KUBECONFIG=\$(pwd)/${kubeconfig_file}"
-  echo "  kubectl get nodes"
-}
-
 cmd_get_dashboard_token() {
   get_instance_info
 
@@ -119,6 +89,27 @@ cmd_get_dashboard_token() {
 cmd_port_forward_warmup() {
   get_instance_info "warmup"
 
+  local kubeconfig_file="kubeconfig"
+
+  echo "Fetching kubeconfig from warmup instance: ${INSTANCE_ID}"
+
+  SSH_OPTS=(
+    -i "${KEY_FILE}"
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22"
+    -o StrictHostKeyChecking=no
+    -o UserKnownHostsFile=/dev/null
+    -o LogLevel=ERROR
+    -o BatchMode=yes
+    -o PasswordAuthentication=no
+  )
+
+  ssh "${SSH_OPTS[@]}" "root@${PRIVATE_IP}" "cat /etc/kubernetes/admin.conf" | \
+    sed 's|server: https://.*:6443|server: https://localhost:6443|' > "${kubeconfig_file}"
+
+  chmod 600 "${kubeconfig_file}"
+
+  echo "Kubeconfig saved to: ${kubeconfig_file}"
+  echo ""
   echo "Port-forwarding to warmup instance: ${INSTANCE_ID}"
   echo ""
   echo "Starting port-forward..."
@@ -131,21 +122,15 @@ cmd_port_forward_warmup() {
   echo "Press Ctrl-C to stop port-forward"
   echo ""
 
-  SSH_OPTS=(
-    -i "${KEY_FILE}"
-    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22"
-    -o StrictHostKeyChecking=no
-    -o UserKnownHostsFile=/dev/null
-    -o LogLevel=ERROR
-    -o BatchMode=yes
-    -o PasswordAuthentication=no
-  )
-
   exec ssh "${SSH_OPTS[@]}" -L 6443:localhost:6443 -N "root@${PRIVATE_IP}"
 }
 
 cmd_port_forward() {
   get_instance_info
+
+  local kubeconfig_file="kubeconfig"
+
+  echo "Fetching kubeconfig from instance: ${INSTANCE_ID}"
 
   PIDS=()
   SSH_OPTS=(
@@ -157,6 +142,14 @@ cmd_port_forward() {
     -o BatchMode=yes
     -o PasswordAuthentication=no
   )
+
+  ssh "${SSH_OPTS[@]}" "root@${PRIVATE_IP}" "cat /etc/kubernetes/admin.conf" | \
+    sed 's|server: https://.*:6443|server: https://localhost:6443|' > "${kubeconfig_file}"
+
+  chmod 600 "${kubeconfig_file}"
+
+  echo "Kubeconfig saved to: ${kubeconfig_file}"
+  echo ""
 
   cleanup() {
     echo ""
@@ -256,19 +249,14 @@ Usage: bin/k8s <command>
 
 Commands:
   deploy                Deploy all Kubernetes resources (requires port-forward)
-  get-kubeconfig        Download kubeconfig for local kubectl access
   get-dashboard-token   Get Kubernetes Dashboard token
-  port-forward          Port-forward all services (K8s API, Dashboard, Prometheus, Grafana, Traefik)
-  port-forward-warmup   Port-forward Kubernetes API to warmup instance
+  port-forward          Port-forward all services and download kubeconfig
+  port-forward-warmup   Port-forward Kubernetes API to warmup instance and download kubeconfig
   help                  Show this help message
 
 Environment Variables:
   PREFIX                Resource prefix (default: dev-k8s)
   AWS_PROFILE           AWS profile to use
-
-Examples:
-  AWS_PROFILE=conao3.k8s bin/k8s get-kubeconfig
-  AWS_PROFILE=conao3.k8s bin/k8s get-dashboard-token
 
 Local kubectl access (healthy instance):
   Terminal 1: AWS_PROFILE=conao3.k8s bin/k8s port-forward
@@ -285,9 +273,6 @@ EOF
 case "${1:-help}" in
   deploy)
     cmd_deploy
-    ;;
-  get-kubeconfig)
-    cmd_get_kubeconfig
     ;;
   get-dashboard-token)
     cmd_get_dashboard_token
