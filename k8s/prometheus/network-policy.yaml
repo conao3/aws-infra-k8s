@@ -48,19 +48,17 @@ spec:
     - protocol: TCP
       port: 80
   - to:
-    - podSelector:
+    - namespaceSelector:
         matchLabels:
-          app: node-exporter
-    ports:
-    - protocol: TCP
-      port: 9100
-  - to:
-    - podSelector:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
         matchLabels:
           app: kube-state-metrics
     ports:
     - protocol: TCP
       port: 8080
+    - protocol: TCP
+      port: 8081
   - to:
     - namespaceSelector:
         matchLabels:
@@ -74,3 +72,9 @@ spec:
       port: 443
     - protocol: TCP
       port: 10250
+  - to:
+    - ipBlock:
+        cidr: 10.0.0.0/16
+    ports:
+    - protocol: TCP
+      port: 9100
