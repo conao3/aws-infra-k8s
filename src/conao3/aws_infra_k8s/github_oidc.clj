@@ -57,6 +57,11 @@
          :Action
          ["cloudformation:ListExports"
           "cloudformation:DescribeStacks"]
+         :Resource "*"}
+        {:Effect "Allow"
+         :Action
+         ["autoscaling:StartInstanceRefresh"
+          "autoscaling:DescribeInstanceRefreshes"]
          :Resource "*"}]}}]}})
 
 (defn cfn [_param]
