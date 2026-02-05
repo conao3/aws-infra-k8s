@@ -98,8 +98,6 @@ cmd_deploy() {
     exit 1
   fi
 
-  clojure -M -m conao3.aws-infra-k8s deploy cluster
-
   local asg_name="${PREFIX}-node"
   aws autoscaling start-instance-refresh \
     --auto-scaling-group-name "${asg_name}" \
