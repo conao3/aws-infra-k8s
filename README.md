@@ -49,10 +49,7 @@ k3s Cluster on NixOS (EC2)
 
 ### Prerequisites
 
-1. **AWS Profile**: Set up AWS credentials
-   ```bash
-   export AWS_PROFILE=conao3.k8s
-   ```
+1. **AWS Profile**: Set up AWS credentials and use `AWS_PROFILE=conao3.k8s` before each command
 
 2. **Required Tools**: Clojure, AWS CLI, SAM CLI, kubectl
 

@@ -92,12 +92,9 @@ AWS_PROFILE=conao3.k8s bin/ssh/node login 'cat /etc/rancher/k3s/k3s.yaml' > /tmp
 # Update server URL to use forwarded port
 sed -i 's|https://127.0.0.1:6443|https://localhost:6443|g' /tmp/k3s.yaml
 
-# Use kubeconfig
-export KUBECONFIG=/tmp/k3s.yaml
-
 # Now kubectl works with AWS cluster
-kubectl get pods -A
-kubectl get nodes
+KUBECONFIG=/tmp/k3s.yaml kubectl get pods -A
+KUBECONFIG=/tmp/k3s.yaml kubectl get nodes
 ```
 
 ## How It Works

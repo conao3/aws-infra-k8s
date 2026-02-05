@@ -6,13 +6,7 @@ Before deploying the infrastructure, you need to set up the following AWS resour
 
 All AWS operations use the `AWS_PROFILE` environment variable to specify credentials.
 
-Set it before running any commands:
-
-```bash
-export AWS_PROFILE=conao3.k8s
-```
-
-Or prefix each command:
+Prefix each command with the profile:
 
 ```bash
 AWS_PROFILE=conao3.k8s <command>
