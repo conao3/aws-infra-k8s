@@ -38,7 +38,7 @@ get_instance_info() {
 }
 
 cmd_deploy() {
-  local kubeconfig_file="kubeconfig"
+  local kubeconfig_file="target/kubeconfig"
 
   if [ ! -f "${kubeconfig_file}" ]; then
     echo "Error: ${kubeconfig_file} not found." >&2
@@ -89,7 +89,7 @@ cmd_get_dashboard_token() {
 cmd_port_forward_warmup() {
   get_instance_info "warmup"
 
-  local kubeconfig_file="kubeconfig"
+  local kubeconfig_file="target/kubeconfig"
 
   echo "Fetching kubeconfig from warmup instance: ${INSTANCE_ID}"
 
@@ -103,7 +103,7 @@ cmd_port_forward_warmup() {
     -o PasswordAuthentication=no
   )
 
-  ssh "${SSH_OPTS[@]}" "root@${PRIVATE_IP}" "cat /etc/kubernetes/admin.conf" | \
+  ssh "${SSH_OPTS[@]}" "root@${PRIVATE_IP}" "cat /etc/rancher/k3s/k3s.yaml" | \
     sed 's|server: https://.*:6443|server: https://localhost:6443|' > "${kubeconfig_file}"
 
   chmod 600 "${kubeconfig_file}"
@@ -116,7 +116,7 @@ cmd_port_forward_warmup() {
   echo "  - Kubernetes API: https://localhost:6443"
   echo ""
   echo "For kubectl access:"
-  echo "  export KUBECONFIG=\$(pwd)/kubeconfig"
+  echo "  export KUBECONFIG=\$(pwd)/target/kubeconfig"
   echo "  kubectl get nodes"
   echo ""
   echo "Press Ctrl-C to stop port-forward"
@@ -128,7 +128,7 @@ cmd_port_forward_warmup() {
 cmd_port_forward() {
   get_instance_info
 
-  local kubeconfig_file="kubeconfig"
+  local kubeconfig_file="target/kubeconfig"
 
   echo "Fetching kubeconfig from instance: ${INSTANCE_ID}"
 
@@ -143,7 +143,7 @@ cmd_port_forward() {
     -o PasswordAuthentication=no
   )
 
-  ssh "${SSH_OPTS[@]}" "root@${PRIVATE_IP}" "cat /etc/kubernetes/admin.conf" | \
+  ssh "${SSH_OPTS[@]}" "root@${PRIVATE_IP}" "cat /etc/rancher/k3s/k3s.yaml" | \
     sed 's|server: https://.*:6443|server: https://localhost:6443|' > "${kubeconfig_file}"
 
   chmod 600 "${kubeconfig_file}"
@@ -219,7 +219,7 @@ cmd_port_forward() {
   echo "  - Traefik Dashboard: http://localhost:8080/dashboard/"
   echo ""
   echo "For kubectl access:"
-  echo "  export KUBECONFIG=\$(pwd)/kubeconfig"
+  echo "  export KUBECONFIG=\$(pwd)/target/kubeconfig"
   echo "  kubectl get nodes"
   echo ""
   echo "Press Ctrl-C to stop all port-forwards"
@@ -260,12 +260,12 @@ Environment Variables:
 
 Local kubectl access (healthy instance):
   Terminal 1: AWS_PROFILE=conao3.k8s bin/k8s port-forward
-  Terminal 2: export KUBECONFIG=\$(pwd)/kubeconfig
+  Terminal 2: export KUBECONFIG=\$(pwd)/target/kubeconfig
   Terminal 2: AWS_PROFILE=conao3.k8s bin/k8s deploy
 
 Deploy to warmup instance:
   Terminal 1: AWS_PROFILE=conao3.k8s bin/k8s port-forward-warmup
-  Terminal 2: export KUBECONFIG=\$(pwd)/kubeconfig
+  Terminal 2: export KUBECONFIG=\$(pwd)/target/kubeconfig
   Terminal 2: AWS_PROFILE=conao3.k8s bin/k8s deploy
 EOF
 }
