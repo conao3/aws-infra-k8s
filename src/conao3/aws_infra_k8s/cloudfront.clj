@@ -93,7 +93,7 @@
          :AllowedMethods ["GET" "HEAD" "OPTIONS" "PUT" "POST" "PATCH" "DELETE"]
          :CachedMethods ["GET" "HEAD"]
          :Compress true
-         :CachePolicyId "658327ea-f89d-4fab-a63d-7e88639e58f6"
+         :CachePolicyId "83da9c7e-98b4-4e11-a168-04f0df8e2c65"
          :OriginRequestPolicyId "216adef6-5c7f-47e4-b989-5492eafa07d3"}}}}}
 
     :Outputs
