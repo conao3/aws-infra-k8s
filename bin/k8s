@@ -73,17 +73,23 @@ cmd_deploy() {
 }
 
 cmd_get_dashboard_token() {
-  get_instance_info
+  local token_file="target/dashboard-token"
+  local kubeconfig_file="target/kubeconfig"
 
-  exec ssh -i "${KEY_FILE}" \
-    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o LogLevel=ERROR \
-    -o BatchMode=yes \
-    -o PasswordAuthentication=no \
-    "root@${PRIVATE_IP}" \
-    "kubectl create token dashboard-admin -n kubernetes-dashboard --duration=87600h"
+  if [ ! -f "${kubeconfig_file}" ]; then
+    echo "Error: ${kubeconfig_file} not found." >&2
+    echo "Run 'bin/k8s port-forward' or 'bin/k8s port-forward-warmup' first." >&2
+    exit 1
+  fi
+
+  if ! nc -z localhost 6443 2>/dev/null; then
+    echo "Error: Kubernetes API server is not available at localhost:6443" >&2
+    echo "Run 'bin/k8s port-forward' or 'bin/k8s port-forward-warmup' first." >&2
+    exit 1
+  fi
+
+  mkdir -p target
+  KUBECONFIG="${kubeconfig_file}" kubectl create token dashboard-admin -n kubernetes-dashboard --duration=87600h | tee "${token_file}"
 }
 
 cmd_port_forward_warmup() {
