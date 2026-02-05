@@ -22,10 +22,15 @@ spec:
         volumeMounts:
         - name: html
           mountPath: /usr/share/nginx/html
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d
       volumes:
       - name: html
         configMap:
           name: app-admin-html
+      - name: nginx-config
+        configMap:
+          name: app-admin-nginx-config
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -203,3 +208,20 @@ data:
       </div>
     </body>
     </html>
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-admin-nginx-config
+data:
+  default.conf: |
+    server {
+        listen 80;
+        server_name _;
+
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            add_header Cache-Control "public, max-age=3600";
+        }
+    }

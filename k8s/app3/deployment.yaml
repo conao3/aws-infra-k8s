@@ -22,10 +22,15 @@ spec:
         volumeMounts:
         - name: html
           mountPath: /usr/share/nginx/html
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d
       volumes:
       - name: html
         configMap:
           name: app3-html
+      - name: nginx-config
+        configMap:
+          name: app3-nginx-config
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -41,3 +46,20 @@ data:
       <p>This is the third application running on k8s cluster.</p>
     </body>
     </html>
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app3-nginx-config
+data:
+  default.conf: |
+    server {
+        listen 80;
+        server_name _;
+
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            add_header Cache-Control "public, max-age=3600";
+        }
+    }
