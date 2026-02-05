@@ -63,7 +63,7 @@ See [007-ingress-subdomain.md](007-ingress-subdomain.md) for Ingress configurati
 
 1. Create directory `k8s/my-app/`
 2. Add manifests (deployment.yaml, service.yaml, ingress.yaml)
-3. Deploy: `AWS_PROFILE=conao3.k8s bin/k8s/deploy`
+3. Deploy: `AWS_PROFILE=conao3.k8s bin/k8s deploy`
 
 See [007-ingress-subdomain.md](007-ingress-subdomain.md#add-new-application) for details.
 
@@ -82,7 +82,7 @@ See [007-ingress-subdomain.md](007-ingress-subdomain.md#add-new-application) for
 
 ```bash
 # Get token
-AWS_PROFILE=conao3.k8s bin/k8s/get-dashboard-token
+AWS_PROFILE=conao3.k8s bin/k8s get-dashboard-token
 
 # Port forward
 AWS_PROFILE=conao3.k8s bin/ssh/node dashboard
@@ -214,13 +214,13 @@ Test applications locally with kind:
 
 ```bash
 # Create local cluster
-bin/k8s/local up
+bin/k8s-local up
 
 # Deploy applications
-bin/k8s/local deploy
+bin/k8s-local deploy
 
 # Get Dashboard token
-bin/k8s/local token
+bin/k8s-local token
 
 # Access points
 # Traefik Dashboard: http://localhost:30081
@@ -229,7 +229,7 @@ bin/k8s/local token
 # Grafana: http://localhost:30300
 
 # Delete cluster
-bin/k8s/local down
+bin/k8s-local down
 ```
 
 ### Test Subdomain Routing Locally
@@ -252,7 +252,7 @@ http://app3.example.local:30080
 ## Deploy to AWS
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/k8s/deploy
+AWS_PROFILE=conao3.k8s bin/k8s deploy
 ```
 
 This deploys all applications to the AWS k3s cluster.
@@ -262,7 +262,7 @@ This deploys all applications to the AWS k3s cluster.
 To update an application:
 
 1. Edit manifests in `k8s/<app-name>/`
-2. Redeploy: `AWS_PROFILE=conao3.k8s bin/k8s/deploy`
+2. Redeploy: `AWS_PROFILE=conao3.k8s bin/k8s deploy`
 
 To update only a specific app:
 

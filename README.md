@@ -78,7 +78,7 @@ AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy all
 
 ```bash
 # Deploy Kubernetes applications (Traefik, apps, monitoring)
-AWS_PROFILE=conao3.k8s bin/k8s/deploy
+AWS_PROFILE=conao3.k8s bin/k8s deploy
 ```
 
 ### Access Your Cluster
@@ -137,10 +137,10 @@ Test Kubernetes manifests locally with kind:
 
 ```bash
 # Create local cluster
-bin/k8s/local up
+bin/k8s-local up
 
 # Deploy applications
-bin/k8s/local deploy
+bin/k8s-local deploy
 
 # Access applications
 # - Traefik Dashboard: http://localhost:30081
@@ -153,7 +153,7 @@ echo "127.0.0.1 app1.example.local app2.example.local app3.example.local" | sudo
 curl -H "Host: app1.example.local" http://localhost:30080
 
 # Delete cluster
-bin/k8s/local down
+bin/k8s-local down
 ```
 
 ## Available Modules
@@ -192,13 +192,13 @@ AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy <module-name>
 ```bash
 # Edit manifests in k8s/<app-name>/
 # Then redeploy
-AWS_PROFILE=conao3.k8s bin/k8s/deploy
+AWS_PROFILE=conao3.k8s bin/k8s deploy
 ```
 
 ### Add New Application
 
 1. Create `k8s/my-app/` with deployment.yaml, service.yaml, ingress.yaml
-2. Deploy: `AWS_PROFILE=conao3.k8s bin/k8s/deploy`
+2. Deploy: `AWS_PROFILE=conao3.k8s bin/k8s deploy`
 
 See [007-ingress-subdomain.md](docs/007-ingress-subdomain.md#add-new-application) for details.
 

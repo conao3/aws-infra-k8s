@@ -115,7 +115,7 @@ All root modules automatically use the `conao3.root` AWS profile.
 After the infrastructure is deployed, deploy Kubernetes applications:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/k8s/deploy
+AWS_PROFILE=conao3.k8s bin/k8s deploy
 ```
 
 This deploys:

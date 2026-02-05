@@ -185,7 +185,7 @@ AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy cloudfront
 ### 4. Deploy Applications
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/k8s/deploy
+AWS_PROFILE=conao3.k8s bin/k8s deploy
 ```
 
 ### 5. Verify
@@ -301,7 +301,7 @@ Add `my-app.example.com` to the CloudFront Aliases list (see step 3 above).
 ### 4. Deploy
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/k8s/deploy
+AWS_PROFILE=conao3.k8s bin/k8s deploy
 ```
 
 ## Access Without Custom Domain

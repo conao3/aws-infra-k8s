@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+set -euxo pipefail -o posix
+
+PREFIX="${PREFIX:-dev-k8s}"
+ASG_NAME="${PREFIX}-node"
+KEY_FILE="${HOME}/.ssh/${PREFIX}-keypair.pem"
+
+get_instance_info() {
+  local health_filter="${1:-}"
+  local query
+
+  if [ -n "${health_filter}" ]; then
+    query="AutoScalingGroups[0].Instances[?HealthStatus==\`Healthy\` && LifecycleState==\`InService\`].InstanceId | [0]"
+  else
+    query="AutoScalingGroups[0].Instances[0].InstanceId"
+  fi
+
+  INSTANCE_ID=$(aws autoscaling describe-auto-scaling-groups \
+    --auto-scaling-group-names "${ASG_NAME}" \
+    --query "${query}" \
+    --output text)
+
+  if [ -z "${INSTANCE_ID}" ] || [ "${INSTANCE_ID}" = "None" ]; then
+    echo "Error: No instance found in AutoScaling Group ${ASG_NAME}" >&2
+    exit 1
+  fi
+
+  PRIVATE_IP=$(aws ec2 describe-instances \
+    --instance-ids "${INSTANCE_ID}" \
+    --query "Reservations[0].Instances[0].PrivateIpAddress" \
+    --output text)
+}
+
+cmd_deploy() {
+  get_instance_info "healthy"
+
+  MANIFESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/k8s"
+
+  ssh -i "${KEY_FILE}" \
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o LogLevel=ERROR \
+    "root@${PRIVATE_IP}" \
+    "mkdir -p /tmp/k8s-manifests"
+
+  scp -i "${KEY_FILE}" \
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o LogLevel=ERROR \
+    -r "${MANIFESTS_DIR}"/* \
+    "root@${PRIVATE_IP}:/tmp/k8s-manifests/"
+
+  EFS_FILE_SYSTEM_ID=$(aws cloudformation list-exports \
+    --query "Exports[?Name=='${PREFIX}-EfsFileSystemId'].Value" \
+    --output text)
+
+  if [ -z "${EFS_FILE_SYSTEM_ID}" ] || [ "${EFS_FILE_SYSTEM_ID}" = "None" ]; then
+    echo "Error: EFS File System ID not found in CloudFormation exports" >&2
+    exit 1
+  fi
+
+  ssh -i "${KEY_FILE}" \
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o LogLevel=ERROR \
+    "root@${PRIVATE_IP}" \
+    "sed -i 's/\${EFS_FILE_SYSTEM_ID}/${EFS_FILE_SYSTEM_ID}/g' /tmp/k8s-manifests/aws-efs-csi-driver/storageclass.yaml && \
+     kubectl apply -k /tmp/k8s-manifests/"
+}
+
+cmd_get_dashboard_token() {
+  get_instance_info
+
+  exec ssh -i "${KEY_FILE}" \
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o LogLevel=ERROR \
+    "root@${PRIVATE_IP}" \
+    "kubectl create token dashboard-admin -n kubernetes-dashboard --duration=87600h"
+}
+
+cmd_help() {
+  cat <<EOF
+Usage: bin/k8s <command>
+
+Commands:
+  deploy                Deploy all Kubernetes resources
+  get-dashboard-token   Get Kubernetes Dashboard token
+  help                  Show this help message
+
+Environment Variables:
+  PREFIX                Resource prefix (default: dev-k8s)
+  AWS_PROFILE           AWS profile to use
+
+Examples:
+  AWS_PROFILE=conao3.k8s bin/k8s deploy
+  AWS_PROFILE=conao3.k8s bin/k8s get-dashboard-token
+EOF
+}
+
+case "${1:-help}" in
+  deploy)
+    cmd_deploy
+    ;;
+  get-dashboard-token)
+    cmd_get_dashboard_token
+    ;;
+  help|--help|-h)
+    cmd_help
+    ;;
+  *)
+    echo "Error: Unknown command '${1}'" >&2
+    echo "" >&2
+    cmd_help
+    exit 1
+    ;;
+esac

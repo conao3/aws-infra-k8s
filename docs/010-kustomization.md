@@ -134,7 +134,7 @@ kubectl apply -k k8s/
 Or using the deployment script:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/k8s/deploy
+AWS_PROFILE=conao3.k8s bin/k8s deploy
 ```
 
 The script:
@@ -233,7 +233,7 @@ resources:
 5. Deploy:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/k8s/deploy
+AWS_PROFILE=conao3.k8s bin/k8s deploy
 ```
 
 ## Variable Substitution
@@ -243,7 +243,7 @@ Some values need to be substituted at deployment time (e.g., EFS File System ID)
 The deployment script handles this:
 
 ```bash
-# In bin/k8s/deploy
+# In bin/k8s deploy
 sed -i 's/${EFS_FILE_SYSTEM_ID}/${EFS_FILE_SYSTEM_ID}/g' \
   /tmp/k8s-manifests/aws-efs-csi-driver/storageclass.yaml
 ```
