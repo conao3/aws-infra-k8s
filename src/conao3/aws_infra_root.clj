@@ -28,11 +28,15 @@
                    "chatbot" (c.chatbot/deploy param)
                    "all" (do
                            (run ["deploy" "sns"] param)
-                           (run ["deploy" "budget"] param)))))))
+                           (run ["deploy" "budget"] param)
+                           (run ["deploy" "chatbot"] param)))))))
 
 (defn -main [& args]
   (let [env "dev"
         prefix (format "%s-%s" env "root")
-        param {:env env :prefix prefix}]
+        param {:env env
+               :prefix prefix
+               :slack-workspace-id "T0AA4GU73K6"
+               :slack-channel-id "C0ACP3E39PD"}]
     (run args param)
     (shutdown-agents)))
