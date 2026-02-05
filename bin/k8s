@@ -37,44 +37,7 @@ get_instance_info() {
     --output text)
 }
 
-do_deploy_remote() {
-  local instance_filter="${1:-healthy}"
-  get_instance_info "${instance_filter}"
-
-  echo "Deploying to instance: ${INSTANCE_ID} (${PRIVATE_IP})"
-
-  MANIFESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/k8s"
-
-  SSH_OPTS=(
-    -i "${KEY_FILE}"
-    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22"
-    -o StrictHostKeyChecking=no
-    -o UserKnownHostsFile=/dev/null
-    -o LogLevel=ERROR
-    -o BatchMode=yes
-    -o PasswordAuthentication=no
-  )
-
-  ssh "${SSH_OPTS[@]}" "root@${PRIVATE_IP}" "mkdir -p /tmp/k8s-manifests"
-
-  scp "${SSH_OPTS[@]}" -r "${MANIFESTS_DIR}"/* "root@${PRIVATE_IP}:/tmp/k8s-manifests/"
-
-  EFS_FILE_SYSTEM_ID=$(aws cloudformation list-exports \
-    --query "Exports[?Name=='${PREFIX}-EfsFileSystemId'].Value" \
-    --output text)
-
-  if [ -z "${EFS_FILE_SYSTEM_ID}" ] || [ "${EFS_FILE_SYSTEM_ID}" = "None" ]; then
-    echo "Error: EFS File System ID not found in CloudFormation exports" >&2
-    exit 1
-  fi
-
-  ssh "${SSH_OPTS[@]}" "root@${PRIVATE_IP}" bash -s "${EFS_FILE_SYSTEM_ID}" <<'EOF'
-sed -i "s/\${EFS_FILE_SYSTEM_ID}/$1/g" /tmp/k8s-manifests/aws-efs-csi-driver/storageclass.yaml
-kubectl apply -k /tmp/k8s-manifests/
-EOF
-}
-
-cmd_deploy() {
+do_deploy() {
   local kubeconfig_file="kubeconfig"
 
   if [ ! -f "${kubeconfig_file}" ]; then
@@ -84,7 +47,7 @@ cmd_deploy() {
 
   if ! nc -z localhost 6443 2>/dev/null; then
     echo "Error: Kubernetes API server is not available at localhost:6443" >&2
-    echo "Run 'bin/k8s port-forward' first." >&2
+    echo "Run 'bin/k8s port-forward' or 'bin/k8s port-forward-warmup' first." >&2
     exit 1
   fi
 
@@ -108,8 +71,8 @@ cmd_deploy() {
   KUBECONFIG="${kubeconfig_file}" kubectl apply -k "${TEMP_DIR}/"
 }
 
-cmd_deploy_warmup() {
-  do_deploy_remote "warmup"
+cmd_deploy() {
+  do_deploy
 }
 
 cmd_get_kubeconfig() {
@@ -151,6 +114,34 @@ cmd_get_dashboard_token() {
     -o PasswordAuthentication=no \
     "root@${PRIVATE_IP}" \
     "kubectl create token dashboard-admin -n kubernetes-dashboard --duration=87600h"
+}
+
+cmd_port_forward_warmup() {
+  get_instance_info "warmup"
+
+  echo "Port-forwarding to warmup instance: ${INSTANCE_ID}"
+  echo ""
+  echo "Starting port-forward..."
+  echo "  - Kubernetes API: https://localhost:6443"
+  echo ""
+  echo "For kubectl access:"
+  echo "  export KUBECONFIG=\$(pwd)/kubeconfig"
+  echo "  kubectl get nodes"
+  echo ""
+  echo "Press Ctrl-C to stop port-forward"
+  echo ""
+
+  SSH_OPTS=(
+    -i "${KEY_FILE}"
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22"
+    -o StrictHostKeyChecking=no
+    -o UserKnownHostsFile=/dev/null
+    -o LogLevel=ERROR
+    -o BatchMode=yes
+    -o PasswordAuthentication=no
+  )
+
+  exec ssh "${SSH_OPTS[@]}" -L 6443:localhost:6443 -N "root@${PRIVATE_IP}"
 }
 
 cmd_port_forward() {
@@ -264,11 +255,11 @@ cmd_help() {
 Usage: bin/k8s <command>
 
 Commands:
-  deploy                Deploy all Kubernetes resources to healthy instance
-  deploy-warmup         Deploy all Kubernetes resources to newest instance (during warmup)
+  deploy                Deploy all Kubernetes resources (requires port-forward)
   get-kubeconfig        Download kubeconfig for local kubectl access
   get-dashboard-token   Get Kubernetes Dashboard token
   port-forward          Port-forward all services (K8s API, Dashboard, Prometheus, Grafana, Traefik)
+  port-forward-warmup   Port-forward Kubernetes API to warmup instance
   help                  Show this help message
 
 Environment Variables:
@@ -276,26 +267,24 @@ Environment Variables:
   AWS_PROFILE           AWS profile to use
 
 Examples:
-  AWS_PROFILE=conao3.k8s bin/k8s deploy
-  AWS_PROFILE=conao3.k8s bin/k8s deploy-warmup
   AWS_PROFILE=conao3.k8s bin/k8s get-kubeconfig
   AWS_PROFILE=conao3.k8s bin/k8s get-dashboard-token
-  AWS_PROFILE=conao3.k8s bin/k8s port-forward
 
-Local kubectl access:
+Local kubectl access (healthy instance):
   Terminal 1: AWS_PROFILE=conao3.k8s bin/k8s port-forward
-  Terminal 2: AWS_PROFILE=conao3.k8s bin/k8s get-kubeconfig
   Terminal 2: export KUBECONFIG=\$(pwd)/kubeconfig
-  Terminal 2: kubectl apply -k k8s/
+  Terminal 2: AWS_PROFILE=conao3.k8s bin/k8s deploy
+
+Deploy to warmup instance:
+  Terminal 1: AWS_PROFILE=conao3.k8s bin/k8s port-forward-warmup
+  Terminal 2: export KUBECONFIG=\$(pwd)/kubeconfig
+  Terminal 2: AWS_PROFILE=conao3.k8s bin/k8s deploy
 EOF
 }
 
 case "${1:-help}" in
   deploy)
     cmd_deploy
-    ;;
-  deploy-warmup)
-    cmd_deploy_warmup
     ;;
   get-kubeconfig)
     cmd_get_kubeconfig
@@ -305,6 +294,9 @@ case "${1:-help}" in
     ;;
   port-forward)
     cmd_port_forward
+    ;;
+  port-forward-warmup)
+    cmd_port_forward_warmup
     ;;
   help|--help|-h)
     cmd_help
