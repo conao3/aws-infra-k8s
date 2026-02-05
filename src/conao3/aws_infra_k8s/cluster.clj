@@ -35,7 +35,7 @@
           "elasticfilesystem:DescribeMountTargets"
           "elasticfilesystem:TagResource"
           "elasticfilesystem:ListTagsForResource"]
-         :Resource "*"}]}}]}})
+         :Resource {"Fn::Sub" "arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:file-system/${EfsFileSystemId}"}}]}}]}})
 
 (defn resource-instance-profile []
   {:Type "AWS::IAM::InstanceProfile"
@@ -88,7 +88,8 @@
    {:Parameters
     (-> [:Env :Prefix
          :SubnetPriA
-         :SecurityGroupApp]
+         :SecurityGroupApp
+         :EfsFileSystemId]
         a.cfn/list-string-parameters
         (assoc :AmiId
                {:Type "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
@@ -133,7 +134,8 @@
                      (->> {:Env (-> param :env)
                            :Prefix (-> param :prefix)
                            :SubnetPriA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPriA))))
-                           :SecurityGroupApp (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupApp))))}
+                           :SecurityGroupApp (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupApp))))
+                           :EfsFileSystemId (get exports (keyword (format "%s-%s" (-> param :prefix) (name :EfsFileSystemId))))}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))
                           (str/join " "))))))

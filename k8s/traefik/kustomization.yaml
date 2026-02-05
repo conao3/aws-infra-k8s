@@ -7,3 +7,4 @@ resources:
   - ingressclass.yaml
   - deployment.yaml
   - healthcheck-ingress.yaml
+  - network-policy.yaml
