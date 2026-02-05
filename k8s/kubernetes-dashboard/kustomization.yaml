@@ -5,3 +5,4 @@ resources:
 - admin-user.yaml
 patchesStrategicMerge:
 - service-patch.yaml
+- deployment-patch.yaml
