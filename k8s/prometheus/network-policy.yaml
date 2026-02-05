@@ -43,6 +43,13 @@ spec:
   - to:
     - podSelector:
         matchLabels:
+          app: app-admin
+    ports:
+    - protocol: TCP
+      port: 80
+  - to:
+    - podSelector:
+        matchLabels:
           app: node-exporter
     ports:
     - protocol: TCP

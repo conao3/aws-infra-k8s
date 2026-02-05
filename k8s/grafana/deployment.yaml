@@ -32,7 +32,7 @@ spec:
       volumes:
       - name: storage
         persistentVolumeClaim:
-          claimName: grafana-storage
+          claimName: grafana-storage-efs
       - name: datasources
         configMap:
           name: grafana-datasources

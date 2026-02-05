@@ -10,9 +10,14 @@
 (defn cfn [_param]
   (a.cfn/template
    {:Parameters
-    (a.cfn/list-string-parameters
-     [:Env :Prefix
-      :LoadBalancerDnsName])
+    (merge
+     (a.cfn/list-string-parameters
+      [:Env :Prefix
+       :LoadBalancerDnsName
+       :CertificateArn])
+     {:DomainAliases
+      {:Type "CommaDelimitedList"
+       :Description "Comma-delimited list of domain aliases"}})
 
     :Resources
     {:WebACL
@@ -71,6 +76,11 @@
         :PriceClass "PriceClass_All"
         :IPV6Enabled true
         :WebACLId {"Fn::GetAtt" [:WebACL :Arn]}
+        :Aliases {:Ref :DomainAliases}
+        :ViewerCertificate
+        {:AcmCertificateArn {:Ref :CertificateArn}
+         :SslSupportMethod "sni-only"
+         :MinimumProtocolVersion "TLSv1.2_2021"}
         :Origins
         [{:Id "alb-origin"
           :DomainName {:Ref :LoadBalancerDnsName}
@@ -102,8 +112,8 @@
       (-> (cfn param)
           (json/generate-stream writer)))
 
-    (c.util/eshell "sam" "validate" "--template-file" (str (fs/path file)))
-    (let [exports (->> (-> (c.util/eshell {:out :string} "aws" "cloudformation" "list-exports")
+    (c.util/eshell "sam" "validate" "--template-file" (str (fs/path file)) "--region" "us-east-1")
+    (let [exports (->> (-> (c.util/eshell {:out :string} "aws" "cloudformation" "list-exports" "--region" "ap-northeast-1")
                            :out
                            (json/parse-string keyword))
                        :Exports
@@ -121,7 +131,9 @@
                      "--parameter-overrides"
                      (->> {:Env (-> param :env)
                            :Prefix (-> param :prefix)
-                           :LoadBalancerDnsName (get exports (keyword (format "%s-%s" (-> param :prefix) "LoadBalancerDnsName")))}
+                           :LoadBalancerDnsName (get exports (keyword (format "%s-%s" (-> param :prefix) "LoadBalancerDnsName")))
+                           :CertificateArn (-> param :certificate-arn)
+                           :DomainAliases (-> param :domain-aliases)}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))
                           (str/join " "))))))

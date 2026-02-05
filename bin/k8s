@@ -91,6 +91,129 @@ cmd_get_dashboard_token() {
     "kubectl create token dashboard-admin -n kubernetes-dashboard --duration=87600h"
 }
 
+cmd_port_forward() {
+  get_instance_info
+
+  PIDS=()
+
+  cleanup() {
+    echo ""
+    echo "Stopping all port-forwards..."
+    for pid in "${PIDS[@]}"; do
+      kill "${pid}" 2>/dev/null || true
+    done
+  }
+
+  trap cleanup SIGINT SIGTERM EXIT
+
+  cleanup_existing_forwards() {
+    echo "Checking for existing port-forward processes..."
+
+    local pids=$(ps aux | grep -E "ssh.*kubectl port-forward" | grep -v grep | awk '{print $2}')
+    if [ -n "${pids}" ]; then
+      echo "Found existing local port-forward processes, killing them..."
+      echo "${pids}" | xargs kill 2>/dev/null || true
+      sleep 1
+    fi
+
+    echo "Checking remote port-forward processes..."
+    ssh -i "${KEY_FILE}" \
+      -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+      -o StrictHostKeyChecking=no \
+      -o UserKnownHostsFile=/dev/null \
+      -o LogLevel=ERROR \
+      -o BatchMode=yes \
+      -o PasswordAuthentication=no \
+      "root@${PRIVATE_IP}" \
+      "pkill kubectl 2>/dev/null && echo 'Killed remote kubectl processes' || echo 'No remote processes found'"
+    sleep 1
+  }
+
+  check_port() {
+    local port=$1
+    if lsof -Pi :${port} -sTCP:LISTEN -t >/dev/null 2>&1 || \
+       ss -tuln | grep -q ":${port}\s"; then
+      echo "Error: Port ${port} is already in use" >&2
+      echo "Run this command to find and kill the process:" >&2
+      echo "  lsof -ti:${port} | xargs kill -9" >&2
+      return 1
+    fi
+    return 0
+  }
+
+  cleanup_existing_forwards
+
+  echo "Checking if ports are available..."
+  check_port 8443 || exit 1
+  check_port 9090 || exit 1
+  check_port 3000 || exit 1
+  check_port 8080 || exit 1
+
+  echo ""
+  echo "Starting port-forwards..."
+  echo "  - Kubernetes Dashboard: https://localhost:8443"
+  echo "  - Prometheus: http://localhost:9090"
+  echo "  - Grafana: http://localhost:3000"
+  echo "  - Traefik Dashboard: http://localhost:8080/dashboard/"
+  echo ""
+  echo "Press Ctrl-C to stop all port-forwards"
+  echo ""
+
+  ssh -i "${KEY_FILE}" \
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o LogLevel=ERROR \
+    -o BatchMode=yes \
+    -o PasswordAuthentication=no \
+    -L 8443:localhost:8443 \
+    "root@${PRIVATE_IP}" \
+    "kubectl port-forward -n kubernetes-dashboard svc/kubernetes-dashboard 8443:443" 2>&1 | sed 's/^/[Dashboard] /' &
+  PIDS+=($!)
+
+  ssh -i "${KEY_FILE}" \
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o LogLevel=ERROR \
+    -o BatchMode=yes \
+    -o PasswordAuthentication=no \
+    -L 9090:localhost:9090 \
+    "root@${PRIVATE_IP}" \
+    "kubectl port-forward svc/prometheus 9090:9090" 2>&1 | sed 's/^/[Prometheus] /' &
+  PIDS+=($!)
+
+  ssh -i "${KEY_FILE}" \
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o LogLevel=ERROR \
+    -o BatchMode=yes \
+    -o PasswordAuthentication=no \
+    -L 3000:localhost:3000 \
+    "root@${PRIVATE_IP}" \
+    "kubectl port-forward svc/grafana 3000:3000" 2>&1 | sed 's/^/[Grafana] /' &
+  PIDS+=($!)
+
+  ssh -i "${KEY_FILE}" \
+    -o "ProxyCommand=aws ec2-instance-connect open-tunnel --instance-id ${INSTANCE_ID} --remote-port 22" \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o LogLevel=ERROR \
+    -o BatchMode=yes \
+    -o PasswordAuthentication=no \
+    -L 8080:localhost:8080 \
+    "root@${PRIVATE_IP}" \
+    "kubectl port-forward -n traefik svc/traefik 8080:8080" 2>&1 | sed 's/^/[Traefik] /' &
+  PIDS+=($!)
+
+  echo ""
+  echo "All port-forwards are ready!"
+  echo ""
+
+  wait
+}
+
 cmd_help() {
   cat <<EOF
 Usage: bin/k8s <command>
@@ -98,6 +221,7 @@ Usage: bin/k8s <command>
 Commands:
   deploy                Deploy all Kubernetes resources
   get-dashboard-token   Get Kubernetes Dashboard token
+  port-forward          Port-forward all management services (Dashboard, Prometheus, Grafana, Traefik)
   help                  Show this help message
 
 Environment Variables:
@@ -107,6 +231,7 @@ Environment Variables:
 Examples:
   AWS_PROFILE=conao3.k8s bin/k8s deploy
   AWS_PROFILE=conao3.k8s bin/k8s get-dashboard-token
+  AWS_PROFILE=conao3.k8s bin/k8s port-forward
 EOF
 }
 
@@ -116,6 +241,9 @@ case "${1:-help}" in
     ;;
   get-dashboard-token)
     cmd_get_dashboard_token
+    ;;
+  port-forward)
+    cmd_port_forward
     ;;
   help|--help|-h)
     cmd_help

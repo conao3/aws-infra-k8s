@@ -78,6 +78,9 @@
 (defn -main [& args]
   (let [env "dev"
         prefix (format "%s-%s" env "k8s")
-        param {:env env :prefix prefix}]
+        param {:env env
+               :prefix prefix
+               :certificate-arn "arn:aws:acm:us-east-1:418272767854:certificate/19d92199-d2cf-431b-980a-9273121f87cf"
+               :domain-aliases "app1.sancode.dev,app2.sancode.dev,app3.sancode.dev,admin.sancode.dev"}]
     (run args param)
     (shutdown-agents)))
