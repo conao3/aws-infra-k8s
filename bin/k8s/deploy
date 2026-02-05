@@ -53,18 +53,5 @@ ssh -i "${KEY_FILE}" \
   -o UserKnownHostsFile=/dev/null \
   -o LogLevel=ERROR \
   "root@${PRIVATE_IP}" \
-  "kubectl apply -f /tmp/k8s-manifests/traefik/ && \
-   kubectl apply -f /tmp/k8s-manifests/app1/ && \
-   kubectl apply -f /tmp/k8s-manifests/app2/ && \
-   kubectl apply -f /tmp/k8s-manifests/app3/ && \
-   kubectl apply -k /tmp/k8s-manifests/kubernetes-dashboard/ && \
-   kubectl apply -f /tmp/k8s-manifests/node-exporter/ && \
-   kubectl apply -f /tmp/k8s-manifests/kube-state-metrics/ && \
-   kubectl apply -f /tmp/k8s-manifests/prometheus/ && \
-   kubectl apply -f /tmp/k8s-manifests/aws-efs-csi-driver/service-account.yaml && \
-   kubectl apply -f /tmp/k8s-manifests/aws-efs-csi-driver/rbac.yaml && \
-   kubectl apply -f /tmp/k8s-manifests/aws-efs-csi-driver/csidriver.yaml && \
-   kubectl apply -f /tmp/k8s-manifests/aws-efs-csi-driver/controller.yaml && \
-   kubectl apply -f /tmp/k8s-manifests/aws-efs-csi-driver/node.yaml && \
-   sed 's/\${EFS_FILE_SYSTEM_ID}/${EFS_FILE_SYSTEM_ID}/g' /tmp/k8s-manifests/aws-efs-csi-driver/storageclass.yaml | kubectl apply -f - && \
-   kubectl apply -f /tmp/k8s-manifests/grafana/"
+  "sed -i 's/\${EFS_FILE_SYSTEM_ID}/${EFS_FILE_SYSTEM_ID}/g' /tmp/k8s-manifests/aws-efs-csi-driver/storageclass.yaml && \
+   kubectl apply -k /tmp/k8s-manifests/"
