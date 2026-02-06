@@ -20,7 +20,36 @@
        :Description "Comma-delimited list of domain aliases"}})
 
     :Resources
-    {:WebACL
+    {:AdminAuthFunction
+     {:Type "AWS::CloudFront::Function"
+      :Properties
+      {:Name (a.cfn/prefix "admin-auth")
+       :AutoPublish true
+       :FunctionConfig {:Comment "Cloudflare Access validation for admin subdomain" :Runtime "cloudfront-js-2.0"}
+       :FunctionCode (str "function handler(event) {\n"
+                          "  var request = event.request;\n"
+                          "  var headers = request.headers;\n"
+                          "  var host = headers.host ? headers.host.value : '';\n"
+                          "  \n"
+                          "  if (host !== 'admin.sancode.dev') {\n"
+                          "    return request;\n"
+                          "  }\n"
+                          "  \n"
+                          "  if (!headers['cf-access-jwt-assertion']) {\n"
+                          "    return {\n"
+                          "      statusCode: 403,\n"
+                          "      statusDescription: 'Forbidden',\n"
+                          "      headers: {\n"
+                          "        'content-type': { value: 'text/plain' }\n"
+                          "      },\n"
+                          "      body: 'Access denied. Please use the authenticated domain.'\n"
+                          "    };\n"
+                          "  }\n"
+                          "  \n"
+                          "  return request;\n"
+                          "}\n")}}
+
+     :WebACL
      {:Type "AWS::WAFv2::WebACL"
       :Properties
       {:Name (a.cfn/prefix "waf")
@@ -94,7 +123,10 @@
          :CachedMethods ["GET" "HEAD"]
          :Compress true
          :CachePolicyId "83da9c7e-98b4-4e11-a168-04f0df8e2c65"
-         :OriginRequestPolicyId "216adef6-5c7f-47e4-b989-5492eafa07d3"}}}}}
+         :OriginRequestPolicyId "216adef6-5c7f-47e4-b989-5492eafa07d3"
+         :FunctionAssociations
+         [{:EventType "viewer-request"
+           :FunctionARN {"Fn::GetAtt" [:AdminAuthFunction :FunctionARN]}}]}}}}}
 
     :Outputs
     (a.cfn/list-outputs
