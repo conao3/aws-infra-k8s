@@ -21,3 +21,7 @@ run:
 .PHONY: test
 test:
 	./aws-infra-k8s
+
+.PHONY: update-cloudflare-ips
+update-cloudflare-ips:
+	./bin/update-cloudflare-ips

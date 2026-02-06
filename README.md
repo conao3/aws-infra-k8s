@@ -32,7 +32,8 @@ k3s Cluster on NixOS (EC2)
 ```
 
 **Security Features**:
-- CloudFront WAF with 3 rules (Rate Limit, Geo Block, SQLi Protection)
+- CloudFront accessible only from Cloudflare IPs (IP restriction)
+- CloudFront WAF with 4 rules (Cloudflare IP Only, Rate Limit, Geo Block, SQLi Protection)
 - ALB accessible only from CloudFront (Managed Prefix List)
 - No public IPs on EC2 instances (access via EICE)
 - DDoS protection enabled by default
@@ -213,6 +214,16 @@ AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl logs <pod-name> --tail=50'
 ```bash
 AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get pods -A'
 AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl top nodes'
+```
+
+### Update Cloudflare IP List
+
+```bash
+# Update Cloudflare IP ranges used for CloudFront WAF IP restriction
+make update-cloudflare-ips
+
+# Then redeploy CloudFront stack
+AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy cloudfront
 ```
 
 ### Build Custom AMI

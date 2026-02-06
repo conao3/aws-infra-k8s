@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euxo pipefail -o posix
+
+cd "$(dirname "$0")/.."
+
+ipv4_list=$(curl -s https://www.cloudflare.com/ips-v4)
+ipv6_list=$(curl -s https://www.cloudflare.com/ips-v6)
+
+cat > resources/cloudflare-ips.edn <<EOF
+{:ipv4
+ [$(echo "$ipv4_list" | sed 's/^/"/' | sed 's/$/"/' | paste -sd ',' - | sed 's/,/\n  /g')]
+
+ :ipv6
+ [$(echo "$ipv6_list" | sed 's/^/"/' | sed 's/$/"/' | paste -sd ',' - | sed 's/,/\n  /g')]}
+EOF
+
+echo "Updated resources/cloudflare-ips.edn"
+cat resources/cloudflare-ips.edn
