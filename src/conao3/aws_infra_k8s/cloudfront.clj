@@ -91,7 +91,7 @@
             :CloudWatchMetricsEnabled true
             :MetricName (a.cfn/prefix "cloudflare-ip-only")}}
           {:Name "RateLimitRule"
-           :Priority 2
+           :Priority 1
            :Statement
            {:RateBasedStatement
             {:Limit 2000
@@ -101,29 +101,28 @@
            {:SampledRequestsEnabled true
             :CloudWatchMetricsEnabled true
             :MetricName (a.cfn/prefix "rate-limit")}}
-          {:Name "GeoBlockRule"
-           :Priority 3
-           :Statement
-           {:NotStatement
-            {:Statement
-             {:GeoMatchStatement
-              {:CountryCodes ["JP" "US"]}}}}
-           :Action {:Block {}}
-           :VisibilityConfig
-           {:SampledRequestsEnabled true
-            :CloudWatchMetricsEnabled true
-            :MetricName (a.cfn/prefix "geo-block")}}
-          {:Name "SQLiProtectionRule"
-           :Priority 4
+          {:Name "AWSManagedRulesCommonRuleSet"
+           :Priority 2
            :Statement
            {:ManagedRuleGroupStatement
             {:VendorName "AWS"
-             :Name "AWSManagedRulesSQLiRuleSet"}}
+             :Name "AWSManagedRulesCommonRuleSet"}}
            :OverrideAction {:None {}}
            :VisibilityConfig
            {:SampledRequestsEnabled true
             :CloudWatchMetricsEnabled true
-            :MetricName (a.cfn/prefix "sqli-protection")}}]
+            :MetricName (a.cfn/prefix "common-ruleset")}}
+          {:Name "AWSManagedRulesKnownBadInputsRuleSet"
+           :Priority 3
+           :Statement
+           {:ManagedRuleGroupStatement
+            {:VendorName "AWS"
+             :Name "AWSManagedRulesKnownBadInputsRuleSet"}}
+           :OverrideAction {:None {}}
+           :VisibilityConfig
+           {:SampledRequestsEnabled true
+            :CloudWatchMetricsEnabled true
+            :MetricName (a.cfn/prefix "known-bad-inputs")}}]
          :VisibilityConfig
          {:SampledRequestsEnabled true
           :CloudWatchMetricsEnabled true

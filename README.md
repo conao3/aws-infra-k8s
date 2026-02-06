@@ -33,17 +33,22 @@ k3s Cluster on NixOS (EC2)
 
 **Security Features**:
 - CloudFront accessible only from Cloudflare IPs (IP restriction)
-- CloudFront WAF with 4 rules (Cloudflare IP Only, Rate Limit, Geo Block, SQLi Protection)
+- CloudFront WAF with 4 optimized rules:
+  - Cloudflare IP Only (IP allowlist)
+  - Rate Limit (DDoS/brute-force protection, 2000 req/5min)
+  - AWS Managed Common RuleSet (SQLi, XSS, LFI, etc.)
+  - AWS Managed Known Bad Inputs (Log4Shell, etc.)
 - ALB accessible only from CloudFront (Managed Prefix List)
 - No public IPs on EC2 instances (access via EICE)
-- DDoS protection enabled by default
+- DDoS protection enabled by default (AWS Shield Standard)
 - HTTPS enforced at CloudFront edge
 
-**Cost Breakdown** (~$31/month):
+**Cost Breakdown** (~$40/month):
 - EC2 t4g.small: ~$12
 - ALB: ~$18
 - EBS 10GB: ~$1
-- CloudFront & WAF: $0 (Free Plan)
+- CloudFront: $0 (Free tier)
+- WAF: ~$9 (Web ACL $5 + 4 rules $4)
 - EFS: ~$0.19/GB
 
 ## Quick Start
