@@ -95,7 +95,10 @@
            :Statement
            {:RateBasedStatement
             {:Limit 2000
-             :AggregateKeyType "IP"}}
+             :AggregateKeyType "FORWARDED_IP"
+             :ForwardedIPConfig
+             {:HeaderName "X-Forwarded-For"
+              :FallbackBehavior "MATCH"}}}
            :Action {:Block {}}
            :VisibilityConfig
            {:SampledRequestsEnabled true
