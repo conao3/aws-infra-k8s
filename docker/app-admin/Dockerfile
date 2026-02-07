@@ -4,7 +4,7 @@ COPY jwt-validator/package.json .
 RUN npm install --production
 
 FROM nginx:1.27-alpine
-RUN apk add --no-cache nodejs=22.11.0-r0 tini
+RUN apk add --no-cache nodejs=22.15.1-r0 tini
 COPY --from=builder /build/node_modules /app/node_modules
 COPY jwt-validator/index.js /app/index.js
 COPY html/ /usr/share/nginx/html/

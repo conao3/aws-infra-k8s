@@ -30,7 +30,7 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes
-            system-features = benchmark big-parallel nixos-test uid-range kvm
+            system-features = benchmark big-parallel nixos-test uid-range
 
       - uses: cachix/cachix-action@v15
         with:
