@@ -119,18 +119,9 @@
          :StringEquals "SUCCEEDED"
          :Next "GetImportTaskId"}
         {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
-         :StringEquals "FAILED"
-         :Next "BuildFailed"}
-        {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
-         :StringEquals "FAULT"
-         :Next "BuildFailed"}
-        {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
-         :StringEquals "TIMED_OUT"
-         :Next "BuildFailed"}
-        {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
-         :StringEquals "STOPPED"
-         :Next "BuildFailed"}]
-       :Default "WaitForCodeBuild"}
+         :StringEquals "IN_PROGRESS"
+         :Next "WaitForCodeBuild"}]
+       :Default "BuildFailed"}
       :BuildFailed
       {:Type "Fail"
        :Error "CodeBuildFailed"
@@ -169,12 +160,9 @@
          :StringEquals "completed"
          :Next "RegisterImage"}
         {:Variable "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.Status"
-         :StringEquals "deleted"
-         :Next "ImportFailed"}
-        {:Variable "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.Status"
-         :StringEquals "deleting"
-         :Next "ImportFailed"}]
-       :Default "WaitForImport"}
+         :StringEquals "active"
+         :Next "WaitForImport"}]
+       :Default "ImportFailed"}
       :ImportFailed
       {:Type "Fail"
        :Error "ImportSnapshotFailed"
