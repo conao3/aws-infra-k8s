@@ -1,0 +1,60 @@
+name: Build app-admin Docker Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docker/app-admin/**'
+  workflow_dispatch:
+    inputs:
+      prefix:
+        description: 'Resource prefix'
+        required: false
+        default: 'dev-k8s'
+
+env:
+  PREFIX: ${{ github.event.inputs.prefix || 'dev-k8s' }}
+  AWS_REGION: ap-northeast-1
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::418272767854:role/dev-k8s-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr-login
+
+      - name: Build and push Docker image
+        run: |
+          set -euxo pipefail
+
+          ECR_REGISTRY="${{ steps.ecr-login.outputs.registry }}"
+          IMAGE_NAME="${PREFIX}-app-admin"
+          IMAGE_TAG="${GITHUB_SHA::8}"
+
+          docker build \
+            -t "${ECR_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}" \
+            -t "${ECR_REGISTRY}/${IMAGE_NAME}:latest" \
+            docker/app-admin
+
+          docker push "${ECR_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+          docker push "${ECR_REGISTRY}/${IMAGE_NAME}:latest"
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## app-admin Docker Image Build Complete
+
+          - **Registry**: ${ECR_REGISTRY}
+          - **Repository**: ${IMAGE_NAME}
+          - **Tags**: \`${IMAGE_TAG}\`, \`latest\`
+          - **Architecture**: arm64
+          EOF
