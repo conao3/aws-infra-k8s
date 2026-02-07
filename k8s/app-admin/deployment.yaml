@@ -24,6 +24,48 @@ spec:
           mountPath: /usr/share/nginx/html
         - name: nginx-config
           mountPath: /etc/nginx/conf.d
+      - name: jwt-validator
+        image: node:22-alpine
+        ports:
+        - containerPort: 8080
+        workingDir: /app
+        command: ["node", "index.js"]
+        env:
+        - name: CLOUDFLARE_TEAM_DOMAIN
+          valueFrom:
+            configMapKeyRef:
+              name: app-admin-jwt-config
+              key: team-domain
+        - name: CLOUDFLARE_AUD
+          valueFrom:
+            configMapKeyRef:
+              name: app-admin-jwt-config
+              key: aud
+        volumeMounts:
+        - name: jwt-validator-script
+          mountPath: /app
+          readOnly: true
+        - name: jwt-validator-modules
+          mountPath: /app/node_modules
+          readOnly: true
+      initContainers:
+      - name: install-dependencies
+        image: node:22-alpine
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          set -ex
+          mkdir -p /tmp/build
+          cd /tmp/build
+          cp /scripts/package.json /tmp/build/
+          npm install --production
+          mv /tmp/build/node_modules/* /modules/
+        volumeMounts:
+        - name: jwt-validator-script
+          mountPath: /scripts
+          readOnly: true
+        - name: jwt-validator-modules
+          mountPath: /modules
       volumes:
       - name: html
         configMap:
@@ -31,6 +73,11 @@ spec:
       - name: nginx-config
         configMap:
           name: app-admin-nginx-config
+      - name: jwt-validator-script
+        configMap:
+          name: app-admin-jwt-validator
+      - name: jwt-validator-modules
+        emptyDir: {}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -219,9 +266,126 @@ data:
         listen 80;
         server_name _;
 
+        location = /auth {
+            internal;
+            proxy_pass http://localhost:8080/validate;
+            proxy_pass_request_body off;
+            proxy_set_header Content-Length "";
+            proxy_set_header CF-Access-Jwt-Assertion $http_cf_access_jwt_assertion;
+        }
+
         location / {
+            auth_request /auth;
             root /usr/share/nginx/html;
             index index.html;
             add_header Cache-Control "public, max-age=3600";
         }
     }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-admin-jwt-config
+data:
+  team-domain: "https://sancodellc.cloudflareaccess.com"
+  aud: "c14ca1abaab330fc0fc8c2f06e727e61902522d59fcd5797af8af04aeed72738"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-admin-jwt-validator
+data:
+  package.json: |
+    {
+      "name": "cloudflare-jwt-validator",
+      "version": "1.0.0",
+      "type": "module",
+      "dependencies": {
+        "jsonwebtoken": "^9.0.2",
+        "jwks-rsa": "^3.1.0"
+      }
+    }
+  index.js: |
+    import http from 'http';
+    import jwt from 'jsonwebtoken';
+    import jwksClient from 'jwks-rsa';
+
+    const TEAM_DOMAIN = process.env.CLOUDFLARE_TEAM_DOMAIN;
+    const AUD = process.env.CLOUDFLARE_AUD;
+    const PORT = process.env.PORT || 8080;
+
+    if (!TEAM_DOMAIN || !AUD) {
+      console.error('Missing required environment variables: CLOUDFLARE_TEAM_DOMAIN, CLOUDFLARE_AUD');
+      process.exit(1);
+    }
+
+    const client = jwksClient({
+      jwksUri: `${TEAM_DOMAIN}/cdn-cgi/access/certs`,
+      cache: true,
+      cacheMaxAge: 86400000,
+      rateLimit: true
+    });
+
+    function getKey(header, callback) {
+      client.getSigningKey(header.kid, (err, key) => {
+        if (err) {
+          callback(err);
+          return;
+        }
+        const signingKey = key.getPublicKey();
+        callback(null, signingKey);
+      });
+    }
+
+    async function validateJWT(token) {
+      return new Promise((resolve, reject) => {
+        jwt.verify(
+          token,
+          getKey,
+          {
+            audience: AUD,
+            issuer: TEAM_DOMAIN,
+            algorithms: ['RS256']
+          },
+          (err, decoded) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve(decoded);
+            }
+          }
+        );
+      });
+    }
+
+    const server = http.createServer(async (req, res) => {
+      if (req.url !== '/validate' || req.method !== 'GET') {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
+        return;
+      }
+
+      const token = req.headers['cf-access-jwt-assertion'];
+
+      if (!token) {
+        res.writeHead(401, { 'Content-Type': 'text/plain' });
+        res.end('Unauthorized: Missing JWT token');
+        return;
+      }
+
+      try {
+        await validateJWT(token);
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('OK');
+      } catch (error) {
+        console.error('JWT validation failed:', error.message);
+        res.writeHead(401, { 'Content-Type': 'text/plain' });
+        res.end('Unauthorized: Invalid JWT token');
+      }
+    });
+
+    server.listen(PORT, () => {
+      console.log(`JWT validator listening on port ${PORT}`);
+      console.log(`Team Domain: ${TEAM_DOMAIN}`);
+      console.log(`Audience: ${AUD}`);
+    });
