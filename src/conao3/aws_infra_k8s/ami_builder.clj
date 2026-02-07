@@ -48,6 +48,10 @@
          :Action
          ["ssm:PutParameter"
           "ssm:GetParameter"]
+         :Resource "*"}
+        {:Effect "Allow"
+         :Action
+         ["cloudformation:ListExports"]
          :Resource "*"}]}}]}})
 
 (defn resource-codebuild-project []
