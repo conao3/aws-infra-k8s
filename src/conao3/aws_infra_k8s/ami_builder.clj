@@ -7,99 +7,86 @@
    [conao3.aws-infra-k8s.util :as c.util]
    [conao3.aws-infra.cfn :as a.cfn]))
 
-(defn resource-iam-role []
+(defn resource-codebuild-role []
   {:Type "AWS::IAM::Role"
    :Properties
-   {:RoleName (a.cfn/prefix "ami-builder")
+   {:RoleName (a.cfn/prefix "ami-builder-codebuild")
     :AssumeRolePolicyDocument
     {:Version "2012-10-17"
      :Statement
      [{:Effect "Allow"
-       :Principal {:Service "ec2.amazonaws.com"}
+       :Principal {:Service "codebuild.amazonaws.com"}
        :Action "sts:AssumeRole"}]}
-    :ManagedPolicyArns
-    ["arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"]
     :Policies
-    [{:PolicyName "AmiBuilderPolicy"
+    [{:PolicyName "CodeBuildAmiBuilderPolicy"
       :PolicyDocument
       {:Version "2012-10-17"
        :Statement
        [{:Effect "Allow"
          :Action
-         ["ec2:CreateImage"
-          "ec2:CreateSnapshot"
-          "ec2:CreateTags"
-          "ec2:DescribeImages"
-          "ec2:DescribeSnapshots"
-          "ec2:DescribeInstances"
+         ["logs:CreateLogGroup"
+          "logs:CreateLogStream"
+          "logs:PutLogEvents"]
+         :Resource "*"}
+        {:Effect "Allow"
+         :Action
+         ["ec2:ImportSnapshot"
+          "ec2:DescribeImportSnapshotTasks"
           "ec2:RegisterImage"
-          "ec2:DeregisterImage"
-          "ec2:DeleteSnapshot"
-          "ec2:CopySnapshot"
-          "ec2:ExportImage"]
+          "ec2:DescribeImages"
+          "ec2:CreateTags"
+          "ec2:CreateSnapshot"
+          "ec2:DescribeSnapshots"]
          :Resource "*"}
         {:Effect "Allow"
          :Action
          ["s3:PutObject"
           "s3:GetObject"
-          "s3:ListBucket"
-          "s3:DeleteObject"]
+          "s3:ListBucket"]
          :Resource "*"}
         {:Effect "Allow"
          :Action
          ["ssm:PutParameter"
-          "ssm:GetParameter"
-          "ssm:GetParameters"
-          "ssm:DescribeParameters"]
+          "ssm:GetParameter"]
          :Resource "*"}]}}]}})
 
-(defn resource-instance-profile []
-  {:Type "AWS::IAM::InstanceProfile"
+(defn resource-codebuild-project []
+  {:Type "AWS::CodeBuild::Project"
    :Properties
-   {:InstanceProfileName (a.cfn/prefix "ami-builder")
-    :Roles [{:Ref :IamRole}]}})
+   {:Name (a.cfn/prefix "ami-builder")
+    :ServiceRole {"Fn::GetAtt" [:CodeBuildRole :Arn]}
+    :Source
+    {:Type "GITHUB"
+     :Location "https://github.com/conao3/aws-infra-k8s.git"
+     :BuildSpec "buildspec-ami.yml"
+     :GitCloneDepth 1}
+    :Environment
+    {:Type "ARM_CONTAINER"
+     :Image "aws/codebuild/amazonlinux2-aarch64-standard:3.0"
+     :ComputeType "BUILD_GENERAL1_LARGE"
+     :PrivilegedMode true
+     :EnvironmentVariables
+     [{:Name "PREFIX"
+       :Value {:Ref :Prefix}}]}
+    :Artifacts
+    {:Type "NO_ARTIFACTS"}
+    :LogsConfig
+    {:CloudWatchLogs
+     {:Status "ENABLED"}}
+    :TimeoutInMinutes 120}})
 
 (defn cfn [_param]
   (a.cfn/template
    {:Parameters
-    (-> [:Env :Prefix
-         :SubnetPriA :SecurityGroupSshTunnel]
-        a.cfn/list-string-parameters
-        (assoc :ImageIdAmazonLinux
-               {:Type "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
-                :Default "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-arm64"}))
+    (a.cfn/list-string-parameters [:Env :Prefix])
 
     :Resources
-    {:IamRole (resource-iam-role)
-     :InstanceProfile (resource-instance-profile)
-     :InstanceAmiBuilder
-     {:Type "AWS::EC2::Instance"
-      :Properties
-      (a.cfn/tag-name
-       {:TagName (a.cfn/prefix "AmiBuilder")
-        :ImageId {:Ref :ImageIdAmazonLinux}
-        :InstanceType "t4g.medium"
-        :IamInstanceProfile {:Ref :InstanceProfile}
-        :MetadataOptions
-        {:HttpTokens "required"
-         :HttpPutResponseHopLimit 2
-         :HttpEndpoint "enabled"}
-        :BlockDeviceMappings
-        [{:DeviceName "/dev/xvda"
-          :Ebs
-          {:VolumeSize 30
-           :VolumeType "gp3"
-           :DeleteOnTermination true}}]
-        :NetworkInterfaces
-        [{:DeviceIndex 0
-          :SubnetId {:Ref :SubnetPriA}
-          :AssociatePublicIpAddress false
-          :Ipv6AddressCount 1
-          :GroupSet [{:Ref :SecurityGroupSshTunnel}]}]})}}
+    {:CodeBuildRole (resource-codebuild-role)
+     :CodeBuildProject (resource-codebuild-project)}
 
     :Outputs
     (a.cfn/list-outputs
-     {:InstanceAmiBuilder {:Ref :InstanceAmiBuilder}})}))
+     {:CodeBuildProject {:Ref :CodeBuildProject}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/ami-builder.json")
@@ -112,25 +99,17 @@
           (json/generate-stream writer)))
 
     (c.util/eshell "sam" "validate" "--template-file" (str (fs/path file)))
-    (let [exports (->> (-> (c.util/eshell {:out :string} "aws" "cloudformation" "list-exports")
-                           :out
-                           (json/parse-string keyword))
-                       :Exports
-                       (map (fn [elm] [(keyword (:Name elm)) (:Value elm)]))
-                       (into {}))]
-      (c.util/ensure-stack-deployable stack-name)
-      (c.util/eshell "sam" "deploy"
-                     "--template-file" (str (fs/path file))
-                     "--stack-name" stack-name
-                     "--capabilities" "CAPABILITY_NAMED_IAM"
-                     "--resolve-s3"
-                     "--no-fail-on-empty-changeset"
-                     "--on-failure" "DELETE"
-                     "--parameter-overrides"
-                     (->> {:Env (-> param :env)
-                           :Prefix (-> param :prefix)
-                           :SubnetPriA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPriA))))
-                           :SecurityGroupSshTunnel (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupSshTunnel))))}
-                          (map (fn [[k v]]
-                                 (format "%s=\"%s\"" (name k) v)))
-                          (str/join " "))))))
+    (c.util/ensure-stack-deployable stack-name)
+    (c.util/eshell "sam" "deploy"
+                   "--template-file" (str (fs/path file))
+                   "--stack-name" stack-name
+                   "--capabilities" "CAPABILITY_NAMED_IAM"
+                   "--resolve-s3"
+                   "--no-fail-on-empty-changeset"
+                   "--on-failure" "DELETE"
+                   "--parameter-overrides"
+                   (->> {:Env (-> param :env)
+                         :Prefix (-> param :prefix)}
+                        (map (fn [[k v]]
+                               (format "%s=\"%s\"" (name k) v)))
+                        (str/join " ")))))

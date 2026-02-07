@@ -1,0 +1,39 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo "Installing Nix..."
+      - curl -L https://releases.nixos.org/nix/nix-2.22.1/install | sh -s -- --daemon --yes
+      - . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+      - nix --version
+
+  pre_build:
+    commands:
+      - echo "Configuring Nix..."
+      - mkdir -p ~/.config/nix
+      - |
+        cat > ~/.config/nix/nix.conf <<EOF
+        experimental-features = nix-command flakes
+        system-features = benchmark big-parallel nixos-test uid-range kvm
+        EOF
+
+  build:
+    commands:
+      - echo "Building NixOS AMI..."
+      - . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+      - nix build .#imageAmazon --print-build-logs
+
+  post_build:
+    commands:
+      - echo "Uploading AMI..."
+      - . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+      - ./bin/image upload
+      - |
+        AMI_ID=$(aws ssm get-parameter --name "/${PREFIX}/custom-ami-id" --query 'Parameter.Value' --output text)
+        TIMESTAMP=$(aws ec2 describe-images --image-ids "${AMI_ID}" --query 'Images[0].CreationDate' --output text | cut -d'T' -f1)
+        echo "AMI built successfully: ${AMI_ID} (${TIMESTAMP})"
+
+artifacts:
+  files:
+    - result/**/*
