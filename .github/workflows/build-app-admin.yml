@@ -34,9 +34,8 @@ jobs:
       - uses: aws-actions/amazon-ecr-login@v2
         id: ecr-login
 
-      - name: Build and push Docker image
-        run: |
-          set -euxo pipefail
+      - run: |
+          set -euxo pipefail -o posix
 
           ECR_REGISTRY="${{ steps.ecr-login.outputs.registry }}"
           IMAGE_NAME="${PREFIX}-app-admin"
