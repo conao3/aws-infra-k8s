@@ -51,8 +51,111 @@
          :Resource "*"}
         {:Effect "Allow"
          :Action
-         ["cloudformation:ListExports"]
+         ["cloudformation:ListExports"
+          "cloudformation:DescribeStacks"]
+         :Resource "*"}
+        {:Effect "Allow"
+         :Action
+         ["states:StartExecution"]
          :Resource "*"}]}}]}})
+
+(defn resource-stepfunctions-role []
+  {:Type "AWS::IAM::Role"
+   :Properties
+   {:RoleName (a.cfn/prefix "ami-builder-stepfunctions")
+    :AssumeRolePolicyDocument
+    {:Version "2012-10-17"
+     :Statement
+     [{:Effect "Allow"
+       :Principal {:Service "states.amazonaws.com"}
+       :Action "sts:AssumeRole"}]}
+    :Policies
+    [{:PolicyName "StepFunctionsAmiBuilderPolicy"
+      :PolicyDocument
+      {:Version "2012-10-17"
+       :Statement
+       [{:Effect "Allow"
+         :Action
+         ["ec2:DescribeImportSnapshotTasks"
+          "ec2:RegisterImage"
+          "ec2:DescribeImages"
+          "ec2:CreateTags"]
+         :Resource "*"}
+        {:Effect "Allow"
+         :Action
+         ["ssm:PutParameter"]
+         :Resource "*"}]}}]}})
+
+(defn resource-state-machine []
+  {:Type "AWS::StepFunctions::StateMachine"
+   :Properties
+   {:StateMachineName (a.cfn/prefix "ami-builder")
+    :RoleArn {"Fn::GetAtt" [:StepFunctionsRole :Arn]}
+    :DefinitionString
+    {"Fn::Sub"
+     (json/generate-string
+      {:Comment "Wait for import-snapshot completion and register AMI"
+       :StartAt "WaitForImport"
+       :States
+       {:WaitForImport
+        {:Type "Wait"
+         :Seconds 30
+         :Next "CheckImportStatus"}
+        :CheckImportStatus
+        {:Type "Task"
+         :Resource "arn:aws:states:::aws-sdk:ec2:describeImportSnapshotTasks"
+         :Parameters
+         {:ImportTaskIds.$ "States.Array($.ImportTaskId)"}
+         :ResultPath "$.ImportTaskResult"
+         :Next "EvaluateImportStatus"}
+        :EvaluateImportStatus
+        {:Type "Choice"
+         :Choices
+         [{:Variable "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.Status"
+           :StringEquals "completed"
+           :Next "RegisterImage"}
+          {:Variable "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.Status"
+           :StringEquals "deleted"
+           :Next "ImportFailed"}
+          {:Variable "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.Status"
+           :StringEquals "deleting"
+           :Next "ImportFailed"}]
+         :Default "WaitForImport"}
+        :ImportFailed
+        {:Type "Fail"
+         :Error "ImportSnapshotFailed"
+         :Cause "Import snapshot task failed or was deleted"}
+        :RegisterImage
+        {:Type "Task"
+         :Resource "arn:aws:states:::aws-sdk:ec2:registerImage"
+         :Parameters
+         {:Name.$
+          "States.Format('nixos-custom-{}', $.Timestamp)"
+          :Description.$
+          "States.Format('NixOS Custom Image {}', $.Timestamp)"
+          :Architecture "arm64"
+          :RootDeviceName "/dev/xvda"
+          :BlockDeviceMappings
+          [{:DeviceName "/dev/xvda"
+            :Ebs
+            {:SnapshotId.$ "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.SnapshotId"
+             :VolumeSize 20
+             :VolumeType "gp3"}}]
+          :VirtualizationType "hvm"
+          :EnaSupport true}
+         :ResultPath "$.RegisterImageResult"
+         :Next "PutSSMParameter"}
+        :PutSSMParameter
+        {:Type "Task"
+         :Resource "arn:aws:states:::aws-sdk:ssm:putParameter"
+         :Parameters
+         {:Name "/${Prefix}/custom-ami-id"
+          :Value.$ "$.RegisterImageResult.ImageId"
+          :Type "String"
+          :Overwrite true
+          :Description.$ "States.Format('Custom NixOS AMI created at {}', $.Timestamp)"}
+         :End true}}}
+      {:pretty true})}}})
 
 (defn resource-codebuild-project []
   {:Type "AWS::CodeBuild::Project"
@@ -86,11 +189,14 @@
 
     :Resources
     {:CodeBuildRole (resource-codebuild-role)
-     :CodeBuildProject (resource-codebuild-project)}
+     :CodeBuildProject (resource-codebuild-project)
+     :StepFunctionsRole (resource-stepfunctions-role)
+     :StateMachine (resource-state-machine)}
 
     :Outputs
     (a.cfn/list-outputs
-     {:CodeBuildProject {:Ref :CodeBuildProject}})}))
+     {:CodeBuildProject {:Ref :CodeBuildProject}
+      :StateMachine {:Ref :StateMachine}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/ami-builder.json")

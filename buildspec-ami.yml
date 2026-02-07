@@ -26,13 +26,42 @@ phases:
 
   post_build:
     commands:
-      - echo "Uploading AMI..."
+      - echo "Uploading VHD to S3 and starting import..."
       - . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
-      - ./bin/image upload
       - |
-        AMI_ID=$(aws ssm get-parameter --name "/${PREFIX}/custom-ami-id" --query 'Parameter.Value' --output text)
-        TIMESTAMP=$(aws ec2 describe-images --image-ids "${AMI_ID}" --query 'Images[0].CreationDate' --output text | cut -d'T' -f1)
-        echo "AMI built successfully: ${AMI_ID} (${TIMESTAMP})"
+        VHD_FILE=$(ls -1 result/*.vhd | sort -r | head -n 1)
+        if [ -z "${VHD_FILE}" ]; then
+          echo "Error: No VHD file found in result/"
+          exit 1
+        fi
+
+        S3_BUCKET=$(aws cloudformation list-exports --query "Exports[?Name=='${PREFIX}-VmImportBucket'].Value" --output text)
+        TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+        S3_KEY="nixos-custom-${TIMESTAMP}.vhd"
+
+        echo "Uploading ${VHD_FILE} to s3://${S3_BUCKET}/${S3_KEY}"
+        aws s3 cp "${VHD_FILE}" "s3://${S3_BUCKET}/${S3_KEY}"
+
+        echo "Starting import-snapshot..."
+        IMPORT_TASK_ID=$(aws ec2 import-snapshot \
+          --description "NixOS Custom EC2 Image ${TIMESTAMP}" \
+          --disk-container "Format=VHD,UserBucket={S3Bucket=${S3_BUCKET},S3Key=${S3_KEY}}" \
+          --query 'ImportTaskId' \
+          --output text)
+
+        echo "Import task started: ${IMPORT_TASK_ID}"
+
+        STATE_MACHINE_ARN=$(aws cloudformation describe-stacks \
+          --stack-name "${PREFIX}-ami-builder" \
+          --query "Stacks[0].Outputs[?OutputKey=='StateMachine'].OutputValue" \
+          --output text)
+
+        echo "Starting Step Functions execution..."
+        aws stepfunctions start-execution \
+          --state-machine-arn "${STATE_MACHINE_ARN}" \
+          --input "{\"ImportTaskId\":\"${IMPORT_TASK_ID}\",\"Timestamp\":\"${TIMESTAMP}\"}"
+
+        echo "Step Functions execution started for import task: ${IMPORT_TASK_ID}"
 
 artifacts:
   files:
