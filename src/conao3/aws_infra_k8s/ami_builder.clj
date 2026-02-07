@@ -84,132 +84,131 @@
          :Resource "*"}]}}]}})
 
 (defn resource-state-machine []
-  {:Type "AWS::StepFunctions::StateMachine"
+  {:Type "AWS::Serverless::StateMachine"
    :Properties
-   {:StateMachineName (a.cfn/prefix "ami-builder")
-    :RoleArn {"Fn::GetAtt" [:StepFunctionsRole :Arn]}
-    :DefinitionString
-    {"Fn::Sub"
-     (json/generate-string
-      {:Comment "Build AMI using CodeBuild and Step Functions"
-       :StartAt "StartCodeBuild"
-       :States
-       {:StartCodeBuild
-        {:Type "Task"
-         :Resource "arn:aws:states:::aws-sdk:codebuild:startBuild"
-         :Parameters
-         {:ProjectName "${Prefix}-ami-builder"}
-         :ResultPath "$.CodeBuildResult"
-         :Next "WaitForCodeBuild"}
-        :WaitForCodeBuild
-        {:Type "Wait"
-         :Seconds 30
-         :Next "CheckCodeBuildStatus"}
-        :CheckCodeBuildStatus
-        {:Type "Task"
-         :Resource "arn:aws:states:::aws-sdk:codebuild:batchGetBuilds"
-         :Parameters
-         {:Ids.$ "States.Array($.CodeBuildResult.Build.Id)"}
-         :ResultPath "$.CodeBuildStatusResult"
-         :Next "EvaluateCodeBuildStatus"}
-        :EvaluateCodeBuildStatus
-        {:Type "Choice"
-         :Choices
-         [{:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
-           :StringEquals "SUCCEEDED"
-           :Next "GetImportTaskId"}
-          {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
-           :StringEquals "FAILED"
-           :Next "BuildFailed"}
-          {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
-           :StringEquals "FAULT"
-           :Next "BuildFailed"}
-          {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
-           :StringEquals "TIMED_OUT"
-           :Next "BuildFailed"}
-          {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
-           :StringEquals "STOPPED"
-           :Next "BuildFailed"}]
-         :Default "WaitForCodeBuild"}
-        :BuildFailed
-        {:Type "Fail"
-         :Error "CodeBuildFailed"
-         :Cause "CodeBuild execution failed"}
-        :GetImportTaskId
-        {:Type "Task"
-         :Resource "arn:aws:states:::aws-sdk:ssm:getParameter"
-         :Parameters
-         {:Name "/${Prefix}/ami-builder/import-task-id"}
-         :ResultPath "$.ImportTaskIdParam"
-         :Next "GetTimestamp"}
-        :GetTimestamp
-        {:Type "Task"
-         :Resource "arn:aws:states:::aws-sdk:ssm:getParameter"
-         :Parameters
-         {:Name "/${Prefix}/ami-builder/timestamp"}
-         :ResultSelector
-         {:Timestamp.$ "$.Parameter.Value"}
-         :ResultPath "$.TimestampParam"
-         :Next "WaitForImport"}
-        :WaitForImport
-        {:Type "Wait"
-         :Seconds 30
-         :Next "CheckImportStatus"}
-        :CheckImportStatus
-        {:Type "Task"
-         :Resource "arn:aws:states:::aws-sdk:ec2:describeImportSnapshotTasks"
-         :Parameters
-         {:ImportTaskIds.$ "States.Array($.ImportTaskIdParam.Parameter.Value)"}
-         :ResultPath "$.ImportTaskResult"
-         :Next "EvaluateImportStatus"}
-        :EvaluateImportStatus
-        {:Type "Choice"
-         :Choices
-         [{:Variable "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.Status"
-           :StringEquals "completed"
-           :Next "RegisterImage"}
-          {:Variable "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.Status"
-           :StringEquals "deleted"
-           :Next "ImportFailed"}
-          {:Variable "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.Status"
-           :StringEquals "deleting"
-           :Next "ImportFailed"}]
-         :Default "WaitForImport"}
-        :ImportFailed
-        {:Type "Fail"
-         :Error "ImportSnapshotFailed"
-         :Cause "Import snapshot task failed or was deleted"}
-        :RegisterImage
-        {:Type "Task"
-         :Resource "arn:aws:states:::aws-sdk:ec2:registerImage"
-         :Parameters
-         {:Name.$
-          "States.Format('nixos-custom-{}', $.TimestampParam.Timestamp)"
-          :Description.$
-          "States.Format('NixOS Custom Image {}', $.TimestampParam.Timestamp)"
-          :Architecture "arm64"
-          :RootDeviceName "/dev/xvda"
-          :BlockDeviceMappings
-          [{:DeviceName "/dev/xvda"
-            :Ebs
-            {:SnapshotId.$ "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.SnapshotId"
-             :VolumeSize 20
-             :VolumeType "gp3"}}]
-          :VirtualizationType "hvm"
-          :EnaSupport true}
-         :ResultPath "$.RegisterImageResult"
-         :Next "PutSSMParameter"}
-        :PutSSMParameter
-        {:Type "Task"
-         :Resource "arn:aws:states:::aws-sdk:ssm:putParameter"
-         :Parameters
-         {:Name "/${Prefix}/custom-ami-id"
-          :Value.$ "$.RegisterImageResult.ImageId"
-          :Type "String"
-          :Overwrite true
-          :Description.$ "States.Format('Custom NixOS AMI created at {}', $.TimestampParam.Timestamp)"}
-         :End true}}}
-      {:pretty true})}}})
+   {:Name (a.cfn/prefix "ami-builder")
+    :Role {"Fn::GetAtt" [:StepFunctionsRole :Arn]}
+    :DefinitionSubstitutions
+    {:Prefix {:Ref :Prefix}}
+    :Definition
+    {:Comment "Build AMI using CodeBuild and Step Functions"
+     :StartAt "StartCodeBuild"
+     :States
+     {:StartCodeBuild
+      {:Type "Task"
+       :Resource "arn:aws:states:::aws-sdk:codebuild:startBuild"
+       :Parameters
+       {:ProjectName "${Prefix}-ami-builder"}
+       :ResultPath "$.CodeBuildResult"
+       :Next "WaitForCodeBuild"}
+      :WaitForCodeBuild
+      {:Type "Wait"
+       :Seconds 30
+       :Next "CheckCodeBuildStatus"}
+      :CheckCodeBuildStatus
+      {:Type "Task"
+       :Resource "arn:aws:states:::aws-sdk:codebuild:batchGetBuilds"
+       :Parameters
+       {:Ids.$ "States.Array($.CodeBuildResult.Build.Id)"}
+       :ResultPath "$.CodeBuildStatusResult"
+       :Next "EvaluateCodeBuildStatus"}
+      :EvaluateCodeBuildStatus
+      {:Type "Choice"
+       :Choices
+       [{:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
+         :StringEquals "SUCCEEDED"
+         :Next "GetImportTaskId"}
+        {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
+         :StringEquals "FAILED"
+         :Next "BuildFailed"}
+        {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
+         :StringEquals "FAULT"
+         :Next "BuildFailed"}
+        {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
+         :StringEquals "TIMED_OUT"
+         :Next "BuildFailed"}
+        {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
+         :StringEquals "STOPPED"
+         :Next "BuildFailed"}]
+       :Default "WaitForCodeBuild"}
+      :BuildFailed
+      {:Type "Fail"
+       :Error "CodeBuildFailed"
+       :Cause "CodeBuild execution failed"}
+      :GetImportTaskId
+      {:Type "Task"
+       :Resource "arn:aws:states:::aws-sdk:ssm:getParameter"
+       :Parameters
+       {:Name "/${Prefix}/ami-builder/import-task-id"}
+       :ResultPath "$.ImportTaskIdParam"
+       :Next "GetTimestamp"}
+      :GetTimestamp
+      {:Type "Task"
+       :Resource "arn:aws:states:::aws-sdk:ssm:getParameter"
+       :Parameters
+       {:Name "/${Prefix}/ami-builder/timestamp"}
+       :ResultSelector
+       {:Timestamp.$ "$.Parameter.Value"}
+       :ResultPath "$.TimestampParam"
+       :Next "WaitForImport"}
+      :WaitForImport
+      {:Type "Wait"
+       :Seconds 30
+       :Next "CheckImportStatus"}
+      :CheckImportStatus
+      {:Type "Task"
+       :Resource "arn:aws:states:::aws-sdk:ec2:describeImportSnapshotTasks"
+       :Parameters
+       {:ImportTaskIds.$ "States.Array($.ImportTaskIdParam.Parameter.Value)"}
+       :ResultPath "$.ImportTaskResult"
+       :Next "EvaluateImportStatus"}
+      :EvaluateImportStatus
+      {:Type "Choice"
+       :Choices
+       [{:Variable "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.Status"
+         :StringEquals "completed"
+         :Next "RegisterImage"}
+        {:Variable "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.Status"
+         :StringEquals "deleted"
+         :Next "ImportFailed"}
+        {:Variable "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.Status"
+         :StringEquals "deleting"
+         :Next "ImportFailed"}]
+       :Default "WaitForImport"}
+      :ImportFailed
+      {:Type "Fail"
+       :Error "ImportSnapshotFailed"
+       :Cause "Import snapshot task failed or was deleted"}
+      :RegisterImage
+      {:Type "Task"
+       :Resource "arn:aws:states:::aws-sdk:ec2:registerImage"
+       :Parameters
+       {:Name.$
+        "States.Format('nixos-custom-{}', $.TimestampParam.Timestamp)"
+        :Description.$
+        "States.Format('NixOS Custom Image {}', $.TimestampParam.Timestamp)"
+        :Architecture "arm64"
+        :RootDeviceName "/dev/xvda"
+        :BlockDeviceMappings
+        [{:DeviceName "/dev/xvda"
+          :Ebs
+          {:SnapshotId.$ "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.SnapshotId"
+           :VolumeSize 20
+           :VolumeType "gp3"}}]
+        :VirtualizationType "hvm"
+        :EnaSupport true}
+       :ResultPath "$.RegisterImageResult"
+       :Next "PutSSMParameter"}
+      :PutSSMParameter
+      {:Type "Task"
+       :Resource "arn:aws:states:::aws-sdk:ssm:putParameter"
+       :Parameters
+       {:Name "/${Prefix}/custom-ami-id"
+        :Value.$ "$.RegisterImageResult.ImageId"
+        :Type "String"
+        :Overwrite true
+        :Description.$ "States.Format('Custom NixOS AMI created at {}', $.TimestampParam.Timestamp)"}
+       :End true}}}}})
 
 (defn resource-codebuild-project []
   {:Type "AWS::CodeBuild::Project"
