@@ -46,7 +46,6 @@ jobs:
       - run: |
           set -euxo pipefail -o posix
 
-          export QEMU_OPTS="-m 8192"
           ./bin/image build
           ./bin/image upload
 
