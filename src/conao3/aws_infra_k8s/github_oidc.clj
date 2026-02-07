@@ -64,16 +64,20 @@
           "autoscaling:DescribeInstanceRefreshes"]
          :Resource "*"}
         {:Effect "Allow"
+         :Action ["ecr:GetAuthorizationToken"]
+         :Resource "*"}
+        {:Effect "Allow"
          :Action
-         ["ecr:GetAuthorizationToken"
-          "ecr:BatchCheckLayerAvailability"
+         ["ecr:BatchCheckLayerAvailability"
           "ecr:GetDownloadUrlForLayer"
           "ecr:BatchGetImage"
           "ecr:PutImage"
           "ecr:InitiateLayerUpload"
           "ecr:UploadLayerPart"
-          "ecr:CompleteLayerUpload"]
-         :Resource "*"}]}}]}})
+          "ecr:CompleteLayerUpload"
+          "ecr:DescribeImages"
+          "ecr:DescribeImageScanFindings"]
+         :Resource {"Fn::Sub" "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Prefix}-app-admin"}}]}}]}})
 
 (defn cfn [_param]
   (a.cfn/template
