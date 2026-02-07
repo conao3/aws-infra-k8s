@@ -9,5 +9,5 @@
     ../nixos-configuration.nix
   ];
 
-  amazonImage.sizeMB = 8192;
+  virtualisation.diskSize = 8192;
 }
