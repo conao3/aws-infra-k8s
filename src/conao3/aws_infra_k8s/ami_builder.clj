@@ -31,12 +31,7 @@
         {:Effect "Allow"
          :Action
          ["ec2:ImportSnapshot"
-          "ec2:DescribeImportSnapshotTasks"
-          "ec2:RegisterImage"
-          "ec2:DescribeImages"
-          "ec2:CreateTags"
-          "ec2:CreateSnapshot"
-          "ec2:DescribeSnapshots"]
+          "ec2:DescribeImportSnapshotTasks"]
          :Resource "*"}
         {:Effect "Allow"
          :Action
@@ -53,10 +48,6 @@
          :Action
          ["cloudformation:ListExports"
           "cloudformation:DescribeStacks"]
-         :Resource "*"}
-        {:Effect "Allow"
-         :Action
-         ["states:StartExecution"]
          :Resource "*"}]}}]}})
 
 (defn resource-stepfunctions-role []
@@ -76,6 +67,11 @@
        :Statement
        [{:Effect "Allow"
          :Action
+         ["codebuild:StartBuild"
+          "codebuild:BatchGetBuilds"]
+         :Resource "*"}
+        {:Effect "Allow"
+         :Action
          ["ec2:DescribeImportSnapshotTasks"
           "ec2:RegisterImage"
           "ec2:DescribeImages"
@@ -83,7 +79,8 @@
          :Resource "*"}
         {:Effect "Allow"
          :Action
-         ["ssm:PutParameter"]
+         ["ssm:PutParameter"
+          "ssm:GetParameter"]
          :Resource "*"}]}}]}})
 
 (defn resource-state-machine []
@@ -94,10 +91,67 @@
     :DefinitionString
     {"Fn::Sub"
      (json/generate-string
-      {:Comment "Wait for import-snapshot completion and register AMI"
-       :StartAt "WaitForImport"
+      {:Comment "Build AMI using CodeBuild and Step Functions"
+       :StartAt "StartCodeBuild"
        :States
-       {:WaitForImport
+       {:StartCodeBuild
+        {:Type "Task"
+         :Resource "arn:aws:states:::aws-sdk:codebuild:startBuild"
+         :Parameters
+         {:ProjectName "${Prefix}-ami-builder"}
+         :ResultPath "$.CodeBuildResult"
+         :Next "WaitForCodeBuild"}
+        :WaitForCodeBuild
+        {:Type "Wait"
+         :Seconds 30
+         :Next "CheckCodeBuildStatus"}
+        :CheckCodeBuildStatus
+        {:Type "Task"
+         :Resource "arn:aws:states:::aws-sdk:codebuild:batchGetBuilds"
+         :Parameters
+         {:Ids.$ "States.Array($.CodeBuildResult.Build.Id)"}
+         :ResultPath "$.CodeBuildStatusResult"
+         :Next "EvaluateCodeBuildStatus"}
+        :EvaluateCodeBuildStatus
+        {:Type "Choice"
+         :Choices
+         [{:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
+           :StringEquals "SUCCEEDED"
+           :Next "GetImportTaskId"}
+          {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
+           :StringEquals "FAILED"
+           :Next "BuildFailed"}
+          {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
+           :StringEquals "FAULT"
+           :Next "BuildFailed"}
+          {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
+           :StringEquals "TIMED_OUT"
+           :Next "BuildFailed"}
+          {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
+           :StringEquals "STOPPED"
+           :Next "BuildFailed"}]
+         :Default "WaitForCodeBuild"}
+        :BuildFailed
+        {:Type "Fail"
+         :Error "CodeBuildFailed"
+         :Cause "CodeBuild execution failed"}
+        :GetImportTaskId
+        {:Type "Task"
+         :Resource "arn:aws:states:::aws-sdk:ssm:getParameter"
+         :Parameters
+         {:Name "/${Prefix}/ami-builder/import-task-id"}
+         :ResultPath "$.ImportTaskIdParam"
+         :Next "GetTimestamp"}
+        :GetTimestamp
+        {:Type "Task"
+         :Resource "arn:aws:states:::aws-sdk:ssm:getParameter"
+         :Parameters
+         {:Name "/${Prefix}/ami-builder/timestamp"}
+         :ResultSelector
+         {:Timestamp.$ "$.Parameter.Value"}
+         :ResultPath "$.TimestampParam"
+         :Next "WaitForImport"}
+        :WaitForImport
         {:Type "Wait"
          :Seconds 30
          :Next "CheckImportStatus"}
@@ -105,7 +159,7 @@
         {:Type "Task"
          :Resource "arn:aws:states:::aws-sdk:ec2:describeImportSnapshotTasks"
          :Parameters
-         {:ImportTaskIds.$ "States.Array($.ImportTaskId)"}
+         {:ImportTaskIds.$ "States.Array($.ImportTaskIdParam.Parameter.Value)"}
          :ResultPath "$.ImportTaskResult"
          :Next "EvaluateImportStatus"}
         :EvaluateImportStatus
@@ -130,9 +184,9 @@
          :Resource "arn:aws:states:::aws-sdk:ec2:registerImage"
          :Parameters
          {:Name.$
-          "States.Format('nixos-custom-{}', $.Timestamp)"
+          "States.Format('nixos-custom-{}', $.TimestampParam.Timestamp)"
           :Description.$
-          "States.Format('NixOS Custom Image {}', $.Timestamp)"
+          "States.Format('NixOS Custom Image {}', $.TimestampParam.Timestamp)"
           :Architecture "arm64"
           :RootDeviceName "/dev/xvda"
           :BlockDeviceMappings
@@ -153,7 +207,7 @@
           :Value.$ "$.RegisterImageResult.ImageId"
           :Type "String"
           :Overwrite true
-          :Description.$ "States.Format('Custom NixOS AMI created at {}', $.Timestamp)"}
+          :Description.$ "States.Format('Custom NixOS AMI created at {}', $.TimestampParam.Timestamp)"}
          :End true}}}
       {:pretty true})}}})
 

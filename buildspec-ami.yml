@@ -51,17 +51,20 @@ phases:
 
         echo "Import task started: ${IMPORT_TASK_ID}"
 
-        STATE_MACHINE_ARN=$(aws cloudformation describe-stacks \
-          --stack-name "${PREFIX}-ami-builder" \
-          --query "Stacks[0].Outputs[?OutputKey=='StateMachine'].OutputValue" \
-          --output text)
+        echo "Saving import task ID to SSM Parameter Store..."
+        aws ssm put-parameter \
+          --name "/${PREFIX}/ami-builder/import-task-id" \
+          --value "${IMPORT_TASK_ID}" \
+          --type String \
+          --overwrite
 
-        echo "Starting Step Functions execution..."
-        aws stepfunctions start-execution \
-          --state-machine-arn "${STATE_MACHINE_ARN}" \
-          --input "{\"ImportTaskId\":\"${IMPORT_TASK_ID}\",\"Timestamp\":\"${TIMESTAMP}\"}"
+        aws ssm put-parameter \
+          --name "/${PREFIX}/ami-builder/timestamp" \
+          --value "${TIMESTAMP}" \
+          --type String \
+          --overwrite
 
-        echo "Step Functions execution started for import task: ${IMPORT_TASK_ID}"
+        echo "Import task ID saved: ${IMPORT_TASK_ID}"
 
 artifacts:
   files:
