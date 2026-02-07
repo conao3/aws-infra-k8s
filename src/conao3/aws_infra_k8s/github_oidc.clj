@@ -62,6 +62,17 @@
          :Action
          ["autoscaling:StartInstanceRefresh"
           "autoscaling:DescribeInstanceRefreshes"]
+         :Resource "*"}
+        {:Effect "Allow"
+         :Action
+         ["ecr:GetAuthorizationToken"
+          "ecr:BatchCheckLayerAvailability"
+          "ecr:GetDownloadUrlForLayer"
+          "ecr:BatchGetImage"
+          "ecr:PutImage"
+          "ecr:InitiateLayerUpload"
+          "ecr:UploadLayerPart"
+          "ecr:CompleteLayerUpload"]
          :Resource "*"}]}}]}})
 
 (defn cfn [_param]
