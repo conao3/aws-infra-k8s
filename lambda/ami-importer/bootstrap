@@ -1,26 +1,25 @@
 #!/bin/bash
-set -euo pipefail
-
-while true; do
-  HEADERS="$(mktemp)"
-  EVENT_DATA=$(curl -sS -LD "$HEADERS" -X GET "http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/next")
-  REQUEST_ID=$(grep -Fi Lambda-Runtime-Aws-Request-Id "$HEADERS" | tr -d '[:space:]' | cut -d: -f2)
-
-  RESPONSE=$(process_event "$EVENT_DATA" 2>&1 || echo "{\"errorMessage\":\"$?\",\"errorType\":\"HandlerError\"}")
-
-  curl -X POST "http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/$REQUEST_ID/response" -d "$RESPONSE"
-done
+set -euxo pipefail -o posix
 
 process_event() {
   local event="$1"
 
-  local prefix=$(echo "$event" | jq -r '.prefix')
-  local s3_uri=$(echo "$event" | jq -r '.s3_uri')
-  local import_task_id=$(echo "$event" | jq -r '.import_task_id // empty')
+  local prefix
+  prefix=$(echo "$event" | jq -r '.prefix')
 
-  local s3_bucket=$(echo "$s3_uri" | sed 's|s3://||' | cut -d/ -f1)
-  local s3_key=$(echo "$s3_uri" | sed 's|s3://[^/]*/||')
-  local timestamp=$(echo "$s3_key" | grep -oP 'nixos-custom-\K[0-9-]+' || date +%Y%m%d-%H%M%S)
+  local s3_uri
+  s3_uri=$(echo "$event" | jq -r '.s3_uri')
+
+  local import_task_id
+  import_task_id=$(echo "$event" | jq -r '.import_task_id // empty')
+
+  local s3_bucket="${s3_uri#s3://}"
+  s3_bucket="${s3_bucket%%/*}"
+
+  local s3_key="${s3_uri#s3://*/}"
+
+  local timestamp
+  timestamp=$(echo "$s3_key" | grep -oP 'nixos-custom-\K[0-9-]+' || date +%Y%m%d-%H%M%S)
 
   if [ -z "$import_task_id" ] || [ "$import_task_id" = "null" ]; then
     echo "Starting import-image for ${s3_uri}" >&2
@@ -44,7 +43,8 @@ process_event() {
     echo "Resuming import task: ${import_task_id}" >&2
   fi
 
-  local start_time=$(date +%s)
+  local start_time
+  start_time=$(date +%s)
   local max_duration=870
 
   while true; do
@@ -56,7 +56,8 @@ process_event() {
       return 1
     fi
 
-    local status=$(aws ec2 describe-import-image-tasks \
+    local status
+    status=$(aws ec2 describe-import-image-tasks \
       --import-task-ids "${import_task_id}" \
       --query 'ImportImageTasks[0].Status' \
       --output text)
@@ -64,7 +65,8 @@ process_event() {
     echo "Import status: ${status}, elapsed: ${elapsed}s" >&2
 
     if [ "$status" = "completed" ]; then
-      local ami_id=$(aws ec2 describe-import-image-tasks \
+      local ami_id
+      ami_id=$(aws ec2 describe-import-image-tasks \
         --import-task-ids "${import_task_id}" \
         --query 'ImportImageTasks[0].ImageId' \
         --output text)
@@ -82,7 +84,8 @@ process_event() {
     elif [ "$status" = "active" ] || [ "$status" = "pending" ]; then
       sleep 30
     else
-      local status_message=$(aws ec2 describe-import-image-tasks \
+      local status_message
+      status_message=$(aws ec2 describe-import-image-tasks \
         --import-task-ids "${import_task_id}" \
         --query 'ImportImageTasks[0].StatusMessage' \
         --output text 2>/dev/null || echo "Unknown error")
@@ -93,3 +96,13 @@ process_event() {
     fi
   done
 }
+
+while true; do
+  HEADERS="$(mktemp)"
+  EVENT_DATA=$(curl -sS -LD "$HEADERS" -X GET "http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/next")
+  REQUEST_ID=$(grep -Fi Lambda-Runtime-Aws-Request-Id "$HEADERS" | tr -d '[:space:]' | cut -d: -f2)
+
+  RESPONSE=$(process_event "$EVENT_DATA" 2>&1 || echo "{\"errorMessage\":\"$?\",\"errorType\":\"HandlerError\"}")
+
+  curl -X POST "http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime/invocation/$REQUEST_ID/response" -d "$RESPONSE"
+done
