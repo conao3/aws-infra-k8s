@@ -10,4 +10,10 @@
   ];
 
   virtualisation.diskSize = 8192;
+
+  fileSystems."/" = {
+    device = "/dev/disk/by-label/nixos";
+    fsType = "ext4";
+    autoResize = true;
+  };
 }
