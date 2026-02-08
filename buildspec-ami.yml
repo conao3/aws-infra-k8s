@@ -3,6 +3,7 @@ version: 0.2
 phases:
   install:
     commands:
+      - set -euxo pipefail -o posix
       - echo "Installing Nix..."
       - curl -L https://releases.nixos.org/nix/nix-2.22.1/install | sh -s -- --daemon --yes
       - . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
@@ -10,9 +11,11 @@ phases:
 
   pre_build:
     commands:
+      - set -euxo pipefail -o posix
       - echo "Configuring Nix..."
       - mkdir -p ~/.config/nix
       - |
+        set -euxo pipefail -o posix
         cat > ~/.config/nix/nix.conf <<EOF
         experimental-features = nix-command flakes
         system-features = benchmark big-parallel nixos-test uid-range kvm
@@ -20,15 +23,18 @@ phases:
 
   build:
     commands:
+      - set -euxo pipefail -o posix
       - echo "Building NixOS AMI..."
       - . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
       - nix build .#imageAmazon --print-build-logs
 
   post_build:
     commands:
+      - set -euxo pipefail -o posix
       - echo "Uploading VHD to S3 and starting import..."
       - . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
       - |
+        set -euxo pipefail -o posix
         VHD_FILE=$(ls -1 result/*.vhd | sort -r | head -n 1)
         if [ -z "${VHD_FILE}" ]; then
           echo "Error: No VHD file found in result/"
