@@ -30,8 +30,8 @@
          :Resource "*"}
         {:Effect "Allow"
          :Action
-         ["ec2:ImportSnapshot"
-          "ec2:DescribeImportSnapshotTasks"]
+         ["ec2:ImportImage"
+          "ec2:DescribeImportImageTasks"]
          :Resource "*"}
         {:Effect "Allow"
          :Action
@@ -72,10 +72,7 @@
          :Resource "*"}
         {:Effect "Allow"
          :Action
-         ["ec2:DescribeImportSnapshotTasks"
-          "ec2:RegisterImage"
-          "ec2:DescribeImages"
-          "ec2:CreateTags"]
+         ["ec2:DescribeImportImageTasks"]
          :Resource "*"}
         {:Effect "Allow"
          :Action
@@ -132,15 +129,6 @@
        :Parameters
        {:Name "/${Prefix}/ami-builder/import-task-id"}
        :ResultPath "$.ImportTaskIdParam"
-       :Next "GetTimestamp"}
-      :GetTimestamp
-      {:Type "Task"
-       :Resource "arn:aws:states:::aws-sdk:ssm:getParameter"
-       :Parameters
-       {:Name "/${Prefix}/ami-builder/timestamp"}
-       :ResultSelector
-       {:Timestamp.$ "$.Parameter.Value"}
-       :ResultPath "$.TimestampParam"
        :Next "WaitForImport"}
       :WaitForImport
       {:Type "Wait"
@@ -148,7 +136,7 @@
        :Next "CheckImportStatus"}
       :CheckImportStatus
       {:Type "Task"
-       :Resource "arn:aws:states:::aws-sdk:ec2:describeImportSnapshotTasks"
+       :Resource "arn:aws:states:::aws-sdk:ec2:describeImportImageTasks"
        :Parameters
        {:ImportTaskIds.$ "States.Array($.ImportTaskIdParam.Parameter.Value)"}
        :ResultPath "$.ImportTaskResult"
@@ -156,46 +144,25 @@
       :EvaluateImportStatus
       {:Type "Choice"
        :Choices
-       [{:Variable "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.Status"
+       [{:Variable "$.ImportTaskResult.ImportImageTasks[0].Status"
          :StringEquals "completed"
-         :Next "RegisterImage"}
-        {:Variable "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.Status"
+         :Next "PutSSMParameter"}
+        {:Variable "$.ImportTaskResult.ImportImageTasks[0].Status"
          :StringEquals "active"
          :Next "WaitForImport"}]
        :Default "ImportFailed"}
       :ImportFailed
       {:Type "Fail"
-       :Error "ImportSnapshotFailed"
-       :Cause "Import snapshot task failed or was deleted"}
-      :RegisterImage
-      {:Type "Task"
-       :Resource "arn:aws:states:::aws-sdk:ec2:registerImage"
-       :Parameters
-       {:Name.$
-        "States.Format('nixos-custom-{}', $.TimestampParam.Timestamp)"
-        :Description.$
-        "States.Format('NixOS Custom Image {}', $.TimestampParam.Timestamp)"
-        :Architecture "arm64"
-        :RootDeviceName "/dev/xvda"
-        :BlockDeviceMappings
-        [{:DeviceName "/dev/xvda"
-          :Ebs
-          {:SnapshotId.$ "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.SnapshotId"
-           :VolumeSize 10
-           :VolumeType "gp3"}}]
-        :VirtualizationType "hvm"
-        :EnaSupport true}
-       :ResultPath "$.RegisterImageResult"
-       :Next "PutSSMParameter"}
+       :Error "ImportImageFailed"
+       :Cause "Import image task failed or was deleted"}
       :PutSSMParameter
       {:Type "Task"
        :Resource "arn:aws:states:::aws-sdk:ssm:putParameter"
        :Parameters
        {:Name "/${Prefix}/custom-ami-id"
-        :Value.$ "$.RegisterImageResult.ImageId"
+        :Value.$ "$.ImportTaskResult.ImportImageTasks[0].ImageId"
         :Type "String"
-        :Overwrite true
-        :Description.$ "States.Format('Custom NixOS AMI created at {}', $.TimestampParam.Timestamp)"}
+        :Overwrite true}
        :End true}}}}})
 
 (defn resource-codebuild-project []

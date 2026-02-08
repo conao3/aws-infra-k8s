@@ -42,10 +42,12 @@ phases:
         echo "Uploading ${VHD_FILE} to s3://${S3_BUCKET}/${S3_KEY}"
         aws s3 cp "${VHD_FILE}" "s3://${S3_BUCKET}/${S3_KEY}"
 
-        echo "Starting import-snapshot..."
-        IMPORT_TASK_ID=$(aws ec2 import-snapshot \
+        echo "Starting import-image..."
+        IMPORT_TASK_ID=$(aws ec2 import-image \
           --description "NixOS Custom EC2 Image ${TIMESTAMP}" \
-          --disk-container "Format=VHD,UserBucket={S3Bucket=${S3_BUCKET},S3Key=${S3_KEY}}" \
+          --architecture arm64 \
+          --platform Linux \
+          --disk-containers "Format=VHD,UserBucket={S3Bucket=${S3_BUCKET},S3Key=${S3_KEY}}" \
           --query 'ImportTaskId' \
           --output text)
 
@@ -55,12 +57,6 @@ phases:
         aws ssm put-parameter \
           --name "/${PREFIX}/ami-builder/import-task-id" \
           --value "${IMPORT_TASK_ID}" \
-          --type String \
-          --overwrite
-
-        aws ssm put-parameter \
-          --name "/${PREFIX}/ami-builder/timestamp" \
-          --value "${TIMESTAMP}" \
           --type String \
           --overwrite
 
