@@ -116,7 +116,7 @@
    {:FunctionName (a.cfn/prefix "ami-importer")
     :Runtime "provided.al2023"
     :Handler "bootstrap"
-    :CodeUri "lambda/ami-importer"
+    :CodeUri "../../lambda/ami-importer"
     :Role {"Fn::GetAtt" [:LambdaRole :Arn]}
     :Timeout 900
     :MemorySize 256
@@ -142,7 +142,7 @@
        :Catch
        [{:ErrorEquals ["States.ALL"]
          :Next "BuildFailed"}]
-       :Next "GetS3Location"}
+       :Next "GetS3Uri"}
       :BuildFailed
       {:Type "Fail"
        :Error "CodeBuildFailed"
@@ -153,25 +153,16 @@
        :Parameters
        {:Name "/${Prefix}/ami-builder/s3-uri"}
        :ResultPath "$.s3_uri_param"
-       :Next "PrepareImportInput"}
-      :PrepareImportInput
-      {:Type "Pass"
-       :Parameters
-       {:prefix "${Prefix}"
-        :s3_uri.$ "$.s3_uri_param.Parameter.Value"}
        :Next "ImportImage"}
       :ImportImage
       {:Type "Task"
        :Resource "arn:aws:states:::lambda:invoke"
        :Parameters
        {:FunctionName "${LambdaFunctionArn}"
-        :Payload.$ "$"}
+        :Payload
+        {:prefix "${Prefix}"
+         :s3_uri.$ "$.s3_uri_param.Parameter.Value"}}
        :ResultPath "$.import_result"
-       :Retry
-       [{:ErrorEquals ["ImportInProgress"]
-         :IntervalSeconds 60
-         :MaxAttempts 20
-         :BackoffRate 1.0}]
        :Catch
        [{:ErrorEquals ["States.ALL"]
          :Next "ImportFailed"}]
