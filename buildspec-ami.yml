@@ -3,19 +3,17 @@ version: 0.2
 phases:
   install:
     commands:
-      - set -euxo pipefail -o posix
-      - echo "Installing Nix..."
-      - curl -L https://releases.nixos.org/nix/nix-2.22.1/install | sh -s -- --daemon --yes
-      - . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
-      - nix --version
+      - |
+        set -euxo pipefail -o posix
+        curl -L https://releases.nixos.org/nix/nix-2.22.1/install | sh -s -- --daemon --yes
+        . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+        nix --version
 
   pre_build:
     commands:
-      - set -euxo pipefail -o posix
-      - echo "Configuring Nix..."
-      - mkdir -p ~/.config/nix
       - |
         set -euxo pipefail -o posix
+        mkdir -p ~/.config/nix
         cat > ~/.config/nix/nix.conf <<EOF
         experimental-features = nix-command flakes
         system-features = benchmark big-parallel nixos-test uid-range kvm
@@ -23,18 +21,17 @@ phases:
 
   build:
     commands:
-      - set -euxo pipefail -o posix
-      - echo "Building NixOS AMI..."
-      - . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
-      - nix build .#imageAmazon --print-build-logs
+      - |
+        set -euxo pipefail -o posix
+        . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+        nix build .#imageAmazon --print-build-logs
 
   post_build:
     commands:
-      - set -euxo pipefail -o posix
-      - echo "Uploading VHD to S3 and starting import..."
-      - . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
       - |
         set -euxo pipefail -o posix
+        . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+
         VHD_FILE=$(ls -1 result/*.vhd | sort -r | head -n 1)
         if [ -z "${VHD_FILE}" ]; then
           echo "Error: No VHD file found in result/"
@@ -46,17 +43,13 @@ phases:
         S3_KEY="nixos-custom-${TIMESTAMP}.vhd"
         S3_URI="s3://${S3_BUCKET}/${S3_KEY}"
 
-        echo "Uploading ${VHD_FILE} to ${S3_URI}"
         aws s3 cp "${VHD_FILE}" "${S3_URI}"
 
-        echo "Saving S3 URI to SSM Parameter Store..."
         aws ssm put-parameter \
           --name "/${PREFIX}/ami-builder/s3-uri" \
           --value "${S3_URI}" \
           --type String \
           --overwrite
-
-        echo "Upload complete: ${S3_URI}"
 
 artifacts:
   files:
