@@ -75,25 +75,26 @@ phases:
         echo "Uploading ${VHD_FILE} to s3://${S3_BUCKET}/${S3_KEY}"
         aws s3 cp "${VHD_FILE}" "s3://${S3_BUCKET}/${S3_KEY}"
 
-        echo "Starting import-image..."
-        IMPORT_TASK_ID=$(aws ec2 import-image \
-          --description "NixOS Custom EC2 Image ${TIMESTAMP}" \
-          --architecture arm64 \
-          --platform Linux \
-          --disk-containers "Format=VHD,UserBucket={S3Bucket=${S3_BUCKET},S3Key=${S3_KEY}}" \
-          --query 'ImportTaskId' \
-          --output text)
-
-        echo "Import task started: ${IMPORT_TASK_ID}"
-
-        echo "Saving import task ID to SSM Parameter Store..."
+        echo "Saving S3 location to SSM Parameter Store..."
         aws ssm put-parameter \
-          --name "/${PREFIX}/ami-builder/import-task-id" \
-          --value "${IMPORT_TASK_ID}" \
+          --name "/${PREFIX}/ami-builder/s3-bucket" \
+          --value "${S3_BUCKET}" \
           --type String \
           --overwrite
 
-        echo "Import task ID saved: ${IMPORT_TASK_ID}"
+        aws ssm put-parameter \
+          --name "/${PREFIX}/ami-builder/s3-key" \
+          --value "${S3_KEY}" \
+          --type String \
+          --overwrite
+
+        aws ssm put-parameter \
+          --name "/${PREFIX}/ami-builder/timestamp" \
+          --value "${TIMESTAMP}" \
+          --type String \
+          --overwrite
+
+        echo "Upload complete: s3://${S3_BUCKET}/${S3_KEY}"
 
 artifacts:
   files:

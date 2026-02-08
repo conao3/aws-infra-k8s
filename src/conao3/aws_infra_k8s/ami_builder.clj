@@ -30,11 +30,6 @@
          :Resource "*"}
         {:Effect "Allow"
          :Action
-         ["ec2:ImportImage"
-          "ec2:DescribeImportImageTasks"]
-         :Resource "*"}
-        {:Effect "Allow"
-         :Action
          ["s3:PutObject"
           "s3:GetObject"
           "s3:ListBucket"]
@@ -72,12 +67,11 @@
          :Resource "*"}
         {:Effect "Allow"
          :Action
-         ["ec2:DescribeImportImageTasks"]
+         ["ssm:GetParameter"]
          :Resource "*"}
         {:Effect "Allow"
          :Action
-         ["ssm:PutParameter"
-          "ssm:GetParameter"]
+         ["lambda:InvokeFunction"]
          :Resource "*"}
         {:Effect "Allow"
          :Action
@@ -88,15 +82,56 @@
           "events:RemoveTargets"]
          :Resource "*"}]}}]}})
 
+(defn resource-lambda-role []
+  {:Type "AWS::IAM::Role"
+   :Properties
+   {:RoleName (a.cfn/prefix "ami-builder-lambda")
+    :AssumeRolePolicyDocument
+    {:Version "2012-10-17"
+     :Statement
+     [{:Effect "Allow"
+       :Principal {:Service "lambda.amazonaws.com"}
+       :Action "sts:AssumeRole"}]}
+    :ManagedPolicyArns
+    ["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"]
+    :Policies
+    [{:PolicyName "AmiImporterPolicy"
+      :PolicyDocument
+      {:Version "2012-10-17"
+       :Statement
+       [{:Effect "Allow"
+         :Action
+         ["ec2:ImportImage"
+          "ec2:DescribeImportImageTasks"]
+         :Resource "*"}
+        {:Effect "Allow"
+         :Action
+         ["ssm:PutParameter"
+          "ssm:GetParameter"]
+         :Resource "*"}]}}]}})
+
+(defn resource-lambda-function []
+  {:Type "AWS::Serverless::Function"
+   :Properties
+   {:FunctionName (a.cfn/prefix "ami-importer")
+    :Runtime "provided.al2023"
+    :Handler "bootstrap"
+    :CodeUri "lambda/ami-importer"
+    :Role {"Fn::GetAtt" [:LambdaRole :Arn]}
+    :Timeout 900
+    :MemorySize 256
+    :Architectures ["arm64"]}})
+
 (defn resource-state-machine []
   {:Type "AWS::Serverless::StateMachine"
    :Properties
    {:Name (a.cfn/prefix "ami-builder")
     :Role {"Fn::GetAtt" [:StepFunctionsRole :Arn]}
     :DefinitionSubstitutions
-    {:Prefix {:Ref :Prefix}}
+    {:Prefix {:Ref :Prefix}
+     :LambdaFunctionArn {"Fn::GetAtt" [:LambdaFunction :Arn]}}
     :Definition
-    {:Comment "Build AMI using CodeBuild and Step Functions"
+    {:Comment "Build AMI using CodeBuild, Lambda and Step Functions"
      :StartAt "StartCodeBuild"
      :States
      {:StartCodeBuild
@@ -107,52 +142,68 @@
        :Catch
        [{:ErrorEquals ["States.ALL"]
          :Next "BuildFailed"}]
-       :Next "GetImportTaskId"}
+       :Next "GetS3Location"}
       :BuildFailed
       {:Type "Fail"
        :Error "CodeBuildFailed"
        :Cause "CodeBuild execution failed"}
-      :GetImportTaskId
-      {:Type "Task"
-       :Resource "arn:aws:states:::aws-sdk:ssm:getParameter"
+      :GetS3Location
+      {:Type "Parallel"
+       :Branches
+       [{:StartAt "GetS3Bucket"
+         :States
+         {:GetS3Bucket
+          {:Type "Task"
+           :Resource "arn:aws:states:::aws-sdk:ssm:getParameter"
+           :Parameters
+           {:Name "/${Prefix}/ami-builder/s3-bucket"}
+           :End true}}}
+        {:StartAt "GetS3Key"
+         :States
+         {:GetS3Key
+          {:Type "Task"
+           :Resource "arn:aws:states:::aws-sdk:ssm:getParameter"
+           :Parameters
+           {:Name "/${Prefix}/ami-builder/s3-key"}
+           :End true}}}
+        {:StartAt "GetTimestamp"
+         :States
+         {:GetTimestamp
+          {:Type "Task"
+           :Resource "arn:aws:states:::aws-sdk:ssm:getParameter"
+           :Parameters
+           {:Name "/${Prefix}/ami-builder/timestamp"}
+           :End true}}}]
+       :ResultPath "$.params"
+       :Next "PrepareImportInput"}
+      :PrepareImportInput
+      {:Type "Pass"
        :Parameters
-       {:Name "/${Prefix}/ami-builder/import-task-id"}
-       :ResultPath "$.ImportTaskIdParam"
-       :Next "WaitForImport"}
-      :WaitForImport
-      {:Type "Wait"
-       :Seconds 30
-       :Next "CheckImportStatus"}
-      :CheckImportStatus
+       {:prefix "${Prefix}"
+        :s3_bucket.$ "$.params[0].Parameter.Value"
+        :s3_key.$ "$.params[1].Parameter.Value"
+        :timestamp.$ "$.params[2].Parameter.Value"}
+       :Next "ImportImage"}
+      :ImportImage
       {:Type "Task"
-       :Resource "arn:aws:states:::aws-sdk:ec2:describeImportImageTasks"
+       :Resource "arn:aws:states:::lambda:invoke"
        :Parameters
-       {:ImportTaskIds.$ "States.Array($.ImportTaskIdParam.Parameter.Value)"}
-       :ResultPath "$.ImportTaskResult"
-       :Next "EvaluateImportStatus"}
-      :EvaluateImportStatus
-      {:Type "Choice"
-       :Choices
-       [{:Variable "$.ImportTaskResult.ImportImageTasks[0].Status"
-         :StringEquals "completed"
-         :Next "PutSSMParameter"}
-        {:Variable "$.ImportTaskResult.ImportImageTasks[0].Status"
-         :StringEquals "active"
-         :Next "WaitForImport"}]
-       :Default "ImportFailed"}
+       {:FunctionName "${LambdaFunctionArn}"
+        :Payload.$ "$"}
+       :ResultPath "$.import_result"
+       :Retry
+       [{:ErrorEquals ["ImportInProgress"]
+         :IntervalSeconds 60
+         :MaxAttempts 20
+         :BackoffRate 1.0}]
+       :Catch
+       [{:ErrorEquals ["States.ALL"]
+         :Next "ImportFailed"}]
+       :End true}
       :ImportFailed
       {:Type "Fail"
        :Error "ImportImageFailed"
-       :Cause "Import image task failed or was deleted"}
-      :PutSSMParameter
-      {:Type "Task"
-       :Resource "arn:aws:states:::aws-sdk:ssm:putParameter"
-       :Parameters
-       {:Name "/${Prefix}/custom-ami-id"
-        :Value.$ "$.ImportTaskResult.ImportImageTasks[0].ImageId"
-        :Type "String"
-        :Overwrite true}
-       :End true}}}}})
+       :Cause "Import image task failed"}}}}})
 
 (defn resource-codebuild-project []
   {:Type "AWS::CodeBuild::Project"
@@ -187,12 +238,15 @@
     :Resources
     {:CodeBuildRole (resource-codebuild-role)
      :CodeBuildProject (resource-codebuild-project)
+     :LambdaRole (resource-lambda-role)
+     :LambdaFunction (resource-lambda-function)
      :StepFunctionsRole (resource-stepfunctions-role)
      :StateMachine (resource-state-machine)}
 
     :Outputs
     (a.cfn/list-outputs
      {:CodeBuildProject {:Ref :CodeBuildProject}
+      :LambdaFunction {:Ref :LambdaFunction}
       :StateMachine {:Ref :StateMachine}})}))
 
 (defn deploy [param]
