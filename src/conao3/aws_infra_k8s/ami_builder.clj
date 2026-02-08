@@ -114,13 +114,16 @@
   {:Type "AWS::Serverless::Function"
    :Properties
    {:FunctionName (a.cfn/prefix "ami-importer")
-    :Runtime "provided.al2023"
-    :Handler "bootstrap"
+    :Runtime "python3.12"
+    :Handler "lambda_function.lambda_handler"
     :CodeUri "../../lambda/ami-importer"
     :Role {"Fn::GetAtt" [:LambdaRole :Arn]}
     :Timeout 900
     :MemorySize 256
-    :Architectures ["arm64"]}})
+    :Architectures ["arm64"]
+    :Environment
+    {:Variables
+     {:PREFIX {:Ref :Prefix}}}}})
 
 (defn resource-state-machine []
   {:Type "AWS::Serverless::StateMachine"
@@ -160,8 +163,7 @@
        :Parameters
        {:FunctionName "${LambdaFunctionArn}"
         :Payload
-        {:prefix "${Prefix}"
-         :s3_uri.$ "$.s3_uri_param.Parameter.Value"}}
+        {:s3_uri.$ "$.s3_uri_param.Parameter.Value"}}
        :ResultPath "$.import_result"
        :Catch
        [{:ErrorEquals ["States.ALL"]
