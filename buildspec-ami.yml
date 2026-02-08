@@ -35,39 +35,6 @@ phases:
           exit 1
         fi
 
-        echo "Verifying and fixing VHD file structure..."
-        LOOP_DEV=$(sudo losetup -fP --show "${VHD_FILE}")
-        echo "Loop device: ${LOOP_DEV}"
-
-        sudo partprobe "${LOOP_DEV}" 2>/dev/null || true
-        sleep 1
-
-        sudo mkdir -p /mnt/vhd
-
-        if [ -e "${LOOP_DEV}p1" ]; then
-          echo "Mounting partition ${LOOP_DEV}p1"
-          sudo mount "${LOOP_DEV}p1" /mnt/vhd
-        else
-          echo "No partition found, mounting ${LOOP_DEV} directly"
-          sudo mount "${LOOP_DEV}" /mnt/vhd
-        fi
-
-        if [ ! -f /mnt/vhd/etc/fstab ]; then
-          echo "Creating /etc/fstab..."
-          sudo mkdir -p /mnt/vhd/etc
-          sudo tee /mnt/vhd/etc/fstab > /dev/null <<EOF
-        LABEL=nixos / ext4 defaults 0 1
-        EOF
-          echo "/etc/fstab created"
-        else
-          echo "/etc/fstab exists:"
-          sudo cat /mnt/vhd/etc/fstab
-        fi
-
-        sudo umount /mnt/vhd
-        sudo losetup -d "${LOOP_DEV}"
-        echo "VHD verification complete"
-
         S3_BUCKET=$(aws cloudformation list-exports --query "Exports[?Name=='${PREFIX}-VmImportBucket'].Value" --output text)
         TIMESTAMP=$(date +%Y%m%d-%H%M%S)
         S3_KEY="nixos-custom-${TIMESTAMP}.vhd"
