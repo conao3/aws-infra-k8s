@@ -181,7 +181,7 @@
         [{:DeviceName "/dev/xvda"
           :Ebs
           {:SnapshotId.$ "$.ImportTaskResult.ImportSnapshotTasks[0].SnapshotTaskDetail.SnapshotId"
-           :VolumeSize 20
+           :VolumeSize 10
            :VolumeType "gp3"}}]
         :VirtualizationType "hvm"
         :EnaSupport true}
