@@ -2,99 +2,12 @@
 set -euxo pipefail -o posix
 
 PREFIX="${PREFIX:-dev-k8s}"
-AMI_ID_FILE="target/ami-id.txt"
-
-get_s3_bucket() {
-  aws cloudformation list-exports \
-    --query "Exports[?Name=='${PREFIX}-VmImportBucket'].Value" \
-    --output text
-}
-
-get_vhd_file() {
-  local vhd_file
-  vhd_file=$(ls -1 result/*.vhd 2>/dev/null | sort -r | head -n 1)
-  if [ -z "${vhd_file}" ]; then
-    echo "Error: No VHD file found in result/. Run 'bin/image build' first." >&2
-    exit 1
-  fi
-  echo "${vhd_file}"
-}
-
-cmd_build() {
-  nix build .#imageAmazon
-}
-
-cmd_upload() {
-  local vhd_file
-  vhd_file=$(get_vhd_file)
-
-  local s3_bucket
-  s3_bucket=$(get_s3_bucket)
-
-  local timestamp
-  timestamp=$(date +%Y%m%d-%H%M%S)
-  local s3_key="nixos-custom-${timestamp}.vhd"
-
-  aws s3 cp "${vhd_file}" "s3://${s3_bucket}/${s3_key}"
-
-  local import_task_id
-  import_task_id=$(aws ec2 import-snapshot \
-    --description "NixOS Custom EC2 Image ${timestamp}" \
-    --disk-container "Format=VHD,UserBucket={S3Bucket=${s3_bucket},S3Key=${s3_key}}" \
-    --query 'ImportTaskId' \
-    --output text)
-
-  while true; do
-    local status
-    status=$(aws ec2 describe-import-snapshot-tasks \
-      --import-task-ids "${import_task_id}" \
-      --query 'ImportSnapshotTasks[0].SnapshotTaskDetail.Status' \
-      --output text)
-
-    if [ "${status}" = "completed" ]; then
-      break
-    elif [ "${status}" = "deleted" ] || [ "${status}" = "deleting" ]; then
-      echo "Error: Import failed with status: ${status}" >&2
-      exit 1
-    fi
-    sleep 30
-  done
-
-  local snapshot_id
-  snapshot_id=$(aws ec2 describe-import-snapshot-tasks \
-    --import-task-ids "${import_task_id}" \
-    --query 'ImportSnapshotTasks[0].SnapshotTaskDetail.SnapshotId' \
-    --output text)
-
-  local ami_id
-  ami_id=$(aws ec2 register-image \
-    --name "nixos-custom-${timestamp}" \
-    --description "NixOS Custom Image ${timestamp}" \
-    --architecture arm64 \
-    --root-device-name '/dev/xvda' \
-    --block-device-mappings "DeviceName=/dev/xvda,Ebs={SnapshotId=${snapshot_id},VolumeSize=20,VolumeType=gp3}" \
-    --virtualization-type hvm \
-    --ena-support \
-    --query 'ImageId' \
-    --output text)
-
-  mkdir -p target
-  echo "${ami_id}" > "${AMI_ID_FILE}"
-
-  local parameter_name="/${PREFIX}/custom-ami-id"
-  aws ssm put-parameter \
-    --name "${parameter_name}" \
-    --value "${ami_id}" \
-    --type String \
-    --overwrite \
-    --description "Custom NixOS AMI created at ${timestamp}"
-}
 
 cmd_deploy() {
   local parameter_name="/${PREFIX}/custom-ami-id"
 
   if ! aws ssm get-parameter --name "${parameter_name}" &>/dev/null; then
-    echo "Error: AMI ID not found in SSM Parameter Store (${parameter_name}). Run 'bin/image upload' first." >&2
+    echo "Error: AMI ID not found in SSM Parameter Store (${parameter_name}). Build AMI using Step Functions first." >&2
     exit 1
   fi
 
@@ -129,25 +42,16 @@ cmd_help() {
 Usage: bin/image <command>
 
 Commands:
-  build     Build the Amazon AMI image (aarch64)
-  upload    Upload image to S3, import snapshot, and register AMI
-  deploy    Deploy cluster with custom AMI and refresh instances
+  deploy    Refresh ASG instances with custom AMI
   help      Show this help message
 
-Workflow:
-  1. bin/image build   - Build the image
-  2. bin/image upload  - Upload and register as AMI
-  3. bin/image deploy  - Deploy cluster and refresh running instances with the AMI
+Note:
+  AMI building is now automated via Step Functions.
+  Use AWS Console or CLI to start the Step Functions execution.
 EOF
 }
 
 case "${1:-help}" in
-  build)
-    cmd_build
-    ;;
-  upload)
-    cmd_upload
-    ;;
   deploy)
     cmd_deploy
     ;;
