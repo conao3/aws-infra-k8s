@@ -15,13 +15,15 @@ process_event() {
   local event="$1"
 
   local prefix=$(echo "$event" | jq -r '.prefix')
-  local s3_bucket=$(echo "$event" | jq -r '.s3_bucket')
-  local s3_key=$(echo "$event" | jq -r '.s3_key')
-  local timestamp=$(echo "$event" | jq -r '.timestamp')
+  local s3_uri=$(echo "$event" | jq -r '.s3_uri')
   local import_task_id=$(echo "$event" | jq -r '.import_task_id // empty')
 
+  local s3_bucket=$(echo "$s3_uri" | sed 's|s3://||' | cut -d/ -f1)
+  local s3_key=$(echo "$s3_uri" | sed 's|s3://[^/]*/||')
+  local timestamp=$(echo "$s3_key" | grep -oP 'nixos-custom-\K[0-9-]+' || date +%Y%m%d-%H%M%S)
+
   if [ -z "$import_task_id" ] || [ "$import_task_id" = "null" ]; then
-    echo "Starting import-image for s3://${s3_bucket}/${s3_key}" >&2
+    echo "Starting import-image for ${s3_uri}" >&2
 
     import_task_id=$(aws ec2 import-image \
       --description "NixOS Custom EC2 Image ${timestamp}" \

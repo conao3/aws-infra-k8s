@@ -147,42 +147,18 @@
       {:Type "Fail"
        :Error "CodeBuildFailed"
        :Cause "CodeBuild execution failed"}
-      :GetS3Location
-      {:Type "Parallel"
-       :Branches
-       [{:StartAt "GetS3Bucket"
-         :States
-         {:GetS3Bucket
-          {:Type "Task"
-           :Resource "arn:aws:states:::aws-sdk:ssm:getParameter"
-           :Parameters
-           {:Name "/${Prefix}/ami-builder/s3-bucket"}
-           :End true}}}
-        {:StartAt "GetS3Key"
-         :States
-         {:GetS3Key
-          {:Type "Task"
-           :Resource "arn:aws:states:::aws-sdk:ssm:getParameter"
-           :Parameters
-           {:Name "/${Prefix}/ami-builder/s3-key"}
-           :End true}}}
-        {:StartAt "GetTimestamp"
-         :States
-         {:GetTimestamp
-          {:Type "Task"
-           :Resource "arn:aws:states:::aws-sdk:ssm:getParameter"
-           :Parameters
-           {:Name "/${Prefix}/ami-builder/timestamp"}
-           :End true}}}]
-       :ResultPath "$.params"
+      :GetS3Uri
+      {:Type "Task"
+       :Resource "arn:aws:states:::aws-sdk:ssm:getParameter"
+       :Parameters
+       {:Name "/${Prefix}/ami-builder/s3-uri"}
+       :ResultPath "$.s3_uri_param"
        :Next "PrepareImportInput"}
       :PrepareImportInput
       {:Type "Pass"
        :Parameters
        {:prefix "${Prefix}"
-        :s3_bucket.$ "$.params[0].Parameter.Value"
-        :s3_key.$ "$.params[1].Parameter.Value"
-        :timestamp.$ "$.params[2].Parameter.Value"}
+        :s3_uri.$ "$.s3_uri_param.Parameter.Value"}
        :Next "ImportImage"}
       :ImportImage
       {:Type "Task"
