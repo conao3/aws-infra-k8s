@@ -78,6 +78,14 @@
          :Action
          ["ssm:PutParameter"
           "ssm:GetParameter"]
+         :Resource "*"}
+        {:Effect "Allow"
+         :Action
+         ["events:PutRule"
+          "events:PutTargets"
+          "events:DescribeRule"
+          "events:DeleteRule"
+          "events:RemoveTargets"]
          :Resource "*"}]}}]}})
 
 (defn resource-state-machine []
@@ -93,32 +101,13 @@
      :States
      {:StartCodeBuild
       {:Type "Task"
-       :Resource "arn:aws:states:::aws-sdk:codebuild:startBuild"
+       :Resource "arn:aws:states:::codebuild:startBuild.sync"
        :Parameters
        {:ProjectName "${Prefix}-ami-builder"}
-       :ResultPath "$.CodeBuildResult"
-       :Next "WaitForCodeBuild"}
-      :WaitForCodeBuild
-      {:Type "Wait"
-       :Seconds 30
-       :Next "CheckCodeBuildStatus"}
-      :CheckCodeBuildStatus
-      {:Type "Task"
-       :Resource "arn:aws:states:::aws-sdk:codebuild:batchGetBuilds"
-       :Parameters
-       {:Ids.$ "States.Array($.CodeBuildResult.Build.Id)"}
-       :ResultPath "$.CodeBuildStatusResult"
-       :Next "EvaluateCodeBuildStatus"}
-      :EvaluateCodeBuildStatus
-      {:Type "Choice"
-       :Choices
-       [{:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
-         :StringEquals "SUCCEEDED"
-         :Next "GetImportTaskId"}
-        {:Variable "$.CodeBuildStatusResult.Builds[0].BuildStatus"
-         :StringEquals "IN_PROGRESS"
-         :Next "WaitForCodeBuild"}]
-       :Default "BuildFailed"}
+       :Catch
+       [{:ErrorEquals ["States.ALL"]
+         :Next "BuildFailed"}]
+       :Next "GetImportTaskId"}
       :BuildFailed
       {:Type "Fail"
        :Error "CodeBuildFailed"
