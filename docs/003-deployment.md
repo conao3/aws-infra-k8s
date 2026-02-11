@@ -31,8 +31,8 @@ This deploys:
 **Infrastructure (ap-northeast-1):**
 - `s3` - S3 bucket for VM Import
 - `vm-import` - VM Import IAM role for custom AMI upload
-- `network` - VPC, Subnets, Internet Gateway, NAT Gateway
-- `routing` - Route Tables and Route Table Associations
+- `network` - VPC, Subnets
+- `routing` - Route Tables, Route Table Associations, Internet Gateway, Egress-Only Internet Gateway
 - `security-group` - Security Groups for ALB and EC2
 - `cluster` - k3s cluster on NixOS
 - `alb` - Application Load Balancer with Target Group

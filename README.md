@@ -168,8 +168,8 @@ bin/k8s-local down
 
 | Module | Description |
 |--------|-------------|
-| `network` | VPC, Subnets, IGW, NAT Gateway |
-| `routing` | Route Tables |
+| `network` | VPC, Subnets |
+| `routing` | Route Tables, IGW, Egress-Only IGW |
 | `security-group` | Security Groups |
 | `cluster` | k3s cluster on NixOS |
 | `alb` | Application Load Balancer |
