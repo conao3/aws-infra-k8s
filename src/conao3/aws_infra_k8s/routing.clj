@@ -21,6 +21,7 @@
   (let [route-table-key (keyword (format "RouteTablePri%s" suffix))
         association-key (keyword (format "SubnetRouteTableAssociationPri%s" suffix))
         route-ipv6-key (keyword (format "RoutePri%sIpv6EgressOnly" suffix))
+        route-ipv4-nat-key (keyword (format "RoutePri%sIpv4Nat" suffix))
         subnet-key (keyword (format "SubnetPri%s" suffix))]
     {route-table-key
      {:Type "AWS::EC2::RouteTable"
@@ -40,7 +41,14 @@
       :Properties
       {:DestinationIpv6CidrBlock "::/0"
        :RouteTableId {:Ref route-table-key}
-       :EgressOnlyInternetGatewayId {:Ref :EgressOnlyInternetGateway}}}}))
+       :EgressOnlyInternetGatewayId {:Ref :EgressOnlyInternetGateway}}}
+
+     route-ipv4-nat-key
+     {:Type "AWS::EC2::Route"
+      :Properties
+      {:DestinationCidrBlock "0.0.0.0/0"
+       :RouteTableId {:Ref route-table-key}
+       :NatGatewayId {:Ref :NatGateway}}}}))
 
 (defn cfn [_param]
   (a.cfn/template
@@ -94,7 +102,22 @@
        :Properties
        {:DestinationIpv6CidrBlock "::/0"
         :RouteTableId {:Ref :RouteTablePub}
-        :GatewayId {:Ref :InternetGateway}}}}
+        :GatewayId {:Ref :InternetGateway}}}
+
+      :NatGatewayEip
+      {:Type "AWS::EC2::EIP"
+       :Properties
+       (a.cfn/tag-name
+        {:TagName (a.cfn/prefix "nat-eip")
+         :Domain "vpc"})}
+
+      :NatGateway
+      {:Type "AWS::EC2::NatGateway"
+       :Properties
+       (a.cfn/tag-name
+        {:TagName (a.cfn/prefix "nat")
+         :AllocationId {"Fn::GetAtt" [:NatGatewayEip :AllocationId]}
+         :SubnetId {:Ref :SubnetPubA}})}}
 
      (resources-pub-subnet-association "A")
      (resources-pub-subnet-association "C")
