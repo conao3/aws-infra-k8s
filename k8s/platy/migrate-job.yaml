@@ -1,0 +1,16 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: platy-migrate
+spec:
+  template:
+    spec:
+      containers:
+      - name: migrate
+        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/dev-k8s-platy-backend:latest
+        command: ["platy-backend", "migrate"]
+        envFrom:
+        - secretRef:
+            name: platy-db
+      restartPolicy: Never
+  backoffLimit: 3

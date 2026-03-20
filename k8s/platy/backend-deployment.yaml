@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platy-backend
+  labels:
+    app: platy-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: platy-backend
+  template:
+    metadata:
+      labels:
+        app: platy-backend
+    spec:
+      containers:
+      - name: platy-backend
+        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/dev-k8s-platy-backend:latest
+        ports:
+        - containerPort: 3000
+        envFrom:
+        - secretRef:
+            name: platy-db
+        env:
+        - name: PLATY_BASE_URL
+          value: "https://platy.sancode.dev"
+        - name: RUST_LOG
+          value: "info"
+        readinessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/v1/health
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 30

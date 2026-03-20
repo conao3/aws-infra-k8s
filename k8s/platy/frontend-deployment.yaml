@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platy-frontend
+  labels:
+    app: platy-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: platy-frontend
+  template:
+    metadata:
+      labels:
+        app: platy-frontend
+    spec:
+      containers:
+      - name: nginx
+        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/dev-k8s-platy-frontend:latest
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 2
+          periodSeconds: 10
