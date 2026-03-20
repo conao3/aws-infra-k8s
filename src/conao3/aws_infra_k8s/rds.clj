@@ -12,9 +12,9 @@
    :Properties
    {:DBSubnetGroupName (a.cfn/prefix "rds")
     :DBSubnetGroupDescription "Subnet group for RDS cluster"
-    :SubnetIds [{:Ref :SubnetDualA}
-                {:Ref :SubnetDualC}
-                {:Ref :SubnetDualD}]}})
+    :SubnetIds [{:Ref :SubnetPriA}
+                {:Ref :SubnetPriC}
+                {:Ref :SubnetPriD}]}})
 
 (defn resource-db-cluster-parameter-group []
   {:Type "AWS::RDS::DBClusterParameterGroup"
@@ -64,9 +64,9 @@
     (a.cfn/list-string-parameters
      [:Env :Prefix
       :Secret
-      :SubnetDualA
-      :SubnetDualC
-      :SubnetDualD
+      :SubnetPriA
+      :SubnetPriC
+      :SubnetPriD
       :SecurityGroupRds])
 
     :Resources
@@ -113,9 +113,9 @@
                      (->> {:Env (-> param :env)
                            :Prefix (-> param :prefix)
                            :Secret (str (-> param :prefix) "-secret")
-                           :SubnetDualA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetDualA))))
-                           :SubnetDualC (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetDualC))))
-                           :SubnetDualD (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetDualD))))
+                           :SubnetPriA (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPriA))))
+                           :SubnetPriC (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPriC))))
+                           :SubnetPriD (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SubnetPriD))))
                            :SecurityGroupRds (get exports (keyword (format "%s-%s" (-> param :prefix) (name :SecurityGroupRds))))}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))
