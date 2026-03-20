@@ -33,12 +33,18 @@
         a.cfn/list-string-parameters)
 
     :Resources
-    {:EcrAppAdmin (resource-ecr-repository "app-admin")}
+    {:EcrAppAdmin (resource-ecr-repository "app-admin")
+     :EcrPlatyBackend (resource-ecr-repository "platy-backend")
+     :EcrPlatyFrontend (resource-ecr-repository "platy-frontend")}
 
     :Outputs
     (a.cfn/list-outputs
      {:EcrAppAdminArn {"Fn::GetAtt" [:EcrAppAdmin :Arn]}
-      :EcrAppAdminUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrAppAdmin}"}})}))
+      :EcrAppAdminUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrAppAdmin}"}
+      :EcrPlatyBackendArn {"Fn::GetAtt" [:EcrPlatyBackend :Arn]}
+      :EcrPlatyBackendUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrPlatyBackend}"}
+      :EcrPlatyFrontendArn {"Fn::GetAtt" [:EcrPlatyFrontend :Arn]}
+      :EcrPlatyFrontendUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrPlatyFrontend}"}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/ecr.json")
