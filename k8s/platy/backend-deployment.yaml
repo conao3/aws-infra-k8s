@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: platy-backend
-        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/dev-k8s-platy-backend:latest
+        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-platy-backend:latest
         ports:
         - containerPort: 3000
         envFrom:
@@ -30,9 +30,9 @@ spec:
         - name: AWS_REGION
           value: "ap-northeast-1"
         - name: COGNITO_USER_POOL_ID
-          value: "ap-northeast-1_26S2DQsRJ"
+          value: "${COGNITO_USER_POOL_ID}"
         - name: COGNITO_CLIENT_ID
-          value: "7ct55q93qs8hfia5a8o032fmkn"
+          value: "${COGNITO_CLIENT_ID}"
         readinessProbe:
           httpGet:
             path: /api/v1/health

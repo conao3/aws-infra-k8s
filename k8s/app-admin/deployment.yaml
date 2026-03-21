@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: app-admin
-        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/dev-k8s-app-admin:latest
+        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-app-admin:latest
         ports:
         - containerPort: 80
         env:

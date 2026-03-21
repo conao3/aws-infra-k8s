@@ -81,7 +81,7 @@
                            ))))))
 
 (defn -main [& args]
-  (let [env "dev"
+  (let [env (or (System/getenv "DEPLOY_ENV") "dev")
         prefix (format "%s-%s" env "k8s")
         param {:env env
                :prefix prefix

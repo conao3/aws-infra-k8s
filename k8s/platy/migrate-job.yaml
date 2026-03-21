@@ -7,7 +7,7 @@ spec:
     spec:
       containers:
       - name: migrate
-        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/dev-k8s-platy-backend:latest
+        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-platy-backend:latest
         command: ["platy-backend", "migrate"]
         envFrom:
         - secretRef:

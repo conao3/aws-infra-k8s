@@ -69,6 +69,19 @@ cmd_deploy() {
 
   sed -i.bak "s/\${EFS_FILE_SYSTEM_ID}/${EFS_FILE_SYSTEM_ID}/g" "${TEMP_DIR}/aws-efs-csi-driver/storageclass.yaml"
 
+  COGNITO_USER_POOL_ID=$(aws cloudformation list-exports \
+    --query "Exports[?Name=='${PREFIX}-UserPool'].Value" \
+    --output text)
+  COGNITO_CLIENT_ID=$(aws cloudformation list-exports \
+    --query "Exports[?Name=='${PREFIX}-UserPoolClient'].Value" \
+    --output text)
+
+  find "${TEMP_DIR}" -type f -name '*.yaml' -exec sed -i \
+    -e "s/\${PREFIX}/${PREFIX}/g" \
+    -e "s/\${COGNITO_USER_POOL_ID}/${COGNITO_USER_POOL_ID}/g" \
+    -e "s/\${COGNITO_CLIENT_ID}/${COGNITO_CLIENT_ID}/g" \
+    {} +
+
   KUBECONFIG="${kubeconfig_file}" kubectl apply -k "${TEMP_DIR}/"
 }
 
