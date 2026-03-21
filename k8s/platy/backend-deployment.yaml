@@ -21,7 +21,8 @@ spec:
         args:
         - |
           psql "$DATABASE_URL" -c "create schema if not exists platy" &&
-          psqldef --file /schema.sql "$DATABASE_URL"
+          eval $(echo "$DATABASE_URL" | sed -E 's|postgres://([^:]+):([^@]+)@([^:]+):([0-9]+)/([^?]+).*|DB_USER=\1 DB_PASS=\2 DB_HOST=\3 DB_PORT=\4 DB_NAME=\5|') &&
+          psqldef -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" --password "$DB_PASS" "$DB_NAME" < /schema.sql
         envFrom:
         - secretRef:
             name: platy-db
