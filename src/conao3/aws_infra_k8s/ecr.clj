@@ -35,7 +35,8 @@
     :Resources
     {:EcrAppAdmin (resource-ecr-repository "app-admin")
      :EcrPlatyBackend (resource-ecr-repository "platy-backend")
-     :EcrPlatyFrontend (resource-ecr-repository "platy-frontend")}
+     :EcrPlatyFrontend (resource-ecr-repository "platy-frontend")
+     :EcrPlatyMigrate (resource-ecr-repository "platy-migrate")}
 
     :Outputs
     (a.cfn/list-outputs
@@ -44,7 +45,9 @@
       :EcrPlatyBackendArn {"Fn::GetAtt" [:EcrPlatyBackend :Arn]}
       :EcrPlatyBackendUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrPlatyBackend}"}
       :EcrPlatyFrontendArn {"Fn::GetAtt" [:EcrPlatyFrontend :Arn]}
-      :EcrPlatyFrontendUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrPlatyFrontend}"}})}))
+      :EcrPlatyFrontendUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrPlatyFrontend}"}
+      :EcrPlatyMigrateArn {"Fn::GetAtt" [:EcrPlatyMigrate :Arn]}
+      :EcrPlatyMigrateUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrPlatyMigrate}"}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/ecr.json")
