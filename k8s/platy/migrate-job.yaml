@@ -7,10 +7,24 @@ spec:
     spec:
       containers:
       - name: migrate
-        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-platy-backend:latest
-        command: ["platy-backend", "migrate"]
+        image: public.ecr.aws/docker/library/debian:bookworm-slim
+        command: ["sh", "-c"]
+        args:
+        - |
+          apt-get update && apt-get install -y curl postgresql-client &&
+          curl -sL https://github.com/sqldef/sqldef/releases/latest/download/psqldef_linux_arm64.tar.gz | tar xz -C /usr/local/bin &&
+          psql "$DATABASE_URL" -c "create schema if not exists platy" &&
+          psqldef --file /schema.sql "$DATABASE_URL"
         envFrom:
         - secretRef:
             name: platy-db
+        volumeMounts:
+        - name: schema
+          mountPath: /schema.sql
+          subPath: schema.sql
+      volumes:
+      - name: schema
+        configMap:
+          name: platy-schema
       restartPolicy: Never
   backoffLimit: 3
