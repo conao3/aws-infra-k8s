@@ -42,9 +42,9 @@
                         "ALLOW_ADMIN_USER_PASSWORD_AUTH"
                         "ALLOW_REFRESH_TOKEN_AUTH"]
     :PreventUserExistenceErrors "ENABLED"
-    :CallbackURLs ["http://localhost:3000/callback"
+    :CallbackURLs ["http://localhost:5173/auth/callback"
                    "https://platy.sancode.dev/auth/callback"]
-    :LogoutURLs ["http://localhost:3000/logout"
+    :LogoutURLs ["http://localhost:5173/login"
                  "https://platy.sancode.dev/login"]
     :AllowedOAuthFlows ["code" "implicit"]
     :AllowedOAuthScopes ["email" "openid" "profile"]
