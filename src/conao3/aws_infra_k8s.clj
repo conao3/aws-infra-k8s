@@ -76,8 +76,9 @@
                            ;; (run ["deploy" "ssh-tunnel"] param)
                            ;; (run ["deploy" "ami-builder"] param)
                            (run ["deploy" "eice"] param)
-                           ;; (run ["deploy" "rds"] param)
+                           (run ["deploy" "rds"] param)
                            (run ["deploy" "efs"] param)
+                           (run ["deploy" "platy-builder"] param)
                            ))))))
 
 (defn -main [& args]
