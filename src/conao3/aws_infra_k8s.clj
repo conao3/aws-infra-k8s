@@ -16,7 +16,8 @@
    [conao3.aws-infra-k8s.efs :as c.efs]
    [conao3.aws-infra-k8s.vm-import :as c.vm-import]
    [conao3.aws-infra-k8s.ecr :as c.ecr]
-   [conao3.aws-infra-k8s.github-oidc :as c.github-oidc])
+   [conao3.aws-infra-k8s.github-oidc :as c.github-oidc]
+   [conao3.aws-infra-k8s.platy-builder :as c.platy-builder])
   (:gen-class))
 
 (defn parse-args [args]
@@ -58,6 +59,7 @@
                    "eice" (c.eice/deploy param)
                    "rds" (c.rds/deploy param)
                    "efs" (c.efs/deploy param)
+                   "platy-builder" (c.platy-builder/deploy param)
                    "all" (do
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
@@ -84,6 +86,6 @@
         param {:env env
                :prefix prefix
                :certificate-arn "arn:aws:acm:us-east-1:418272767854:certificate/19d92199-d2cf-431b-980a-9273121f87cf"
-               :domain-aliases "app1.sancode.dev,app2.sancode.dev,app3.sancode.dev,admin.sancode.dev"}]
+               :domain-aliases "app1.sancode.dev,app2.sancode.dev,app3.sancode.dev,admin.sancode.dev,platy.sancode.dev"}]
     (run args param)
     (shutdown-agents)))

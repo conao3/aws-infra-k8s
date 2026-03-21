@@ -3,6 +3,8 @@ kind: Ingress
 metadata:
   name: healthcheck
   namespace: default
+  annotations:
+    traefik.ingress.kubernetes.io/router.priority: "1"
 spec:
   ingressClassName: traefik
   rules:
