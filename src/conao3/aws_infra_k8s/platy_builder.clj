@@ -43,6 +43,7 @@
           "ecr:CompleteLayerUpload"]
          :Resource
          [{"Fn::Sub" "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Prefix}-platy-backend"}
+          {"Fn::Sub" "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Prefix}-platy-backend-bun"}
           {"Fn::Sub" "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Prefix}-platy-frontend"}
           {"Fn::Sub" "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Prefix}-platy-migrate"}]}
         {:Effect "Allow"

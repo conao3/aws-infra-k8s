@@ -3,6 +3,8 @@ kind: Kustomization
 resources:
   - backend-deployment.yaml
   - backend-service.yaml
+  - backend-bun-deployment.yaml
+  - backend-bun-service.yaml
   - frontend-deployment.yaml
   - frontend-service.yaml
   - ingress.yaml

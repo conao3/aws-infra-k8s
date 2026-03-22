@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: platy-backend-bun
+  labels:
+    app: platy-backend-bun
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: platy-backend-bun
+  template:
+    metadata:
+      labels:
+        app: platy-backend-bun
+    spec:
+      containers:
+      - name: platy-backend-bun
+        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-platy-backend-bun:latest
+        ports:
+        - containerPort: 3001
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 3
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3001
+          initialDelaySeconds: 5
+          periodSeconds: 30

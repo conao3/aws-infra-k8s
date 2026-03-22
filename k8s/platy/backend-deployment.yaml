@@ -49,6 +49,21 @@ spec:
           value: "${COGNITO_USER_POOL_ID}"
         - name: COGNITO_CLIENT_ID
           value: "${COGNITO_CLIENT_ID}"
+        - name: BUN_AI_URL
+          value: "http://platy-backend-bun:3001"
+        - name: S3_USERDATA_BUCKET
+          value: "${PREFIX}-platy-userdata-418272767854"
+        - name: GITHUB_CLIENT_ID
+          value: ""
+        - name: GITHUB_CLIENT_SECRET
+          value: ""
+        - name: GOOGLE_CLIENT_ID
+          value: ""
+        - name: GOOGLE_CLIENT_SECRET
+          value: ""
+        envFrom:
+        - secretRef:
+            name: platy-ai-keys
         readinessProbe:
           httpGet:
             path: /api/v1/health
