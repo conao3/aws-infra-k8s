@@ -35,6 +35,7 @@
     :Resources
     {:EcrAppAdmin (resource-ecr-repository "app-admin")
      :EcrPlatyBackend (resource-ecr-repository "platy-backend")
+     :EcrPlatyBackendBun (resource-ecr-repository "platy-backend-bun")
      :EcrPlatyFrontend (resource-ecr-repository "platy-frontend")
      :EcrPlatyMigrate (resource-ecr-repository "platy-migrate")}
 
@@ -44,6 +45,8 @@
       :EcrAppAdminUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrAppAdmin}"}
       :EcrPlatyBackendArn {"Fn::GetAtt" [:EcrPlatyBackend :Arn]}
       :EcrPlatyBackendUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrPlatyBackend}"}
+      :EcrPlatyBackendBunArn {"Fn::GetAtt" [:EcrPlatyBackendBun :Arn]}
+      :EcrPlatyBackendBunUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrPlatyBackendBun}"}
       :EcrPlatyFrontendArn {"Fn::GetAtt" [:EcrPlatyFrontend :Arn]}
       :EcrPlatyFrontendUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrPlatyFrontend}"}
       :EcrPlatyMigrateArn {"Fn::GetAtt" [:EcrPlatyMigrate :Arn]}
