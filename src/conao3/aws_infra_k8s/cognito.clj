@@ -28,7 +28,11 @@
 (defn resource-user-pool-domain []
   {:Type "AWS::Cognito::UserPoolDomain"
    :Properties
-   {:Domain (a.cfn/prefix "auth")
+   {:Domain {"Fn::If" ["IsPrd"
+                       "auth-k8s.sancode.dev"
+                       {"Fn::Sub" "auth-${Prefix}.sancode.dev"}]}
+    :CustomDomainConfig
+    {:CertificateArn {"Ref" "CertificateArn"}}
     :UserPoolId {:Ref :UserPool}}})
 
 (defn resource-user-pool-client []
@@ -104,7 +108,10 @@
   (a.cfn/template
    {:Parameters
     (a.cfn/list-string-parameters
-     [:Env :Prefix])
+     [:Env :Prefix :CertificateArn])
+
+    :Conditions
+    {:IsPrd {"Fn::Equals" [{"Ref" "Env"} "prd"]}}
 
     :Resources
     {:UserPool (resource-user-pool)
@@ -142,6 +149,7 @@
                    "--no-fail-on-empty-changeset"
                    "--on-failure" "DELETE"
                    "--parameter-overrides"
-                   (format "Env=\"%s\" Prefix=\"%s\""
+                   (format "Env=\"%s\" Prefix=\"%s\" CertificateArn=\"%s\""
                            (-> param :env)
-                           (-> param :prefix)))))
+                           (-> param :prefix)
+                           (-> param :certificate-arn)))))
