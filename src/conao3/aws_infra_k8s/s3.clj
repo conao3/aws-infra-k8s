@@ -27,6 +27,22 @@
      :IgnorePublicAcls true
      :RestrictPublicBuckets true}}})
 
+(defn resource-platy-userdata-bucket []
+  {:Type "AWS::S3::Bucket"
+   :Properties
+   {:BucketName {"Fn::Sub" "${Prefix}-platy-userdata-${AWS::AccountId}"}
+    :CorsConfiguration
+    {:CorsRules
+     [{:AllowedHeaders ["*"]
+       :AllowedMethods ["PUT" "GET"]
+       :AllowedOrigins ["*"]
+       :MaxAge 3600}]}
+    :PublicAccessBlockConfiguration
+    {:BlockPublicAcls true
+     :BlockPublicPolicy true
+     :IgnorePublicAcls true
+     :RestrictPublicBuckets true}}})
+
 (defn cfn [_param]
   (a.cfn/template
    {:Parameters
@@ -34,11 +50,13 @@
      [:Env :Prefix])
 
     :Resources
-    {:VmImportBucket (resource-vm-import-bucket)}
+    {:VmImportBucket (resource-vm-import-bucket)
+     :PlatyUserdataBucket (resource-platy-userdata-bucket)}
 
     :Outputs
     (a.cfn/list-outputs
-     {:VmImportBucket {:Ref :VmImportBucket}})}))
+     {:VmImportBucket {:Ref :VmImportBucket}
+      :PlatyUserdataBucket {:Ref :PlatyUserdataBucket}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/s3.json")
