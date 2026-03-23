@@ -96,7 +96,7 @@
     :LogsConfig
     {:CloudWatchLogs
      {:Status "ENABLED"}}
-    :TimeoutInMinutes 30}})
+    :TimeoutInMinutes 60}})
 
 (defn cfn [_param]
   (a.cfn/template
