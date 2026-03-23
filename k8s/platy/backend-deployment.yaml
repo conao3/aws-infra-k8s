@@ -38,6 +38,8 @@ spec:
         envFrom:
         - secretRef:
             name: platy-db
+        - secretRef:
+            name: platy-ai-keys
         env:
         - name: PLATY_BASE_URL
           value: "https://platy.sancode.dev"
@@ -61,9 +63,6 @@ spec:
           value: ""
         - name: GOOGLE_CLIENT_SECRET
           value: ""
-        envFrom:
-        - secretRef:
-            name: platy-ai-keys
         readinessProbe:
           httpGet:
             path: /api/v1/health

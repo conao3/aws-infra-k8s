@@ -10,6 +10,13 @@ spec:
   - host: platy.sancode.dev
     http:
       paths:
+      - path: /graphql
+        pathType: Prefix
+        backend:
+          service:
+            name: platy-backend
+            port:
+              number: 3000
       - path: /api/v1
         pathType: Prefix
         backend:

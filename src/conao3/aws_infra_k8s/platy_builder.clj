@@ -7,6 +7,16 @@
    [conao3.aws-infra-k8s.util :as c.util]
    [conao3.aws-infra.cfn :as a.cfn]))
 
+(defn resource-cache-bucket []
+  {:Type "AWS::S3::Bucket"
+   :Properties
+   {:BucketName (a.cfn/prefix "platy-builder-cache")
+    :LifecycleConfiguration
+    {:Rules
+     [{:Id "ExpireCache"
+       :Status "Enabled"
+       :ExpirationInDays 30}]}}})
+
 (defn resource-codebuild-role []
   {:Type "AWS::IAM::Role"
    :Properties
@@ -49,7 +59,16 @@
         {:Effect "Allow"
          :Action
          ["cloudformation:ListExports"]
-         :Resource "*"}]}}]}})
+         :Resource "*"}
+        {:Effect "Allow"
+         :Action
+         ["s3:GetObject"
+          "s3:PutObject"
+          "s3:GetBucketAcl"
+          "s3:GetBucketLocation"]
+         :Resource
+         [{"Fn::GetAtt" [:CacheBucket :Arn]}
+          {"Fn::Sub" "${CacheBucket.Arn}/*"}]}]}}]}})
 
 (defn resource-codebuild-project []
   {:Type "AWS::CodeBuild::Project"
@@ -69,6 +88,9 @@
      :EnvironmentVariables
      [{:Name "PREFIX"
        :Value {:Ref :Prefix}}]}
+    :Cache
+    {:Type "S3"
+     :Location {"Fn::Sub" "${CacheBucket}/platy-builder"}}
     :Artifacts
     {:Type "NO_ARTIFACTS"}
     :LogsConfig
@@ -82,7 +104,8 @@
     (a.cfn/list-string-parameters [:Env :Prefix])
 
     :Resources
-    {:CodeBuildRole (resource-codebuild-role)
+    {:CacheBucket (resource-cache-bucket)
+     :CodeBuildRole (resource-codebuild-role)
      :CodeBuildProject (resource-codebuild-project)}
 
     :Outputs
