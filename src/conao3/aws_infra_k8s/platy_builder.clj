@@ -89,8 +89,7 @@
      [{:Name "PREFIX"
        :Value {:Ref :Prefix}}]}
     :Cache
-    {:Type "S3"
-     :Location {"Fn::Sub" "${CacheBucket}/platy-builder"}}
+    {:Type "NO_CACHE"}
     :Artifacts
     {:Type "NO_ARTIFACTS"}
     :LogsConfig
