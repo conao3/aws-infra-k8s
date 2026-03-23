@@ -17,7 +17,7 @@
    [conao3.aws-infra-k8s.vm-import :as c.vm-import]
    [conao3.aws-infra-k8s.ecr :as c.ecr]
    [conao3.aws-infra-k8s.github-oidc :as c.github-oidc]
-   [conao3.aws-infra-k8s.platy-builder :as c.platy-builder])
+   [conao3.aws-infra-k8s.platy-resources :as c.platy-resources])
   (:gen-class))
 
 (defn parse-args [args]
@@ -59,7 +59,7 @@
                    "eice" (c.eice/deploy param)
                    "rds" (c.rds/deploy param)
                    "efs" (c.efs/deploy param)
-                   "platy-builder" (c.platy-builder/deploy param)
+                   "platy-resources" (c.platy-resources/deploy param)
                    "all" (do
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
@@ -78,7 +78,7 @@
                            (run ["deploy" "eice"] param)
                            (run ["deploy" "rds"] param)
                            (run ["deploy" "efs"] param)
-                           (run ["deploy" "platy-builder"] param)
+                           (run ["deploy" "platy-resources"] param)
                            ))))))
 
 (defn -main [& args]
