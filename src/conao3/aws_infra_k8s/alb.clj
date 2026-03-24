@@ -40,7 +40,7 @@
       {:Name (a.cfn/prefix "alb")
        :Type "application"
        :Scheme "internet-facing"
-       :IpAddressType "ipv4"
+       :IpAddressType "dualstack-without-public-ipv4"
        :SecurityGroups [{:Ref :SecurityGroupAlb}]
        :Subnets [{:Ref :SubnetPubA}
                  {:Ref :SubnetPubC}

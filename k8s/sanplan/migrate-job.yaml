@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: platy-migrate
+  name: sanplan-migrate
 spec:
   template:
     spec:
@@ -13,11 +13,11 @@ spec:
         - |
           apt-get update && apt-get install -y curl postgresql-client &&
           curl -sL https://github.com/sqldef/sqldef/releases/latest/download/psqldef_linux_arm64.tar.gz | tar xz -C /usr/local/bin &&
-          psql "$DATABASE_URL" -c "create schema if not exists platy" &&
+          psql "$DATABASE_URL" -c "create schema if not exists sanplan" &&
           psqldef --file /schema.sql "$DATABASE_URL"
         envFrom:
         - secretRef:
-            name: platy-db
+            name: sanplan-db
         volumeMounts:
         - name: schema
           mountPath: /schema.sql
@@ -25,6 +25,6 @@ spec:
       volumes:
       - name: schema
         configMap:
-          name: platy-schema
+          name: sanplan-schema
       restartPolicy: Never
   backoffLimit: 3

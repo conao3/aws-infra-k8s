@@ -1,10 +1,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: platy-backend-bun
+  name: sanplan-backend-bun
 spec:
   selector:
-    app: platy-backend-bun
+    app: sanplan-backend-bun
   ports:
   - port: 3001
     targetPort: 3001

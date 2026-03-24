@@ -54,6 +54,14 @@
          :FromPort 80
          :ToPort 80
          :SourcePrefixListId "pl-58a04531"}}
+       :SecurityGroupIngressAlbFromCloudFrontIPv6
+       {:Type "AWS::EC2::SecurityGroupIngress"
+        :Properties
+        {:GroupId {:Ref :SecurityGroupAlb}
+         :IpProtocol "tcp"
+         :FromPort 80
+         :ToPort 80
+         :SourcePrefixListId "pl-b6a144df"}}
        :SecurityGroupIngressSshTunnelFromIpv6
        {:Type "AWS::EC2::SecurityGroupIngress"
         :Properties

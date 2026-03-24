@@ -1,48 +1,48 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: platy-backend
+  name: sanplan-backend
   labels:
-    app: platy-backend
+    app: sanplan-backend
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: platy-backend
+      app: sanplan-backend
   template:
     metadata:
       labels:
-        app: platy-backend
+        app: sanplan-backend
     spec:
       initContainers:
       - name: migrate
-        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-platy-migrate:latest
+        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-sanplan-migrate:latest
         command: ["sh", "-c"]
         args:
         - |
-          psql "$DATABASE_URL" -c "create schema if not exists platy" &&
+          psql "$DATABASE_URL" -c "create schema if not exists sanplan" &&
           eval $(echo "$DATABASE_URL" | sed -E 's|postgres://([^:]+):([^@]+)@([^:]+):([0-9]+)/([^?]+).*|DB_USER=\1 DB_PASS=\2 DB_HOST=\3 DB_PORT=\4 DB_NAME=\5|') &&
           psqldef -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" --password "$DB_PASS" "$DB_NAME" < /schema.sql
         envFrom:
         - secretRef:
-            name: platy-db
+            name: sanplan-db
         volumeMounts:
         - name: schema
           mountPath: /schema.sql
           subPath: schema.sql
       containers:
-      - name: platy-backend
-        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-platy-backend:latest
+      - name: sanplan-backend
+        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-sanplan-backend:latest
         ports:
         - containerPort: 3000
         envFrom:
         - secretRef:
-            name: platy-db
+            name: sanplan-db
         - secretRef:
-            name: platy-ai-keys
+            name: sanplan-ai-keys
         env:
-        - name: PLATY_BASE_URL
-          value: "https://platy.sancode.dev"
+        - name: SANPLAN_BASE_URL
+          value: "https://sanplan.sancode.dev"
         - name: RUST_LOG
           value: "info"
         - name: AWS_REGION
@@ -52,9 +52,9 @@ spec:
         - name: COGNITO_CLIENT_ID
           value: "${COGNITO_CLIENT_ID}"
         - name: BUN_AI_URL
-          value: "http://platy-backend-bun:3001"
+          value: "http://sanplan-backend-bun:3001"
         - name: S3_USERDATA_BUCKET
-          value: "${PREFIX}-platy-userdata-418272767854"
+          value: "${PREFIX}-sanplan-userdata-418272767854"
         - name: GITHUB_CLIENT_ID
           value: ""
         - name: GITHUB_CLIENT_SECRET
@@ -78,4 +78,4 @@ spec:
       volumes:
       - name: schema
         configMap:
-          name: platy-schema
+          name: sanplan-schema

@@ -34,23 +34,23 @@
 
     :Resources
     {:EcrAppAdmin (resource-ecr-repository "app-admin")
-     :EcrPlatyBackend (resource-ecr-repository "platy-backend")
-     :EcrPlatyBackendBun (resource-ecr-repository "platy-backend-bun")
-     :EcrPlatyFrontend (resource-ecr-repository "platy-frontend")
-     :EcrPlatyMigrate (resource-ecr-repository "platy-migrate")}
+     :EcrSanplanBackend (resource-ecr-repository "sanplan-backend")
+     :EcrSanplanBackendBun (resource-ecr-repository "sanplan-backend-bun")
+     :EcrSanplanFrontend (resource-ecr-repository "sanplan-frontend")
+     :EcrSanplanMigrate (resource-ecr-repository "sanplan-migrate")}
 
     :Outputs
     (a.cfn/list-outputs
      {:EcrAppAdminArn {"Fn::GetAtt" [:EcrAppAdmin :Arn]}
       :EcrAppAdminUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrAppAdmin}"}
-      :EcrPlatyBackendArn {"Fn::GetAtt" [:EcrPlatyBackend :Arn]}
-      :EcrPlatyBackendUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrPlatyBackend}"}
-      :EcrPlatyBackendBunArn {"Fn::GetAtt" [:EcrPlatyBackendBun :Arn]}
-      :EcrPlatyBackendBunUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrPlatyBackendBun}"}
-      :EcrPlatyFrontendArn {"Fn::GetAtt" [:EcrPlatyFrontend :Arn]}
-      :EcrPlatyFrontendUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrPlatyFrontend}"}
-      :EcrPlatyMigrateArn {"Fn::GetAtt" [:EcrPlatyMigrate :Arn]}
-      :EcrPlatyMigrateUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrPlatyMigrate}"}})}))
+      :EcrSanplanBackendArn {"Fn::GetAtt" [:EcrSanplanBackend :Arn]}
+      :EcrSanplanBackendUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrSanplanBackend}"}
+      :EcrSanplanBackendBunArn {"Fn::GetAtt" [:EcrSanplanBackendBun :Arn]}
+      :EcrSanplanBackendBunUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrSanplanBackendBun}"}
+      :EcrSanplanFrontendArn {"Fn::GetAtt" [:EcrSanplanFrontend :Arn]}
+      :EcrSanplanFrontendUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrSanplanFrontend}"}
+      :EcrSanplanMigrateArn {"Fn::GetAtt" [:EcrSanplanMigrate :Arn]}
+      :EcrSanplanMigrateUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrSanplanMigrate}"}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/ecr.json")

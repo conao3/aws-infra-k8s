@@ -1,12 +1,12 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: platy-backend-policy
+  name: sanplan-backend-policy
   namespace: default
 spec:
   podSelector:
     matchLabels:
-      app: platy-backend
+      app: sanplan-backend
   policyTypes:
   - Ingress
   - Egress
@@ -50,12 +50,12 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: platy-frontend-policy
+  name: sanplan-frontend-policy
   namespace: default
 spec:
   podSelector:
     matchLabels:
-      app: platy-frontend
+      app: sanplan-frontend
   policyTypes:
   - Ingress
   - Egress

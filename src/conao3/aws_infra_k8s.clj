@@ -17,7 +17,7 @@
    [conao3.aws-infra-k8s.vm-import :as c.vm-import]
    [conao3.aws-infra-k8s.ecr :as c.ecr]
    [conao3.aws-infra-k8s.github-oidc :as c.github-oidc]
-   [conao3.aws-infra-k8s.platy-resources :as c.platy-resources])
+   [conao3.aws-infra-k8s.sanplan-resources :as c.sanplan-resources])
   (:gen-class))
 
 (defn parse-args [args]
@@ -59,7 +59,7 @@
                    "eice" (c.eice/deploy param)
                    "rds" (c.rds/deploy param)
                    "efs" (c.efs/deploy param)
-                   "platy-resources" (c.platy-resources/deploy param)
+                   "sanplan-resources" (c.sanplan-resources/deploy param)
                    "all" (do
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
@@ -76,9 +76,8 @@
                            ;; (run ["deploy" "ssh-tunnel"] param)
                            ;; (run ["deploy" "ami-builder"] param)
                            (run ["deploy" "eice"] param)
-                           (run ["deploy" "rds"] param)
                            (run ["deploy" "efs"] param)
-                           (run ["deploy" "platy-resources"] param)
+                           (run ["deploy" "sanplan-resources"] param)
                            ))))))
 
 (defn -main [& args]
@@ -87,6 +86,6 @@
         param {:env env
                :prefix prefix
                :certificate-arn "arn:aws:acm:us-east-1:418272767854:certificate/19d92199-d2cf-431b-980a-9273121f87cf"
-               :domain-aliases "app1.sancode.dev,app2.sancode.dev,app3.sancode.dev,admin.sancode.dev,platy.sancode.dev"}]
+               :domain-aliases "app1.sancode.dev,app2.sancode.dev,app3.sancode.dev,admin.sancode.dev,sanplan.sancode.dev"}]
     (run args param)
     (shutdown-agents)))

@@ -47,9 +47,9 @@
                         "ALLOW_REFRESH_TOKEN_AUTH"]
     :PreventUserExistenceErrors "ENABLED"
     :CallbackURLs ["http://localhost:5173/auth/callback"
-                   "https://platy.sancode.dev/auth/callback"]
+                   "https://sanplan.sancode.dev/auth/callback"]
     :LogoutURLs ["http://localhost:5173/login"
-                 "https://platy.sancode.dev/login"]
+                 "https://sanplan.sancode.dev/login"]
     :AllowedOAuthFlows ["code" "implicit"]
     :AllowedOAuthScopes ["email" "openid" "profile"]
     :AllowedOAuthFlowsUserPoolClient true

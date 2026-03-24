@@ -1,4 +1,4 @@
-(ns conao3.aws-infra-k8s.platy-resources
+(ns conao3.aws-infra-k8s.sanplan-resources
   (:require
    [babashka.fs :as fs]
    [cheshire.core :as json]
@@ -10,7 +10,7 @@
 (defn resource-cache-bucket []
   {:Type "AWS::S3::Bucket"
    :Properties
-   {:BucketName (a.cfn/prefix "platy-cache")
+   {:BucketName (a.cfn/prefix "sanplan-cache")
     :LifecycleConfiguration
     {:Rules
      [{:Id "ExpireCache"
@@ -20,7 +20,7 @@
 (defn resource-codebuild-role []
   {:Type "AWS::IAM::Role"
    :Properties
-   {:RoleName (a.cfn/prefix "platy-codebuild")
+   {:RoleName (a.cfn/prefix "sanplan-codebuild")
     :AssumeRolePolicyDocument
     {:Version "2012-10-17"
      :Statement
@@ -28,7 +28,7 @@
        :Principal {:Service "codebuild.amazonaws.com"}
        :Action "sts:AssumeRole"}]}
     :Policies
-    [{:PolicyName "PlatyCodeBuildPolicy"
+    [{:PolicyName "SanplanCodeBuildPolicy"
       :PolicyDocument
       {:Version "2012-10-17"
        :Statement
@@ -52,10 +52,10 @@
           "ecr:UploadLayerPart"
           "ecr:CompleteLayerUpload"]
          :Resource
-         [{"Fn::Sub" "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Prefix}-platy-backend"}
-          {"Fn::Sub" "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Prefix}-platy-backend-bun"}
-          {"Fn::Sub" "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Prefix}-platy-frontend"}
-          {"Fn::Sub" "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Prefix}-platy-migrate"}]}
+         [{"Fn::Sub" "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Prefix}-sanplan-backend"}
+          {"Fn::Sub" "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Prefix}-sanplan-backend-bun"}
+          {"Fn::Sub" "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Prefix}-sanplan-frontend"}
+          {"Fn::Sub" "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Prefix}-sanplan-migrate"}]}
         {:Effect "Allow"
          :Action
          ["cloudformation:ListExports"]
@@ -105,7 +105,7 @@
 (defn resource-sfn-role []
   {:Type "AWS::IAM::Role"
    :Properties
-   {:RoleName (a.cfn/prefix "platy-sfn")
+   {:RoleName (a.cfn/prefix "sanplan-sfn")
     :AssumeRolePolicyDocument
     {:Version "2012-10-17"
      :Statement
@@ -113,7 +113,7 @@
        :Principal {:Service "states.amazonaws.com"}
        :Action "sts:AssumeRole"}]}
     :Policies
-    [{:PolicyName "PlatySfnPolicy"
+    [{:PolicyName "SanplanSfnPolicy"
       :PolicyDocument
       {:Version "2012-10-17"
        :Statement
@@ -145,7 +145,7 @@
 (defn resource-sfn-build []
   {:Type "AWS::Serverless::StateMachine"
    :Properties
-   {:Name (a.cfn/prefix "platy-build")
+   {:Name (a.cfn/prefix "sanplan-build")
     :Type "STANDARD"
     :Role {"Fn::GetAtt" [:SfnRole :Arn]}
     :Definition
@@ -192,7 +192,7 @@
 (defn resource-sfn-deploy []
   {:Type "AWS::Serverless::StateMachine"
    :Properties
-   {:Name (a.cfn/prefix "platy-deploy")
+   {:Name (a.cfn/prefix "sanplan-deploy")
     :Type "STANDARD"
     :Role {"Fn::GetAtt" [:SfnRole :Arn]}
     :Definition
@@ -209,7 +209,7 @@
 (defn resource-sfn-build-and-deploy []
   {:Type "AWS::Serverless::StateMachine"
    :Properties
-   {:Name (a.cfn/prefix "platy-build-and-deploy")
+   {:Name (a.cfn/prefix "sanplan-build-and-deploy")
     :Type "STANDARD"
     :Role {"Fn::GetAtt" [:SfnRole :Arn]}
     :Definition
@@ -241,11 +241,11 @@
     :Resources
     {:CacheBucket (resource-cache-bucket)
      :CodeBuildRole (resource-codebuild-role)
-     :CodeBuildProjectBackend (resource-codebuild-project "platy-build-backend" "buildspecs/backend.yml")
-     :CodeBuildProjectMigrate (resource-codebuild-project "platy-build-migrate" "buildspecs/migrate.yml")
-     :CodeBuildProjectBackendBun (resource-codebuild-project "platy-build-backend-bun" "buildspecs/backend-bun.yml")
-     :CodeBuildProjectFrontend (resource-codebuild-project "platy-build-frontend" "buildspecs/frontend.yml")
-     :CodeBuildProjectDeploy (resource-codebuild-project "platy-deploy" "buildspecs/deploy.yml")
+     :CodeBuildProjectBackend (resource-codebuild-project "sanplan-build-backend" "buildspecs/backend.yml")
+     :CodeBuildProjectMigrate (resource-codebuild-project "sanplan-build-migrate" "buildspecs/migrate.yml")
+     :CodeBuildProjectBackendBun (resource-codebuild-project "sanplan-build-backend-bun" "buildspecs/backend-bun.yml")
+     :CodeBuildProjectFrontend (resource-codebuild-project "sanplan-build-frontend" "buildspecs/frontend.yml")
+     :CodeBuildProjectDeploy (resource-codebuild-project "sanplan-deploy" "buildspecs/deploy.yml")
      :SfnRole (resource-sfn-role)
      :SfnBuild (resource-sfn-build)
      :SfnDeploy (resource-sfn-deploy)
@@ -253,13 +253,13 @@
 
     :Outputs
     (a.cfn/list-outputs
-     {:PlatyBuildSfn {:Ref :SfnBuild}
-      :PlatyDeploySfn {:Ref :SfnDeploy}
-      :PlatyBuildAndDeploySfn {:Ref :SfnBuildAndDeploy}})}))
+     {:SanplanBuildSfn {:Ref :SfnBuild}
+      :SanplanDeploySfn {:Ref :SfnDeploy}
+      :SanplanBuildAndDeploySfn {:Ref :SfnBuildAndDeploy}})}))
 
 (defn deploy [param]
-  (let [file (fs/file "target/cfn/platy-resources.json")
-        stack-name (str (-> param :prefix) "-" "platy-resources")]
+  (let [file (fs/file "target/cfn/sanplan-resources.json")
+        stack-name (str (-> param :prefix) "-" "sanplan-resources")]
     (fs/create-dirs (fs/parent file))
 
     (c.util/eprintln (format "Write: %s" (fs/path file)))

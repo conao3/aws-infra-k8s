@@ -27,10 +27,10 @@
      :IgnorePublicAcls true
      :RestrictPublicBuckets true}}})
 
-(defn resource-platy-userdata-bucket []
+(defn resource-sanplan-userdata-bucket []
   {:Type "AWS::S3::Bucket"
    :Properties
-   {:BucketName {"Fn::Sub" "${Prefix}-platy-userdata-${AWS::AccountId}"}
+   {:BucketName {"Fn::Sub" "${Prefix}-sanplan-userdata-${AWS::AccountId}"}
     :CorsConfiguration
     {:CorsRules
      [{:AllowedHeaders ["*"]
@@ -51,12 +51,12 @@
 
     :Resources
     {:VmImportBucket (resource-vm-import-bucket)
-     :PlatyUserdataBucket (resource-platy-userdata-bucket)}
+     :SanplanUserdataBucket (resource-sanplan-userdata-bucket)}
 
     :Outputs
     (a.cfn/list-outputs
      {:VmImportBucket {:Ref :VmImportBucket}
-      :PlatyUserdataBucket {:Ref :PlatyUserdataBucket}})}))
+      :SanplanUserdataBucket {:Ref :SanplanUserdataBucket}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/s3.json")
