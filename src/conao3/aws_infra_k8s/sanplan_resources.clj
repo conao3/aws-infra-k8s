@@ -253,6 +253,43 @@
     {:SfnBuild {"Ref" :SfnBuild}
      :SfnDeploy {"Ref" :SfnDeploy}}}})
 
+(defn resource-stripe-billing-queue []
+  {:Type "AWS::SQS::Queue"
+   :Properties
+   {:QueueName (a.cfn/prefix "sanplan-billing")}})
+
+(defn resource-stripe-billing-queue-policy []
+  {:Type "AWS::SQS::QueuePolicy"
+   :Properties
+   {:Queues [{:Ref :StripeBillingQueue}]
+    :PolicyDocument
+    {:Version "2012-10-17"
+     :Statement
+     [{:Effect "Allow"
+       :Principal {:Service "events.amazonaws.com"}
+       :Action "sqs:SendMessage"
+       :Resource {"Fn::GetAtt" [:StripeBillingQueue :Arn]}
+       :Condition
+       {:ArnEquals
+        {"aws:SourceArn" {"Fn::GetAtt" [:StripeBillingRule :Arn]}}}}]}}})
+
+(defn resource-stripe-billing-event-bus []
+  {:Type "AWS::Events::EventBus"
+   :Properties
+   {:Name {:Ref :StripeEventSourceName}
+    :EventSourceName {:Ref :StripeEventSourceName}}})
+
+(defn resource-stripe-billing-rule []
+  {:Type "AWS::Events::Rule"
+   :Properties
+   {:Name (a.cfn/prefix "sanplan-stripe-billing")
+    :EventBusName {:Ref :StripeBillingEventBus}
+    :EventPattern {"Fn::Sub" "{\"account\":[\"${AWS::AccountId}\"]}"}
+    :State "ENABLED"
+    :Targets
+    [{:Id "StripeBillingQueue"
+      :Arn {"Fn::GetAtt" [:StripeBillingQueue :Arn]}}]}})
+
 (defn cfn [_param]
   (a.cfn/template
    {:Parameters
@@ -260,7 +297,8 @@
      [:Env :Prefix
       :Vpc
       :SubnetPriA :SubnetPriC :SubnetPriD
-      :SecurityGroupApp])
+      :SecurityGroupApp
+      :StripeEventSourceName])
 
     :Resources
     {:CacheBucket (resource-cache-bucket)
@@ -273,13 +311,18 @@
      :SfnRole (resource-sfn-role)
      :SfnBuild (resource-sfn-build)
      :SfnDeploy (resource-sfn-deploy)
-     :SfnBuildAndDeploy (resource-sfn-build-and-deploy)}
+     :SfnBuildAndDeploy (resource-sfn-build-and-deploy)
+     :StripeBillingQueue (resource-stripe-billing-queue)
+     :StripeBillingQueuePolicy (resource-stripe-billing-queue-policy)
+     :StripeBillingEventBus (resource-stripe-billing-event-bus)
+     :StripeBillingRule (resource-stripe-billing-rule)}
 
     :Outputs
     (a.cfn/list-outputs
      {:SanplanBuildSfn {:Ref :SfnBuild}
       :SanplanDeploySfn {:Ref :SfnDeploy}
-      :SanplanBuildAndDeploySfn {:Ref :SfnBuildAndDeploy}})}))
+      :SanplanBuildAndDeploySfn {:Ref :SfnBuildAndDeploy}
+      :SanplanBillingQueueUrl {:Ref :StripeBillingQueue}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/sanplan-resources.json")
@@ -309,7 +352,8 @@
                      "--parameter-overrides"
                      (->> (merge
                            {:Env (-> param :env)
-                            :Prefix (-> param :prefix)}
+                            :Prefix (-> param :prefix)
+                            :StripeEventSourceName (-> param :StripeEventSourceName)}
                            (->> [:Vpc :SubnetPriA :SubnetPriC :SubnetPriD :SecurityGroupApp]
                                 (map (fn [k]
                                        [k (get exports (keyword (format "%s-%s" (-> param :prefix) (name k))))]))

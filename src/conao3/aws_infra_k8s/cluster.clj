@@ -35,7 +35,17 @@
           "elasticfilesystem:DescribeMountTargets"
           "elasticfilesystem:TagResource"
           "elasticfilesystem:ListTagsForResource"]
-         :Resource {"Fn::Sub" "arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:file-system/${EfsFileSystemId}"}}]}}]}})
+         :Resource {"Fn::Sub" "arn:aws:elasticfilesystem:${AWS::Region}:${AWS::AccountId}:file-system/${EfsFileSystemId}"}}]}}
+     {:PolicyName "SQSBillingPolicy"
+      :PolicyDocument
+      {:Version "2012-10-17"
+       :Statement
+       [{:Effect "Allow"
+         :Action
+         ["sqs:ReceiveMessage"
+          "sqs:DeleteMessage"
+          "sqs:GetQueueAttributes"]
+         :Resource {"Fn::Sub" "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${Prefix}-sanplan-billing"}}]}}]}})
 
 (defn resource-instance-profile []
   {:Type "AWS::IAM::InstanceProfile"
