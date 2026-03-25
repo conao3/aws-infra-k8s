@@ -103,7 +103,9 @@
      :PrivilegedMode true
      :EnvironmentVariables
      [{:Name "PREFIX"
-       :Value {:Ref :Prefix}}]}
+       :Value {:Ref :Prefix}}
+      {:Name "CACHE_BUCKET"
+       :Value {:Ref :CacheBucket}}]}
     :Cache
     {:Type "NO_CACHE"}
     :Artifacts
@@ -120,7 +122,15 @@
                  :Subnets [{:Ref :SubnetPriA}
                            {:Ref :SubnetPriC}
                            {:Ref :SubnetPriD}]
-                 :SecurityGroupIds [{:Ref :SecurityGroupApp}]})))
+                 :SecurityGroupIds [{:Ref :SecurityGroupApp}]})
+      (update-in [:Properties :Environment :EnvironmentVariables]
+                 conj
+                 {:Name "COGNITO_USER_POOL_ID"
+                  :Value {:Ref :UserPool}}
+                 {:Name "COGNITO_CLIENT_ID"
+                  :Value {:Ref :UserPoolClient}}
+                 {:Name "STRIPE_BILLING_QUEUE_URL"
+                  :Value {:Ref :StripeBillingQueue}})))
 
 (defn resource-sfn-role []
   {:Type "AWS::IAM::Role"
@@ -298,7 +308,9 @@
       :Vpc
       :SubnetPriA :SubnetPriC :SubnetPriD
       :SecurityGroupApp
-      :StripeEventSourceName])
+      :StripeEventSourceName
+      :UserPool
+      :UserPoolClient])
 
     :Resources
     {:CacheBucket (resource-cache-bucket)
@@ -354,7 +366,8 @@
                            {:Env (-> param :env)
                             :Prefix (-> param :prefix)
                             :StripeEventSourceName (-> param :StripeEventSourceName)}
-                           (->> [:Vpc :SubnetPriA :SubnetPriC :SubnetPriD :SecurityGroupApp]
+                           (->> [:Vpc :SubnetPriA :SubnetPriC :SubnetPriD :SecurityGroupApp
+                                 :UserPool :UserPoolClient]
                                 (map (fn [k]
                                        [k (get exports (keyword (format "%s-%s" (-> param :prefix) (name k))))]))
                                 (into {})))
