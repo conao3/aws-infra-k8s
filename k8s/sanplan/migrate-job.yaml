@@ -14,7 +14,8 @@ spec:
           apt-get update && apt-get install -y curl postgresql-client &&
           curl -sL https://github.com/sqldef/sqldef/releases/latest/download/psqldef_linux_arm64.tar.gz | tar xz -C /usr/local/bin &&
           psql "$DATABASE_URL" -c "create schema if not exists sanplan" &&
-          psqldef --url "$DATABASE_URL" --file /schema.sql
+          psqldef --url "$DATABASE_URL" --file /schema.sql &&
+          psql "$DATABASE_URL" -f /seed.sql
         envFrom:
         - secretRef:
             name: sanplan-db
@@ -22,9 +23,15 @@ spec:
         - name: schema
           mountPath: /schema.sql
           subPath: schema.sql
+        - name: seed
+          mountPath: /seed.sql
+          subPath: seed.sql
       volumes:
       - name: schema
         configMap:
           name: sanplan-schema
+      - name: seed
+        configMap:
+          name: sanplan-seed
       restartPolicy: Never
   backoffLimit: 3

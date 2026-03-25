@@ -25,8 +25,8 @@ spec:
           DB_PASS=$(echo "$DATABASE_URL" | sed -E 's|^postgresql?://[^:]+:([^@]+)@.*|\1|') &&
           DB_HOST=$(echo "$DATABASE_URL" | sed -E 's|^postgresql?://[^@]+@([^/:]+).*|\1|') &&
           DB_NAME=$(echo "$DATABASE_URL" | sed -E 's|^postgresql?://[^/]+/([^?]+).*|\1|') &&
-          sed '/^INSERT/,/DO NOTHING;/d' /schema.sql | PGPASSWORD="$DB_PASS" PGSSLMODE=require psqldef -U "$DB_USER" -h "$DB_HOST" "$DB_NAME" &&
-          sed -n '/^INSERT/,/DO NOTHING;/p' /schema.sql | psql "$DATABASE_URL"
+          PGPASSWORD="$DB_PASS" PGSSLMODE=require psqldef -U "$DB_USER" -h "$DB_HOST" "$DB_NAME" < /schema.sql &&
+          psql "$DATABASE_URL" -f /seed.sql
         envFrom:
         - secretRef:
             name: sanplan-db
@@ -34,6 +34,9 @@ spec:
         - name: schema
           mountPath: /schema.sql
           subPath: schema.sql
+        - name: seed
+          mountPath: /seed.sql
+          subPath: seed.sql
       containers:
       - name: sanplan-backend
         image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-sanplan-backend:latest
@@ -83,3 +86,6 @@ spec:
       - name: schema
         configMap:
           name: sanplan-schema
+      - name: seed
+        configMap:
+          name: sanplan-seed
