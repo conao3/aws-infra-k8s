@@ -73,7 +73,18 @@
          :Action
          ["ssm:GetParameter"]
          :Resource
-         [{"Fn::Sub" "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}-kubeconfig"}]}]}}]}})
+         [{"Fn::Sub" "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}-kubeconfig"}]}
+        {:Effect "Allow"
+         :Action
+         ["ec2:CreateNetworkInterface"
+          "ec2:DescribeDhcpOptions"
+          "ec2:DescribeNetworkInterfaces"
+          "ec2:DeleteNetworkInterface"
+          "ec2:DescribeSubnets"
+          "ec2:DescribeSecurityGroups"
+          "ec2:DescribeVpcs"
+          "ec2:CreateNetworkInterfacePermission"]
+         :Resource "*"}]}}]}})
 
 (defn resource-codebuild-project [name buildspec]
   {:Type "AWS::CodeBuild::Project"
@@ -82,7 +93,7 @@
     :ServiceRole {"Fn::GetAtt" [:CodeBuildRole :Arn]}
     :Source
     {:Type "GITHUB"
-     :Location "https://github.com/conao3/rust-platy.git"
+     :Location "https://github.com/conao3/rust-sanplan.git"
      :BuildSpec buildspec
      :GitCloneDepth 1}
     :Environment
@@ -101,6 +112,15 @@
     {:CloudWatchLogs
      {:Status "ENABLED"}}
     :TimeoutInMinutes 60}})
+
+(defn resource-codebuild-project-deploy [name buildspec]
+  (-> (resource-codebuild-project name buildspec)
+      (assoc-in [:Properties :VpcConfig]
+                {:VpcId {:Ref :Vpc}
+                 :Subnets [{:Ref :SubnetPriA}
+                           {:Ref :SubnetPriC}
+                           {:Ref :SubnetPriD}]
+                 :SecurityGroupIds [{:Ref :SecurityGroupApp}]})))
 
 (defn resource-sfn-role []
   {:Type "AWS::IAM::Role"
@@ -236,7 +256,11 @@
 (defn cfn [_param]
   (a.cfn/template
    {:Parameters
-    (a.cfn/list-string-parameters [:Env :Prefix])
+    (a.cfn/list-string-parameters
+     [:Env :Prefix
+      :Vpc
+      :SubnetPriA :SubnetPriC :SubnetPriD
+      :SecurityGroupApp])
 
     :Resources
     {:CacheBucket (resource-cache-bucket)
@@ -245,7 +269,7 @@
      :CodeBuildProjectMigrate (resource-codebuild-project "sanplan-build-migrate" "buildspecs/migrate.yml")
      :CodeBuildProjectBackendBun (resource-codebuild-project "sanplan-build-backend-bun" "buildspecs/backend-bun.yml")
      :CodeBuildProjectFrontend (resource-codebuild-project "sanplan-build-frontend" "buildspecs/frontend.yml")
-     :CodeBuildProjectDeploy (resource-codebuild-project "sanplan-deploy" "buildspecs/deploy.yml")
+     :CodeBuildProjectDeploy (resource-codebuild-project-deploy "sanplan-deploy" "buildspecs/deploy.yml")
      :SfnRole (resource-sfn-role)
      :SfnBuild (resource-sfn-build)
      :SfnDeploy (resource-sfn-deploy)
@@ -268,17 +292,28 @@
           (json/generate-stream writer)))
 
     (c.util/eshell "sam" "validate" "--template-file" (str (fs/path file)))
-    (c.util/ensure-stack-deployable stack-name)
-    (c.util/eshell "sam" "deploy"
-                   "--template-file" (str (fs/path file))
-                   "--stack-name" stack-name
-                   "--capabilities" "CAPABILITY_NAMED_IAM"
-                   "--resolve-s3"
-                   "--no-fail-on-empty-changeset"
-                   "--on-failure" "DELETE"
-                   "--parameter-overrides"
-                   (->> {:Env (-> param :env)
-                         :Prefix (-> param :prefix)}
-                        (map (fn [[k v]]
-                               (format "%s=\"%s\"" (name k) v)))
-                        (str/join " ")))))
+    (let [exports (->> (-> (c.util/eshell {:out :string} "aws" "cloudformation" "list-exports")
+                           :out
+                           (json/parse-string keyword))
+                       :Exports
+                       (map (fn [elm] [(keyword (:Name elm)) (:Value elm)]))
+                       (into {}))]
+      (c.util/ensure-stack-deployable stack-name)
+      (c.util/eshell "sam" "deploy"
+                     "--template-file" (str (fs/path file))
+                     "--stack-name" stack-name
+                     "--capabilities" "CAPABILITY_NAMED_IAM"
+                     "--resolve-s3"
+                     "--no-fail-on-empty-changeset"
+                     "--on-failure" "DELETE"
+                     "--parameter-overrides"
+                     (->> (merge
+                           {:Env (-> param :env)
+                            :Prefix (-> param :prefix)}
+                           (->> [:Vpc :SubnetPriA :SubnetPriC :SubnetPriD :SecurityGroupApp]
+                                (map (fn [k]
+                                       [k (get exports (keyword (format "%s-%s" (-> param :prefix) (name k))))]))
+                                (into {})))
+                          (map (fn [[k v]]
+                                 (format "%s=\"%s\"" (name k) v)))
+                          (str/join " "))))))

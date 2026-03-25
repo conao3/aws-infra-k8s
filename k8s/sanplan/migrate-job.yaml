@@ -14,7 +14,7 @@ spec:
           apt-get update && apt-get install -y curl postgresql-client &&
           curl -sL https://github.com/sqldef/sqldef/releases/latest/download/psqldef_linux_arm64.tar.gz | tar xz -C /usr/local/bin &&
           psql "$DATABASE_URL" -c "create schema if not exists sanplan" &&
-          psqldef --file /schema.sql "$DATABASE_URL"
+          psqldef --url "$DATABASE_URL" --file /schema.sql
         envFrom:
         - secretRef:
             name: sanplan-db

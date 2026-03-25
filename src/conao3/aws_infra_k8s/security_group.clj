@@ -54,14 +54,6 @@
          :FromPort 80
          :ToPort 80
          :SourcePrefixListId "pl-58a04531"}}
-       :SecurityGroupIngressAlbFromCloudFrontIPv6
-       {:Type "AWS::EC2::SecurityGroupIngress"
-        :Properties
-        {:GroupId {:Ref :SecurityGroupAlb}
-         :IpProtocol "tcp"
-         :FromPort 80
-         :ToPort 80
-         :SourcePrefixListId "pl-b6a144df"}}
        :SecurityGroupIngressSshTunnelFromIpv6
        {:Type "AWS::EC2::SecurityGroupIngress"
         :Properties
@@ -93,6 +85,14 @@
          :IpProtocol "tcp"
          :FromPort 2049
          :ToPort 2049
+         :SourceSecurityGroupId {:Ref :SecurityGroupApp}}}
+       :SecurityGroupIngressAppK8sApiFromApp
+       {:Type "AWS::EC2::SecurityGroupIngress"
+        :Properties
+        {:GroupId {:Ref :SecurityGroupApp}
+         :IpProtocol "tcp"
+         :FromPort 6443
+         :ToPort 6443
          :SourceSecurityGroupId {:Ref :SecurityGroupApp}}}}
 
       :Outputs

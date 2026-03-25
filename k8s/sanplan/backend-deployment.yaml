@@ -21,8 +21,12 @@ spec:
         args:
         - |
           psql "$DATABASE_URL" -c "create schema if not exists sanplan" &&
-          eval $(echo "$DATABASE_URL" | sed -E 's|postgres://([^:]+):([^@]+)@([^:]+):([0-9]+)/([^?]+).*|DB_USER=\1 DB_PASS=\2 DB_HOST=\3 DB_PORT=\4 DB_NAME=\5|') &&
-          psqldef -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" --password "$DB_PASS" "$DB_NAME" < /schema.sql
+          DB_USER=$(echo "$DATABASE_URL" | sed -E 's|^postgresql?://([^:]+):.*|\1|') &&
+          DB_PASS=$(echo "$DATABASE_URL" | sed -E 's|^postgresql?://[^:]+:([^@]+)@.*|\1|') &&
+          DB_HOST=$(echo "$DATABASE_URL" | sed -E 's|^postgresql?://[^@]+@([^/:]+).*|\1|') &&
+          DB_NAME=$(echo "$DATABASE_URL" | sed -E 's|^postgresql?://[^/]+/([^?]+).*|\1|') &&
+          sed '/^INSERT/,/DO NOTHING;/d' /schema.sql | PGPASSWORD="$DB_PASS" PGSSLMODE=require psqldef -U "$DB_USER" -h "$DB_HOST" "$DB_NAME" &&
+          sed -n '/^INSERT/,/DO NOTHING;/p' /schema.sql | psql "$DATABASE_URL"
         envFrom:
         - secretRef:
             name: sanplan-db
