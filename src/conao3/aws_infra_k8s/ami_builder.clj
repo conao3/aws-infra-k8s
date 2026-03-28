@@ -101,8 +101,10 @@
        :Statement
        [{:Effect "Allow"
          :Action
-         ["ec2:ImportImage"
-          "ec2:DescribeImportImageTasks"]
+         ["ec2:ImportSnapshot"
+          "ec2:DescribeImportSnapshotTasks"
+          "ec2:RegisterImage"
+          "ec2:DescribeSnapshots"]
          :Resource "*"}
         {:Effect "Allow"
          :Action
