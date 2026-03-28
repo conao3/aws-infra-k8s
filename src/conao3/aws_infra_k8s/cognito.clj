@@ -149,7 +149,14 @@
                    "--no-fail-on-empty-changeset"
                    "--on-failure" "DELETE"
                    "--parameter-overrides"
-                   (format "Env=\"%s\" Prefix=\"%s\" CertificateArn=\"%s\""
-                           (-> param :env)
-                           (-> param :prefix)
-                           (-> param :certificate-arn)))))
+                   (let [exports (->> (-> (c.util/eshell {:out :string} "aws" "cloudformation" "list-exports" "--region" "us-east-1")
+                                        :out
+                                        (json/parse-string keyword))
+                                    :Exports
+                                    (map (fn [elm] [(keyword (:Name elm)) (:Value elm)]))
+                                    (into {}))
+                         cert-arn (get exports (keyword (format "%s-%s" (-> param :prefix) "CertificateArn")))]
+                     (format "Env=\"%s\" Prefix=\"%s\" CertificateArn=\"%s\""
+                             (-> param :env)
+                             (-> param :prefix)
+                             cert-arn)))))

@@ -149,12 +149,15 @@
           (json/generate-stream writer)))
 
     (c.util/eshell "sam" "validate" "--template-file" (str (fs/path file)) "--region" "us-east-1")
-    (let [exports (->> (-> (c.util/eshell {:out :string} "aws" "cloudformation" "list-exports" "--region" "ap-northeast-1")
-                           :out
-                           (json/parse-string keyword))
-                       :Exports
-                       (map (fn [elm] [(keyword (:Name elm)) (:Value elm)]))
-                       (into {}))]
+    (let [parse-exports (fn [region]
+                          (->> (-> (c.util/eshell {:out :string} "aws" "cloudformation" "list-exports" "--region" region)
+                                   :out
+                                   (json/parse-string keyword))
+                               :Exports
+                               (map (fn [elm] [(keyword (:Name elm)) (:Value elm)]))
+                               (into {})))
+          exports (merge (parse-exports "ap-northeast-1")
+                         (parse-exports "us-east-1"))]
       (c.util/ensure-stack-deployable stack-name)
       (c.util/eshell "sam" "deploy"
                      "--template-file" (str (fs/path file))
@@ -168,7 +171,7 @@
                      (->> {:Env (-> param :env)
                            :Prefix (-> param :prefix)
                            :LoadBalancerDnsName (get exports (keyword (format "%s-%s" (-> param :prefix) "LoadBalancerDnsName")))
-                           :CertificateArn (-> param :certificate-arn)
+                           :CertificateArn (get exports (keyword (format "%s-%s" (-> param :prefix) "CertificateArn")))
                            :DomainAliases (-> param :domain-aliases)}
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))

@@ -17,7 +17,9 @@
    [conao3.aws-infra-k8s.vm-import :as c.vm-import]
    [conao3.aws-infra-k8s.ecr :as c.ecr]
    [conao3.aws-infra-k8s.github-oidc :as c.github-oidc]
-   [conao3.aws-infra-k8s.sanplan-resources :as c.sanplan-resources])
+   [conao3.aws-infra-k8s.sanplan-resources :as c.sanplan-resources]
+   [conao3.aws-infra-k8s.sancode-resources :as c.sancode-resources]
+   [conao3.aws-infra-k8s.certificate :as c.certificate])
   (:gen-class))
 
 (defn parse-args [args]
@@ -60,6 +62,8 @@
                    "rds" (c.rds/deploy param)
                    "efs" (c.efs/deploy param)
                    "sanplan-resources" (c.sanplan-resources/deploy param)
+                   "sancode-resources" (c.sancode-resources/deploy param)
+                   "certificate" (c.certificate/deploy param)
                    "all" (do
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
@@ -83,9 +87,11 @@
 (defn -main [& args]
   (let [env (or (System/getenv "DEPLOY_ENV") "dev")
         prefix (format "%s-%s" env "k8s")
+        domain-suffix (if (= env "prd") "sancode.dev" "dev.sancode.dev")
         param {:env env
                :prefix prefix
-               :certificate-arn "arn:aws:acm:us-east-1:418272767854:certificate/19d92199-d2cf-431b-980a-9273121f87cf"
-               :domain-aliases "app1.sancode.dev,app2.sancode.dev,app3.sancode.dev,admin.sancode.dev,sanplan.sancode.dev"}]
+               :domain-name (format "*.%s" domain-suffix)
+               :domain-aliases (str/join "," (map #(format "%s.%s" % domain-suffix)
+                                                  ["app1" "app2" "app3" "admin" "sanplan"]))}]
     (run args param)
     (shutdown-agents)))
