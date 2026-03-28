@@ -37,13 +37,13 @@ AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy s3
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy vm-import
 ```
 
-### 3. Secrets Manager Secret (for RDS)
+### 3. Secrets Manager Secret
 
-Create a secret for RDS database password:
+Create a secret containing credentials used by various services:
 
 ```bash
 cat <<EOF > /tmp/dev-k8s-secret.json
-{"rds-postgres-password":"ChangeMe12345"}
+{"rds-postgres-password":"ChangeMe12345","sancode-cloudflare-api-token":"YOUR_TOKEN"}
 EOF
 
 aws secretsmanager create-secret \
@@ -53,6 +53,13 @@ aws secretsmanager create-secret \
 
 rm /tmp/dev-k8s-secret.json
 ```
+
+#### Required Keys
+
+| Key | Description | Used By |
+|-----|-------------|---------|
+| `rds-postgres-password` | RDS PostgreSQL master password | rds stack |
+| `sancode-cloudflare-api-token` | Cloudflare API token for Pages deploy | sancode-resources CodeBuild |
 
 #### Update Secret
 
