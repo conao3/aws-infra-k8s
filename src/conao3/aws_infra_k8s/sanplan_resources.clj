@@ -105,7 +105,9 @@
      [{:Name "PREFIX"
        :Value {:Ref :Prefix}}
       {:Name "CACHE_BUCKET"
-       :Value {:Ref :CacheBucket}}]}
+       :Value {:Ref :CacheBucket}}
+      {:Name "ECR_REGISTRY"
+       :Value {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com"}}]}
     :Cache
     {:Type "NO_CACHE"}
     :Artifacts

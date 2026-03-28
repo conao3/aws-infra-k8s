@@ -61,6 +61,20 @@ rm /tmp/dev-k8s-secret.json
 | `rds-postgres-password` | RDS PostgreSQL master password | rds stack |
 | `sancode-cloudflare-api-token` | Cloudflare API token for Pages deploy | sancode-resources CodeBuild |
 
+### 4. CodeBuild GitHub Source Credentials
+
+Register a GitHub Personal Access Token for CodeBuild to clone private repositories:
+
+```bash
+aws codebuild import-source-credentials \
+  --server-type GITHUB \
+  --auth-type PERSONAL_ACCESS_TOKEN \
+  --token "YOUR_GITHUB_PAT" \
+  --profile conao3.k8s
+```
+
+The token needs `repo` scope. This is a per-region, per-account setting (not per-project).
+
 #### Update Secret
 
 To update the secret later:
