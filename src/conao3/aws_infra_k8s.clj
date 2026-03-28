@@ -85,10 +85,12 @@
   (let [env (or (System/getenv "DEPLOY_ENV") "dev")
         prefix (format "%s-%s" env "k8s")
         cognito-domain (if (= env "prd") "auth-k8s.sancode.dev" (format "auth-%s.sancode.dev" prefix))
+        stripe-event-source (System/getenv "STRIPE_EVENT_SOURCE_NAME")
         param {:env env
                :prefix prefix
                :domain-name cognito-domain
                :alb-certificate-domain-name "*.sancode.dev"
+               :StripeEventSourceName stripe-event-source
                :domain-aliases (str/join "," (map #(format "%s.sancode.dev" %)
                                                   ["app1" "app2" "app3" "admin" "sanplan"]))}]
     (run args param)
