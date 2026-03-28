@@ -67,7 +67,7 @@
        [{:Type "forward"
          :TargetGroupArn {:Ref :TargetGroup}}]}}
 
-     :ListenerHttp
+     :Listener
      {:Type "AWS::ElasticLoadBalancingV2::Listener"
       :Properties
       {:LoadBalancerArn {:Ref :LoadBalancer}
