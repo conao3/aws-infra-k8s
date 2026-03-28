@@ -3,10 +3,25 @@
    [camel-snake-kebab.core :as csk]
    [babashka.fs :as fs]
    [cheshire.core :as json]
+   [clojure.edn :as edn]
    [clojure.java.io :as io]
    [clojure.string :as str]
    [conao3.aws-infra-k8s.util :as c.util]
    [conao3.aws-infra.cfn :as a.cfn]))
+
+(defn- cloudflare-alb-ingress-rules []
+  (let [cloudflare-ips (-> (io/resource "cloudflare-ips.edn") slurp edn/read-string)]
+    (->> (for [port [80 443]
+               [idx cidr] (map-indexed vector (:ipv6 cloudflare-ips))]
+           [(keyword (format "SecurityGroupIngressAlbCloudflareV6P%dI%d" port idx))
+            {:Type "AWS::EC2::SecurityGroupIngress"
+             :Properties
+             {:GroupId {:Ref :SecurityGroupAlb}
+              :IpProtocol "tcp"
+              :FromPort port
+              :ToPort port
+              :CidrIpv6 cidr}}])
+         (into {}))))
 
 (defn cfn [_param]
   (let [security-group (fn [x]
@@ -24,76 +39,70 @@
         :Vpc])
 
       :Resources
-      {:SecurityGroupApp (security-group "App")
-       :SecurityGroupAlb (security-group "Alb")
-       :SecurityGroupSshTunnel (security-group "SshTunnel")
-       :SecurityGroupEice (security-group "Eice")
-       :SecurityGroupRds (security-group "Rds")
-       :SecurityGroupEfs (security-group "Efs")
-       :SecurityGroupIngressAppFromEice
-       {:Type "AWS::EC2::SecurityGroupIngress"
-        :Properties
-        {:GroupId {:Ref :SecurityGroupApp}
-         :IpProtocol "tcp"
-         :FromPort 22
-         :ToPort 22
-         :SourceSecurityGroupId {:Ref :SecurityGroupEice}}}
-       :SecurityGroupIngressAppFromAlb
-       {:Type "AWS::EC2::SecurityGroupIngress"
-        :Properties
-        {:GroupId {:Ref :SecurityGroupApp}
-         :IpProtocol "tcp"
-         :FromPort 30000
-         :ToPort 32767
-         :SourceSecurityGroupId {:Ref :SecurityGroupAlb}}}
-       :SecurityGroupIngressAlbFromCloudFront
-       {:Type "AWS::EC2::SecurityGroupIngress"
-        :Properties
-        {:GroupId {:Ref :SecurityGroupAlb}
-         :IpProtocol "tcp"
-         :FromPort 80
-         :ToPort 80
-         :SourcePrefixListId "pl-58a04531"}}
-       :SecurityGroupIngressSshTunnelFromIpv6
-       {:Type "AWS::EC2::SecurityGroupIngress"
-        :Properties
-        {:GroupId {:Ref :SecurityGroupSshTunnel}
-         :IpProtocol "tcp"
-         :FromPort 22
-         :ToPort 22
-         :CidrIpv6 "::/0"}}
-       :SecurityGroupIngressSshTunnelFromEice
-       {:Type "AWS::EC2::SecurityGroupIngress"
-        :Properties
-        {:GroupId {:Ref :SecurityGroupSshTunnel}
-         :IpProtocol "tcp"
-         :FromPort 22
-         :ToPort 22
-         :SourceSecurityGroupId {:Ref :SecurityGroupEice}}}
-       :SecurityGroupIngressRdsFromApp
-       {:Type "AWS::EC2::SecurityGroupIngress"
-        :Properties
-        {:GroupId {:Ref :SecurityGroupRds}
-         :IpProtocol "tcp"
-         :FromPort 5432
-         :ToPort 5432
-         :SourceSecurityGroupId {:Ref :SecurityGroupApp}}}
-       :SecurityGroupIngressEfsFromApp
-       {:Type "AWS::EC2::SecurityGroupIngress"
-        :Properties
-        {:GroupId {:Ref :SecurityGroupEfs}
-         :IpProtocol "tcp"
-         :FromPort 2049
-         :ToPort 2049
-         :SourceSecurityGroupId {:Ref :SecurityGroupApp}}}
-       :SecurityGroupIngressAppK8sApiFromApp
-       {:Type "AWS::EC2::SecurityGroupIngress"
-        :Properties
-        {:GroupId {:Ref :SecurityGroupApp}
-         :IpProtocol "tcp"
-         :FromPort 6443
-         :ToPort 6443
-         :SourceSecurityGroupId {:Ref :SecurityGroupApp}}}}
+      (merge
+       {:SecurityGroupApp (security-group "App")
+        :SecurityGroupAlb (security-group "Alb")
+        :SecurityGroupSshTunnel (security-group "SshTunnel")
+        :SecurityGroupEice (security-group "Eice")
+        :SecurityGroupRds (security-group "Rds")
+        :SecurityGroupEfs (security-group "Efs")
+        :SecurityGroupIngressAppFromEice
+        {:Type "AWS::EC2::SecurityGroupIngress"
+         :Properties
+         {:GroupId {:Ref :SecurityGroupApp}
+          :IpProtocol "tcp"
+          :FromPort 22
+          :ToPort 22
+          :SourceSecurityGroupId {:Ref :SecurityGroupEice}}}
+        :SecurityGroupIngressAppFromAlb
+        {:Type "AWS::EC2::SecurityGroupIngress"
+         :Properties
+         {:GroupId {:Ref :SecurityGroupApp}
+          :IpProtocol "tcp"
+          :FromPort 30000
+          :ToPort 32767
+          :SourceSecurityGroupId {:Ref :SecurityGroupAlb}}}
+        :SecurityGroupIngressSshTunnelFromIpv6
+        {:Type "AWS::EC2::SecurityGroupIngress"
+         :Properties
+         {:GroupId {:Ref :SecurityGroupSshTunnel}
+          :IpProtocol "tcp"
+          :FromPort 22
+          :ToPort 22
+          :CidrIpv6 "::/0"}}
+        :SecurityGroupIngressSshTunnelFromEice
+        {:Type "AWS::EC2::SecurityGroupIngress"
+         :Properties
+         {:GroupId {:Ref :SecurityGroupSshTunnel}
+          :IpProtocol "tcp"
+          :FromPort 22
+          :ToPort 22
+          :SourceSecurityGroupId {:Ref :SecurityGroupEice}}}
+        :SecurityGroupIngressRdsFromApp
+        {:Type "AWS::EC2::SecurityGroupIngress"
+         :Properties
+         {:GroupId {:Ref :SecurityGroupRds}
+          :IpProtocol "tcp"
+          :FromPort 5432
+          :ToPort 5432
+          :SourceSecurityGroupId {:Ref :SecurityGroupApp}}}
+        :SecurityGroupIngressEfsFromApp
+        {:Type "AWS::EC2::SecurityGroupIngress"
+         :Properties
+         {:GroupId {:Ref :SecurityGroupEfs}
+          :IpProtocol "tcp"
+          :FromPort 2049
+          :ToPort 2049
+          :SourceSecurityGroupId {:Ref :SecurityGroupApp}}}
+        :SecurityGroupIngressAppK8sApiFromApp
+        {:Type "AWS::EC2::SecurityGroupIngress"
+         :Properties
+         {:GroupId {:Ref :SecurityGroupApp}
+          :IpProtocol "tcp"
+          :FromPort 6443
+          :ToPort 6443
+          :SourceSecurityGroupId {:Ref :SecurityGroupApp}}}}
+       (cloudflare-alb-ingress-rules))
 
       :Outputs
       (a.cfn/list-outputs

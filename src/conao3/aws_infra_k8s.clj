@@ -6,7 +6,6 @@
    [conao3.aws-infra-k8s.security-group :as c.security-group]
    [conao3.aws-infra-k8s.cluster :as c.cluster]
    [conao3.aws-infra-k8s.alb :as c.alb]
-   [conao3.aws-infra-k8s.cloudfront :as c.cloudfront]
    [conao3.aws-infra-k8s.ssh-tunnel :as c.ssh-tunnel]
    [conao3.aws-infra-k8s.ami-builder :as c.ami-builder]
    [conao3.aws-infra-k8s.eice :as c.eice]
@@ -55,7 +54,6 @@
                    ;; depends on network
                    "cluster" (c.cluster/deploy param)
                    "alb" (c.alb/deploy param)
-                   "cloudfront" (c.cloudfront/deploy param)
                    "ssh-tunnel" (c.ssh-tunnel/deploy param)
                    "ami-builder" (c.ami-builder/deploy param)
                    "eice" (c.eice/deploy param)
@@ -76,7 +74,6 @@
                            ;; (run ["deploy" "budget"] param)
                            (run ["deploy" "cluster"] param)
                            (run ["deploy" "alb"] param)
-                           (run ["deploy" "cloudfront"] param)
                            ;; (run ["deploy" "ssh-tunnel"] param)
                            ;; (run ["deploy" "ami-builder"] param)
                            (run ["deploy" "eice"] param)
@@ -91,6 +88,7 @@
         param {:env env
                :prefix prefix
                :domain-name cognito-domain
+               :alb-certificate-domain-name "*.sancode.dev"
                :domain-aliases (str/join "," (map #(format "%s.sancode.dev" %)
                                                   ["app1" "app2" "app3" "admin" "sanplan"]))}]
     (run args param)

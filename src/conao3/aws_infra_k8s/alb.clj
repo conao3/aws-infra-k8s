@@ -14,10 +14,18 @@
      [:Env :Prefix
       :Vpc
       :SubnetPubA :SubnetPubC :SubnetPubD
-      :SecurityGroupAlb])
+      :SecurityGroupAlb
+      :CertificateDomainName])
 
     :Resources
-    {:TargetGroup
+    {:Certificate
+     {:Type "AWS::CertificateManager::Certificate"
+      :Properties
+      {:DomainName {:Ref :CertificateDomainName}
+       :ValidationMethod "DNS"
+       :Tags [{:Key "Name" :Value (a.cfn/prefix "alb-certificate")}]}}
+
+     :TargetGroup
      {:Type "AWS::ElasticLoadBalancingV2::TargetGroup"
       :Properties
       {:Name (a.cfn/prefix "traefik")
@@ -47,21 +55,37 @@
                  {:Ref :SubnetPubD}]
        :Tags [{:Key "Name" :Value (a.cfn/prefix "alb")}]}}
 
-     :Listener
+     :ListenerHttps
+     {:Type "AWS::ElasticLoadBalancingV2::Listener"
+      :Properties
+      {:LoadBalancerArn {:Ref :LoadBalancer}
+       :Port 443
+       :Protocol "HTTPS"
+       :Certificates [{:CertificateArn {:Ref :Certificate}}]
+       :SslPolicy "ELBSecurityPolicy-TLS13-1-2-2021-06"
+       :DefaultActions
+       [{:Type "forward"
+         :TargetGroupArn {:Ref :TargetGroup}}]}}
+
+     :ListenerHttp
      {:Type "AWS::ElasticLoadBalancingV2::Listener"
       :Properties
       {:LoadBalancerArn {:Ref :LoadBalancer}
        :Port 80
        :Protocol "HTTP"
        :DefaultActions
-       [{:Type "forward"
-         :TargetGroupArn {:Ref :TargetGroup}}]}}}
+       [{:Type "redirect"
+         :RedirectConfig
+         {:Protocol "HTTPS"
+          :Port "443"
+          :StatusCode "HTTP_301"}}]}}}
 
     :Outputs
     (a.cfn/list-outputs
      {:LoadBalancer {:Ref :LoadBalancer}
       :LoadBalancerDnsName {"Fn::GetAtt" [:LoadBalancer :DNSName]}
-      :TargetGroup {:Ref :TargetGroup}})}))
+      :TargetGroup {:Ref :TargetGroup}
+      :CertificateArn {:Ref :Certificate}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/alb.json")
@@ -91,7 +115,8 @@
                      "--parameter-overrides"
                      (->> (merge
                            {:Env (-> param :env)
-                            :Prefix (-> param :prefix)}
+                            :Prefix (-> param :prefix)
+                            :CertificateDomainName (-> param :alb-certificate-domain-name)}
                            (->> [:Vpc :SubnetPubA :SubnetPubC :SubnetPubD :SecurityGroupAlb]
                                 (map (fn [k]
                                        [k (get exports (keyword (format "%s-%s" (-> param :prefix) (name k))))]))
