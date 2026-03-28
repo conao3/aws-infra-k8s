@@ -29,8 +29,8 @@
   {:Type "AWS::Cognito::UserPoolDomain"
    :Properties
    {:Domain {"Fn::If" ["IsPrd"
-                       "auth-k8s.sancode.dev"
-                       {"Fn::Sub" "auth-${Prefix}.sancode.dev"}]}
+                       "auth.sancode.dev"
+                       "auth.dev.sancode.dev"]}
     :CustomDomainConfig
     {:CertificateArn {"Ref" "CertificateArn"}}
     :UserPoolId {:Ref :UserPool}}})
