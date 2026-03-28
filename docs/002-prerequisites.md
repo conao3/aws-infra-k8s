@@ -129,8 +129,6 @@ The AWS profile needs the following permissions:
 - CloudFormation (full access for stack management)
 - S3 (full access for VM Import bucket)
 - IAM (limited access for role creation)
-- CloudFront (full access)
-- WAF (full access)
 - Secrets Manager (read access)
 - SSM Parameter Store (read/write for AMI ID)
 - EFS (full access)
