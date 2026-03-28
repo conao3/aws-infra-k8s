@@ -87,11 +87,11 @@
 (defn -main [& args]
   (let [env (or (System/getenv "DEPLOY_ENV") "dev")
         prefix (format "%s-%s" env "k8s")
-        domain-suffix (if (= env "prd") "sancode.dev" "dev.sancode.dev")
+        cognito-domain (if (= env "prd") "auth-k8s.sancode.dev" (format "auth-%s.sancode.dev" prefix))
         param {:env env
                :prefix prefix
-               :domain-name (format "*.%s" domain-suffix)
-               :domain-aliases (str/join "," (map #(format "%s.%s" % domain-suffix)
+               :domain-name cognito-domain
+               :domain-aliases (str/join "," (map #(format "%s.sancode.dev" %)
                                                   ["app1" "app2" "app3" "admin" "sanplan"]))}]
     (run args param)
     (shutdown-agents)))
