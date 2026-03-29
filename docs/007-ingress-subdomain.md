@@ -222,7 +222,7 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: nginx:latest
+        image: nginx:1.28.3-alpine
         ports:
         - containerPort: 80
 ```

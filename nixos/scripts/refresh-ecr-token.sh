@@ -4,11 +4,44 @@ log() {
   echo "[$(date -Iseconds)] $*" >&2
 }
 
+IMDS_ENDPOINTS=(
+  "http://169.254.169.254"
+  "http://[fd00:ec2::254]"
+)
+
+imds_put() {
+  local path="$1"
+  shift
+
+  local endpoint
+  for endpoint in "${IMDS_ENDPOINTS[@]}"; do
+    if curl -sSf --max-time 5 -X PUT "${endpoint}${path}" "$@" 2>/dev/null; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+imds_get() {
+  local path="$1"
+  shift
+
+  local endpoint
+  for endpoint in "${IMDS_ENDPOINTS[@]}"; do
+    if curl -sSf --max-time 5 "${endpoint}${path}" "$@" 2>/dev/null; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 get_imds_token() {
   local token=""
   for i in {1..3}; do
-    token=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
-      -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2>/dev/null) && break
+    token=$(imds_put "/latest/api/token" \
+      -H "X-aws-ec2-metadata-token-ttl-seconds: 60") && break
     log "Retry $i: Failed to get IMDS token"
     sleep 5
   done
@@ -23,16 +56,16 @@ get_imds_token() {
 
 TOKEN=$(get_imds_token)
 
-REGION=$(curl -s -H "X-aws-ec2-metadata-token: ${TOKEN}" \
-  "http://169.254.169.254/latest/meta-data/placement/region")
+REGION=$(imds_get "/latest/meta-data/placement/region" \
+  -H "X-aws-ec2-metadata-token: ${TOKEN}")
 
 if [ -z "${REGION}" ]; then
   log "ERROR: Failed to get AWS region from IMDS"
   exit 1
 fi
 
-ACCOUNT_ID=$(curl -s -H "X-aws-ec2-metadata-token: ${TOKEN}" \
-  "http://169.254.169.254/latest/dynamic/instance-identity/document" | \
+ACCOUNT_ID=$(imds_get "/latest/dynamic/instance-identity/document" \
+  -H "X-aws-ec2-metadata-token: ${TOKEN}" | \
   grep accountId | cut -d'"' -f4)
 
 if [ -z "${ACCOUNT_ID}" ]; then

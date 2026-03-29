@@ -28,14 +28,13 @@ k8s/
 
 **Components**:
 - Deployment: Traefik v2.11
-- Service: NodePort 30080 (HTTP), 30081 (Dashboard)
+- Service: NodePort 30080 (HTTP)
 - RBAC: ServiceAccount, ClusterRole, ClusterRoleBinding
 - IngressClass: `traefik` (default)
 
 **Configuration**:
 ```yaml
 args:
-- --api.insecure=true
 - --providers.kubernetesingress=true
 - --entrypoints.web.address=:80
 - --log.level=INFO
@@ -76,7 +75,7 @@ See [007-ingress-subdomain.md](007-ingress-subdomain.md#add-new-application) for
 **Components**:
 - Deployment: kubernetes-dashboard, dashboard-metrics-scraper
 - Service: NodePort 31353 (HTTPS)
-- RBAC: admin-user with cluster-admin role
+- RBAC: dashboard-admin with `view` role
 
 **Access**:
 
@@ -172,7 +171,7 @@ See [008-monitoring.md](008-monitoring.md) for query examples.
 - PVC: EFS-backed storage (5Gi, ReadWriteMany)
 - ConfigMap: Auto-configured Prometheus data source
 
-**Credentials**: admin/admin (change on first login)
+**Credentials**: Provided at deploy time via `GRAFANA_ADMIN_USER` and `GRAFANA_ADMIN_PASSWORD`
 
 **Data Persistence**:
 - All dashboards, settings, users stored in EFS
@@ -185,6 +184,7 @@ See [008-monitoring.md](008-monitoring.md) for query examples.
 AWS_PROFILE=conao3.k8s bin/ssh/node grafana
 
 # Open browser: http://localhost:30300
+# Login with the credentials configured at deploy time
 ```
 
 See [008-monitoring.md](008-monitoring.md) for dashboard setup.
@@ -217,13 +217,14 @@ Test applications locally with kind:
 bin/k8s-local up
 
 # Deploy applications
+export GRAFANA_ADMIN_USER=admin
+export GRAFANA_ADMIN_PASSWORD='<strong-password>'
 bin/k8s-local deploy
 
 # Get Dashboard token
 bin/k8s-local token
 
 # Access points
-# Traefik Dashboard: http://localhost:30081
 # Dashboard: https://localhost:31353
 # Prometheus: http://localhost:30900
 # Grafana: http://localhost:30300
@@ -252,6 +253,8 @@ http://app3.example.local:30080
 ## Deploy to AWS
 
 ```bash
+export GRAFANA_ADMIN_USER=admin
+export GRAFANA_ADMIN_PASSWORD='<strong-password>'
 AWS_PROFILE=conao3.k8s bin/k8s deploy
 ```
 

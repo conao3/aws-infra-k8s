@@ -82,6 +82,15 @@ cmd_deploy() {
     -e "s/\${COGNITO_CLIENT_ID}/${COGNITO_CLIENT_ID}/g" \
     {} +
 
+  : "${GRAFANA_ADMIN_USER:?Set GRAFANA_ADMIN_USER before deploying}"
+  : "${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD before deploying}"
+
+  KUBECONFIG="${kubeconfig_file}" kubectl create secret generic grafana-admin \
+    --from-literal=username="${GRAFANA_ADMIN_USER}" \
+    --from-literal=password="${GRAFANA_ADMIN_PASSWORD}" \
+    --dry-run=client \
+    -o yaml | KUBECONFIG="${kubeconfig_file}" kubectl apply -f -
+
   KUBECONFIG="${kubeconfig_file}" kubectl apply -k "${TEMP_DIR}/"
 }
 
@@ -227,7 +236,6 @@ cmd_port_forward() {
   check_port 8443 || exit 1
   check_port 9090 || exit 1
   check_port 3000 || exit 1
-  check_port 8080 || exit 1
 
   echo ""
   echo "Starting port-forwards..."
@@ -235,7 +243,6 @@ cmd_port_forward() {
   echo "  - Kubernetes Dashboard: https://localhost:8443"
   echo "  - Prometheus: http://localhost:9090"
   echo "  - Grafana: http://localhost:3000"
-  echo "  - Traefik Dashboard: http://localhost:8080/dashboard/"
   echo ""
   echo "For kubectl access:"
   echo "  export KUBECONFIG=\$(pwd)/target/kubeconfig"
@@ -256,9 +263,6 @@ cmd_port_forward() {
   start_port_forward 3000 "kubectl port-forward svc/grafana 3000:3000" "Grafana"
   PIDS+=($!)
 
-  start_port_forward 8080 "kubectl port-forward -n traefik svc/traefik 8080:8080" "Traefik"
-  PIDS+=($!)
-
   wait
 }
 
@@ -276,6 +280,8 @@ Commands:
 Environment Variables:
   PREFIX                Resource prefix (default: dev-k8s)
   AWS_PROFILE           AWS profile to use
+  GRAFANA_ADMIN_USER    Grafana admin username for deploy
+  GRAFANA_ADMIN_PASSWORD Grafana admin password for deploy
 
 Local kubectl access (healthy instance):
   Terminal 1: AWS_PROFILE=conao3.k8s bin/k8s port-forward

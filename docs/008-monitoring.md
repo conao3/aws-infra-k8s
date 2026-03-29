@@ -65,7 +65,7 @@ The monitoring stack consists of:
 - Persistent storage via EFS (AWS) or local-path (kind)
 - All dashboards, settings, and users persist across pod restarts
 
-**Credentials**: admin/admin (change on first login)
+**Credentials**: Set at deploy time via `GRAFANA_ADMIN_USER` and `GRAFANA_ADMIN_PASSWORD`
 
 ## Access Monitoring Tools
 
@@ -85,7 +85,7 @@ AWS_PROFILE=conao3.k8s bin/ssh/node prometheus
 AWS_PROFILE=conao3.k8s bin/ssh/node grafana
 
 # Open browser: http://localhost:30300
-# Login: admin/admin
+# Login with the credentials configured at deploy time
 ```
 
 ## Prometheus Queries

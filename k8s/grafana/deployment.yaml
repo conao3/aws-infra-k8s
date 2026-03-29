@@ -16,14 +16,21 @@ spec:
     spec:
       containers:
       - name: grafana
-        image: grafana/grafana:latest
+        image: grafana/grafana:12.4.2
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 3000
         env:
         - name: GF_SECURITY_ADMIN_USER
-          value: admin
+          valueFrom:
+            secretKeyRef:
+              name: grafana-admin
+              key: username
         - name: GF_SECURITY_ADMIN_PASSWORD
-          value: admin
+          valueFrom:
+            secretKeyRef:
+              name: grafana-admin
+              key: password
         volumeMounts:
         - name: storage
           mountPath: /var/lib/grafana

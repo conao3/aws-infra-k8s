@@ -21,7 +21,25 @@ roleRef:
   name: view  # Previously cluster-admin
 ```
 
-### 2. NetworkPolicy Implementation
+### 2. Kubernetes Dashboard Authentication Hardening
+
+**Issue**: Dashboard allowed `--enable-skip-login`, bypassing token-based authentication.
+
+**Improvement**: Removed `--enable-skip-login`, requiring an explicit service account token for access.
+
+**Configuration file**: `k8s/kubernetes-dashboard/deployment-patch.yaml`
+
+### 3. Traefik Insecure API Exposure Removal
+
+**Issue**: Traefik exposed its dashboard/API through `--api.insecure=true` on a separate service port.
+
+**Improvement**: Removed the insecure API flag and the extra dashboard service port, leaving only the HTTP entrypoint used by the ALB.
+
+**Configuration files**:
+- `k8s/traefik/deployment.yaml`
+- `k8s/traefik/service.yaml`
+
+### 4. NetworkPolicy Implementation
 
 **Issue**: No communication restrictions between Pods; all Pods could communicate with each other.
 
@@ -29,7 +47,7 @@ roleRef:
 
 See [011-network-policy.md](./011-network-policy.md) for details.
 
-### 3. EFS IAM Permission Restriction
+### 5. EFS IAM Permission Restriction
 
 **Issue**: EFS CSI Driver IAM permissions had Resource set to `"*"`.
 
@@ -129,10 +147,10 @@ See [011-network-policy.md](./011-network-policy.md) for details.
 
 ### Low Priority
 
-#### Grafana Authentication
-- **Current**: Default authentication (admin/admin)
-- **Recommended**: Change to strong password or integrate external authentication
-- **Impact**: Currently accessible only via CloudFront, so lower priority
+#### Grafana Authentication Integration
+- **Current**: Strong credentials are required at deploy time
+- **Recommended**: Integrate external authentication
+- **Impact**: Reduces operational burden of managing static admin credentials
 
 #### Secrets Management
 - **Current**: Using ConfigMap

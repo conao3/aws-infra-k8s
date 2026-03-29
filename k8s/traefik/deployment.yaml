@@ -20,12 +20,9 @@ spec:
       - name: traefik
         image: traefik:v2.11
         args:
-        - --api.insecure=true
         - --providers.kubernetesingress=true
         - --entrypoints.web.address=:80
         - --log.level=INFO
         ports:
         - name: web
           containerPort: 80
-        - name: dashboard
-          containerPort: 8080

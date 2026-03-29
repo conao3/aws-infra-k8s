@@ -84,6 +84,8 @@ AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy all
 
 ```bash
 # Deploy Kubernetes applications (Traefik, apps, monitoring)
+export GRAFANA_ADMIN_USER=admin
+export GRAFANA_ADMIN_PASSWORD='<strong-password>'
 AWS_PROFILE=conao3.k8s bin/k8s deploy
 ```
 
@@ -100,7 +102,7 @@ AWS_PROFILE=conao3.k8s aws cloudformation describe-stacks \
 
 # Port forward Grafana
 AWS_PROFILE=conao3.k8s bin/ssh/node grafana
-# Open: http://localhost:30300 (admin/admin)
+# Open: http://localhost:30300 (use the configured Grafana credentials)
 
 # Port forward Prometheus
 AWS_PROFILE=conao3.k8s bin/ssh/node prometheus
@@ -130,9 +132,9 @@ AWS_PROFILE=conao3.k8s bin/ssh/node prometheus
 | Application | Purpose | Access |
 |-------------|---------|--------|
 | **app1, app2, app3** | Sample static HTML apps | Via CloudFront (subdomain routing) |
-| **Traefik** | Ingress Controller | Dashboard: NodePort 30081 |
+| **Traefik** | Ingress Controller | Via CloudFront / ALB only |
 | **Prometheus** | Metrics collection | NodePort 30900 |
-| **Grafana** | Metrics visualization | NodePort 30300 (admin/admin) |
+| **Grafana** | Metrics visualization | NodePort 30300 (credentials set at deploy time) |
 | **Kubernetes Dashboard** | Cluster management UI | NodePort 31353 (HTTPS) |
 | **Node Exporter** | Host metrics | Internal (scraped by Prometheus) |
 | **kube-state-metrics** | K8s object metrics | Internal (scraped by Prometheus) |
@@ -146,10 +148,11 @@ Test Kubernetes manifests locally with kind:
 bin/k8s-local up
 
 # Deploy applications
+export GRAFANA_ADMIN_USER=admin
+export GRAFANA_ADMIN_PASSWORD='<strong-password>'
 bin/k8s-local deploy
 
 # Access applications
-# - Traefik Dashboard: http://localhost:30081
 # - Prometheus: http://localhost:30900
 # - Grafana: http://localhost:30300
 # - Dashboard: https://localhost:31353
@@ -198,13 +201,15 @@ AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy <module-name>
 ```bash
 # Edit manifests in k8s/<app-name>/
 # Then redeploy
+export GRAFANA_ADMIN_USER=admin
+export GRAFANA_ADMIN_PASSWORD='<strong-password>'
 AWS_PROFILE=conao3.k8s bin/k8s deploy
 ```
 
 ### Add New Application
 
 1. Create `k8s/my-app/` with deployment.yaml, service.yaml, ingress.yaml
-2. Deploy: `AWS_PROFILE=conao3.k8s bin/k8s deploy`
+2. Deploy: `GRAFANA_ADMIN_USER=admin GRAFANA_ADMIN_PASSWORD='<strong-password>' AWS_PROFILE=conao3.k8s bin/k8s deploy`
 
 See [007-ingress-subdomain.md](docs/007-ingress-subdomain.md#add-new-application) for details.
 

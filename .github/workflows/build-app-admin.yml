@@ -28,7 +28,7 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::418272767854:role/dev-k8s-github-actions
+          role-to-assume: arn:aws:iam::249899228725:role/dev-k8s-github-actions
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: aws-actions/amazon-ecr-login@v2

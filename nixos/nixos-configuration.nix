@@ -26,7 +26,7 @@
     after = ["network-online.target" "fix-metadata-route.service"];
     wants = ["network-online.target"];
     requires = ["fix-metadata-route.service"];
-    path = [ pkgs.awscli2 pkgs.bash pkgs.coreutils ];
+    path = [ pkgs.awscli2 pkgs.bash pkgs.coreutils pkgs.curl pkgs.gnugrep ];
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${pkgs.bash}/bin/bash ${./scripts/refresh-ecr-token.sh}";

@@ -17,9 +17,6 @@ nodes:
   - containerPort: 30080
     hostPort: 30080
     protocol: TCP
-  - containerPort: 30081
-    hostPort: 30081
-    protocol: TCP
   - containerPort: 31353
     hostPort: 31353
     protocol: TCP
@@ -40,17 +37,30 @@ cmd_deploy() {
 
   kubectl config use-context "kind-${CLUSTER_NAME}"
 
-  MANIFESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/k8s"
+  MANIFESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/k8s"
 
-  kubectl apply -f "${MANIFESTS_DIR}/traefik/"
-  kubectl apply -f "${MANIFESTS_DIR}/app1/"
-  kubectl apply -f "${MANIFESTS_DIR}/app2/"
-  kubectl apply -f "${MANIFESTS_DIR}/app3/"
+  : "${GRAFANA_ADMIN_USER:?Set GRAFANA_ADMIN_USER before deploying}"
+  : "${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD before deploying}"
+
+  kubectl create secret generic grafana-admin \
+    --from-literal=username="${GRAFANA_ADMIN_USER}" \
+    --from-literal=password="${GRAFANA_ADMIN_PASSWORD}" \
+    --dry-run=client \
+    -o yaml | kubectl apply -f -
+
+  kubectl apply -k "${MANIFESTS_DIR}/traefik/"
+  kubectl apply -k "${MANIFESTS_DIR}/app1/"
+  kubectl apply -k "${MANIFESTS_DIR}/app2/"
+  kubectl apply -k "${MANIFESTS_DIR}/app3/"
   kubectl apply -k "${MANIFESTS_DIR}/kubernetes-dashboard/"
-  kubectl apply -f "${MANIFESTS_DIR}/node-exporter/"
-  kubectl apply -f "${MANIFESTS_DIR}/kube-state-metrics/"
-  kubectl apply -f "${MANIFESTS_DIR}/prometheus/"
-  kubectl apply -f "${MANIFESTS_DIR}/grafana/"
+  kubectl apply -k "${MANIFESTS_DIR}/node-exporter/"
+  kubectl apply -k "${MANIFESTS_DIR}/kube-state-metrics/"
+  kubectl apply -k "${MANIFESTS_DIR}/prometheus/"
+  sed 's/name: grafana-storage$/name: grafana-storage-efs/' "${MANIFESTS_DIR}/grafana/pvc.yaml" | kubectl apply -f -
+  kubectl apply -f "${MANIFESTS_DIR}/grafana/datasource-configmap.yaml"
+  kubectl apply -f "${MANIFESTS_DIR}/grafana/service.yaml"
+  kubectl apply -f "${MANIFESTS_DIR}/grafana/deployment.yaml"
+  kubectl apply -f "${MANIFESTS_DIR}/grafana/network-policy.yaml"
 
   kubectl wait --for=condition=ready pod -l app=traefik -n traefik --timeout=60s
   kubectl wait --for=condition=ready pod -l app=app1 --timeout=60s
@@ -97,6 +107,8 @@ Commands:
 
 Environment Variables:
   CLUSTER_NAME   Name of the kind cluster (default: dev-k8s-local)
+  GRAFANA_ADMIN_USER   Grafana admin username for deploy
+  GRAFANA_ADMIN_PASSWORD Grafana admin password for deploy
 
 Examples:
   bin/k8s/local up
