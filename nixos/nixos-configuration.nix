@@ -43,6 +43,38 @@
     };
   };
 
+  systemd.services.k3s-publish-kubeconfig = {
+    description = "Publish k3s kubeconfig to SSM Parameter Store";
+    after = ["network-online.target" "k3s.service"];
+    wants = ["network-online.target" "k3s.service"];
+    requires = ["k3s.service"];
+    path = [pkgs.awscli2 pkgs.bash pkgs.coreutils pkgs.gnused];
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = pkgs.writeShellScript "k3s-publish-kubeconfig" ''
+        set -euo pipefail
+        private_ip="$(${pkgs.iproute2}/bin/ip -4 addr show dev ens5 | ${pkgs.gnugrep}/bin/grep -oP 'inet \K[0-9.]+' | head -n1)"
+        kubeconfig="$(${pkgs.gnused}/bin/sed "s|127.0.0.1|$private_ip|g" /etc/rancher/k3s/k3s.yaml)"
+        ${pkgs.awscli2}/bin/aws ssm put-parameter \
+          --name "dev-k8s-kubeconfig" \
+          --region "ap-northeast-1" \
+          --type "SecureString" \
+          --value "$kubeconfig" \
+          --overwrite
+      '';
+    };
+  };
+
+  systemd.timers.k3s-publish-kubeconfig = {
+    description = "Periodically publish k3s kubeconfig to SSM Parameter Store";
+    wantedBy = ["timers.target"];
+    timerConfig = {
+      OnBootSec = "2min";
+      OnUnitActiveSec = "10min";
+      Unit = "k3s-publish-kubeconfig.service";
+    };
+  };
+
   systemd.services.k3s-config = {
     description = "Generate k3s config with tls-san from instance metadata";
     before = ["k3s.service"];
