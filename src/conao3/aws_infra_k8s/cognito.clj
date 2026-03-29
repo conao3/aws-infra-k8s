@@ -46,10 +46,14 @@
                         "ALLOW_ADMIN_USER_PASSWORD_AUTH"
                         "ALLOW_REFRESH_TOKEN_AUTH"]
     :PreventUserExistenceErrors "ENABLED"
-    :CallbackURLs ["http://localhost:5173/auth/callback"
-                   "https://sanplan.sancode.dev/auth/callback"]
-    :LogoutURLs ["http://localhost:5173/login"
-                 "https://sanplan.sancode.dev/login"]
+    :CallbackURLs {"Fn::If" ["IsPrd"
+                             ["https://sanplan.sancode.dev/auth/callback"]
+                             ["http://localhost:5173/auth/callback"
+                              {"Fn::Sub" "https://sanplan-${Env}.sancode.dev/auth/callback"}]]}
+    :LogoutURLs {"Fn::If" ["IsPrd"
+                            ["https://sanplan.sancode.dev/login"]
+                            ["http://localhost:5173/login"
+                             {"Fn::Sub" "https://sanplan-${Env}.sancode.dev/login"}]]}
     :AllowedOAuthFlows ["code" "implicit"]
     :AllowedOAuthScopes ["email" "openid" "profile"]
     :AllowedOAuthFlowsUserPoolClient true

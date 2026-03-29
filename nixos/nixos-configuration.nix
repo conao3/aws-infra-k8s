@@ -28,7 +28,7 @@
     path = [ pkgs.awscli2 pkgs.bash pkgs.coreutils ];
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = "${pkgs.bash}/bin/bash -c '${./scripts/refresh-ecr-token.sh}'";
+      ExecStart = "${pkgs.bash}/bin/bash ${./scripts/refresh-ecr-token.sh}";
     };
   };
 
@@ -39,6 +39,29 @@
       OnBootSec = "1min";
       OnUnitActiveSec = "10h";
       Unit = "k3s-ecr-login.service";
+    };
+  };
+
+  systemd.services.k3s-config = {
+    description = "Generate k3s config with tls-san from instance metadata";
+    before = ["k3s.service"];
+    requiredBy = ["k3s.service"];
+    after = ["network-online.target" "fix-metadata-route.service"];
+    wants = ["network-online.target"];
+    path = [pkgs.curl pkgs.coreutils];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = pkgs.writeShellScript "k3s-config" ''
+        set -euo pipefail
+        TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
+        PRIVATE_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/local-ipv4")
+        mkdir -p /etc/rancher/k3s
+        cat > /etc/rancher/k3s/config.yaml <<EOF
+        tls-san:
+          - $PRIVATE_IP
+        EOF
+      '';
     };
   };
 
