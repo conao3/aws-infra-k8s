@@ -14,9 +14,11 @@ spec:
       labels:
         app: sanplan-backend-bun
     spec:
+      imagePullSecrets:
+      - name: ecr-secret
       containers:
       - name: sanplan-backend-bun
-        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-sanplan-backend-bun:latest
+        image: 249899228725.dkr.ecr.ap-northeast-1.amazonaws.com/dev-k8s-sanplan-backend-bun:latest
         ports:
         - containerPort: 3001
         readinessProbe:

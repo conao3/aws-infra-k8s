@@ -14,9 +14,11 @@ spec:
       labels:
         app: sanplan-backend
     spec:
+      imagePullSecrets:
+      - name: ecr-secret
       initContainers:
       - name: migrate
-        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-sanplan-migrate:latest
+        image: 249899228725.dkr.ecr.ap-northeast-1.amazonaws.com/dev-k8s-sanplan-migrate:latest
         command: ["sh", "-c"]
         args:
         - |
@@ -39,7 +41,7 @@ spec:
           subPath: seed.sql
       containers:
       - name: sanplan-backend
-        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-sanplan-backend:latest
+        image: 249899228725.dkr.ecr.ap-northeast-1.amazonaws.com/dev-k8s-sanplan-backend:latest
         ports:
         - containerPort: 3000
         envFrom:
@@ -61,7 +63,7 @@ spec:
         - name: BUN_AI_URL
           value: "http://sanplan-backend-bun:3001"
         - name: S3_USERDATA_BUCKET
-          value: "${PREFIX}-sanplan-userdata-418272767854"
+          value: "dev-k8s-sanplan-userdata-249899228725"
         - name: GITHUB_CLIENT_ID
           value: ""
         - name: GITHUB_CLIENT_SECRET

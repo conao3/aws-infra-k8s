@@ -14,9 +14,11 @@ spec:
       labels:
         app: sanplan-frontend
     spec:
+      imagePullSecrets:
+      - name: ecr-secret
       containers:
       - name: nginx
-        image: 418272767854.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-sanplan-frontend:latest
+        image: 249899228725.dkr.ecr.ap-northeast-1.amazonaws.com/dev-k8s-sanplan-frontend:latest
         ports:
         - containerPort: 80
         readinessProbe:
