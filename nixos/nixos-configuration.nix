@@ -11,12 +11,13 @@
 
   systemd.services.fix-metadata-route = {
     description = "Fix route to EC2 metadata service";
-    after = ["network.target" "k3s.service"];
+    after = ["network-online.target"];
+    wants = ["network-online.target"];
     wantedBy = ["multi-user.target"];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      ExecStart = "${pkgs.bash}/bin/bash -c '${pkgs.iproute2}/bin/ip route add 169.254.169.254/32 dev ens5 metric 50 || true'";
+      ExecStart = "${pkgs.bash}/bin/bash -euc 'for _ in $(seq 1 30); do ${pkgs.iproute2}/bin/ip link show dev ens5 up && break; sleep 1; done; ${pkgs.iproute2}/bin/ip route replace 169.254.169.254/32 dev ens5 metric 50'";
     };
   };
 
@@ -45,12 +46,16 @@
 
   systemd.services.k3s-publish-kubeconfig = {
     description = "Publish k3s kubeconfig to SSM Parameter Store";
-    after = ["network-online.target" "k3s.service"];
+    after = ["network-online.target" "fix-metadata-route.service" "k3s.service"];
     wants = ["network-online.target" "k3s.service"];
-    requires = ["k3s.service"];
+    requires = ["fix-metadata-route.service" "k3s.service"];
     path = [pkgs.awscli2 pkgs.bash pkgs.coreutils pkgs.gnused];
     serviceConfig = {
       Type = "oneshot";
+      Environment = [
+        "AWS_EC2_METADATA_SERVICE_ENDPOINT=http://169.254.169.254"
+        "AWS_EC2_METADATA_SERVICE_ENDPOINT_MODE=IPv4"
+      ];
       ExecStart = pkgs.writeShellScript "k3s-publish-kubeconfig" ''
         set -euo pipefail
         private_ip="$(${pkgs.iproute2}/bin/ip -4 addr show dev ens5 | ${pkgs.gnugrep}/bin/grep -oP 'inet \K[0-9.]+' | head -n1)"

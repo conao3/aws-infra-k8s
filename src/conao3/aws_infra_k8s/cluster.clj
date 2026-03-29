@@ -45,7 +45,16 @@
          ["sqs:ReceiveMessage"
           "sqs:DeleteMessage"
           "sqs:GetQueueAttributes"]
-         :Resource {"Fn::Sub" "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${Prefix}-sanplan-billing"}}]}}]}})
+         :Resource {"Fn::Sub" "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${Prefix}-sanplan-billing"}}]}}
+     {:PolicyName "KubeconfigPublishPolicy"
+      :PolicyDocument
+      {:Version "2012-10-17"
+       :Statement
+       [{:Effect "Allow"
+         :Action
+         ["ssm:GetParameter"
+          "ssm:PutParameter"]
+         :Resource {"Fn::Sub" "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}-kubeconfig"}}]}}]}})
 
 (defn resource-instance-profile []
   {:Type "AWS::IAM::InstanceProfile"
