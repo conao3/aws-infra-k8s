@@ -54,8 +54,8 @@
       RemainAfterExit = true;
       ExecStart = pkgs.writeShellScript "k3s-config" ''
         set -euo pipefail
-        TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
-        PRIVATE_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/local-ipv4")
+        TOKEN=$(curl -s -X PUT "http://[fd00:ec2::254]/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
+        PRIVATE_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" "http://[fd00:ec2::254]/latest/meta-data/local-ipv4")
         mkdir -p /etc/rancher/k3s
         cat > /etc/rancher/k3s/config.yaml <<EOF
         tls-san:

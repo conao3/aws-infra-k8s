@@ -7,7 +7,7 @@ log() {
 get_imds_token() {
   local token=""
   for i in {1..3}; do
-    token=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+    token=$(curl -s -X PUT "http://[fd00:ec2::254]/latest/api/token" \
       -H "X-aws-ec2-metadata-token-ttl-seconds: 60" 2>/dev/null) && break
     log "Retry $i: Failed to get IMDS token"
     sleep 5
@@ -24,7 +24,7 @@ get_imds_token() {
 TOKEN=$(get_imds_token)
 
 REGION=$(curl -s -H "X-aws-ec2-metadata-token: ${TOKEN}" \
-  "http://169.254.169.254/latest/meta-data/placement/region")
+  "http://[fd00:ec2::254]/latest/meta-data/placement/region")
 
 if [ -z "${REGION}" ]; then
   log "ERROR: Failed to get AWS region from IMDS"
@@ -32,7 +32,7 @@ if [ -z "${REGION}" ]; then
 fi
 
 ACCOUNT_ID=$(curl -s -H "X-aws-ec2-metadata-token: ${TOKEN}" \
-  "http://169.254.169.254/latest/dynamic/instance-identity/document" | \
+  "http://[fd00:ec2::254]/latest/dynamic/instance-identity/document" | \
   grep accountId | cut -d'"' -f4)
 
 if [ -z "${ACCOUNT_ID}" ]; then
