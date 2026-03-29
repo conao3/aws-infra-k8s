@@ -51,7 +51,7 @@ spec:
             name: sanplan-ai-keys
         env:
         - name: SANPLAN_BASE_URL
-          value: "https://sanplan.sancode.dev"
+          value: "https://sanplan-dev.sancode.dev"
         - name: RUST_LOG
           value: "info"
         - name: AWS_REGION
