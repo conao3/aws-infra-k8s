@@ -53,7 +53,7 @@ spec:
             name: sanplan-stripe
         env:
         - name: SANPLAN_BASE_URL
-          value: "https://sanplan-dev.sancode.dev"
+          value: "https://dev-sanplan.sancode.dev"
         - name: RUST_LOG
           value: "info"
         - name: AWS_REGION

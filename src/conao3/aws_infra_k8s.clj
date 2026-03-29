@@ -84,7 +84,7 @@
 (defn -main [& args]
   (let [env (or (System/getenv "DEPLOY_ENV") "dev")
         prefix (format "%s-%s" env "k8s")
-        cognito-domain (if (= env "prd") "auth-k8s.sancode.dev" (format "auth-%s.sancode.dev" prefix))
+        cognito-domain (if (= env "prd") "auth-k8s.sancode.dev" (format "%s-auth-k8s.sancode.dev" env))
         stripe-event-source (System/getenv "STRIPE_EVENT_SOURCE_NAME")
         param {:env env
                :prefix prefix
