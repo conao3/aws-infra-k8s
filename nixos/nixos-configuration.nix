@@ -87,11 +87,16 @@
       RemainAfterExit = true;
       ExecStart = pkgs.writeShellScript "k3s-config" ''
         set -euo pipefail
+        TOKEN="$(${pkgs.curl}/bin/curl -sS -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600')"
+        INSTANCE_ID="$(${pkgs.curl}/bin/curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)"
+        AZ="$(${pkgs.curl}/bin/curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/availability-zone)"
         PRIVATE_IP=$(${pkgs.iproute2}/bin/ip -4 addr show dev ens5 | ${pkgs.gnugrep}/bin/grep -oP 'inet \K[0-9.]+')
         mkdir -p /etc/rancher/k3s
         cat > /etc/rancher/k3s/config.yaml <<EOF
         tls-san:
           - $PRIVATE_IP
+        kubelet-arg:
+          - provider-id=aws:///$AZ/$INSTANCE_ID
         EOF
       '';
     };

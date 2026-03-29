@@ -41,3 +41,18 @@ roleRef:
   kind: ClusterRole
   name: efs-csi-external-provisioner-role
   apiGroup: rbac.authorization.k8s.io
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: efs-csi-node-binding
+  labels:
+    app.kubernetes.io/name: aws-efs-csi-driver
+subjects:
+- kind: ServiceAccount
+  name: efs-csi-node-sa
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: efs-csi-external-provisioner-role
+  apiGroup: rbac.authorization.k8s.io
