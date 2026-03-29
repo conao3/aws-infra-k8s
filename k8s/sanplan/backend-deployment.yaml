@@ -49,6 +49,8 @@ spec:
             name: sanplan-db
         - secretRef:
             name: sanplan-ai-keys
+        - secretRef:
+            name: sanplan-stripe
         env:
         - name: SANPLAN_BASE_URL
           value: "https://sanplan-dev.sancode.dev"

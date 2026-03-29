@@ -76,6 +76,12 @@
          [{"Fn::Sub" "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}-kubeconfig"}]}
         {:Effect "Allow"
          :Action
+         ["secretsmanager:GetSecretValue"]
+         :Resource
+         [{"Fn::Sub" "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Prefix}-secret-*"}
+          {"Fn::Sub" "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${Prefix}-secret"}]}
+        {:Effect "Allow"
+         :Action
          ["ec2:CreateNetworkInterface"
           "ec2:DescribeDhcpOptions"
           "ec2:DescribeNetworkInterfaces"
