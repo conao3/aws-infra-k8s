@@ -320,6 +320,12 @@
       :UserPool
       :UserPoolClient])
 
+    :Conditions
+    {:HasStripeEventSourceName
+     {"Fn::Not"
+      [{"Fn::Equals"
+        [{:Ref :StripeEventSourceName} ""]}]}}
+
     :Resources
     {:CacheBucket (resource-cache-bucket)
      :CodeBuildRole (resource-codebuild-role)
@@ -333,9 +339,12 @@
      :SfnDeploy (resource-sfn-deploy)
      :SfnBuildAndDeploy (resource-sfn-build-and-deploy)
      :StripeBillingQueue (resource-stripe-billing-queue)
-     :StripeBillingQueuePolicy (resource-stripe-billing-queue-policy)
-     :StripeBillingEventBus (resource-stripe-billing-event-bus)
-     :StripeBillingRule (resource-stripe-billing-rule)}
+     :StripeBillingQueuePolicy (assoc (resource-stripe-billing-queue-policy)
+                                      :Condition :HasStripeEventSourceName)
+     :StripeBillingEventBus (assoc (resource-stripe-billing-event-bus)
+                                   :Condition :HasStripeEventSourceName)
+     :StripeBillingRule (assoc (resource-stripe-billing-rule)
+                               :Condition :HasStripeEventSourceName)}
 
     :Outputs
     (a.cfn/list-outputs
@@ -373,7 +382,7 @@
                      (->> (merge
                            {:Env (-> param :env)
                             :Prefix (-> param :prefix)
-                            :StripeEventSourceName (-> param :StripeEventSourceName)}
+                            :StripeEventSourceName (or (-> param :StripeEventSourceName) "")}
                            (->> [:Vpc :SubnetPriA :SubnetPriC :SubnetPriD :SecurityGroupApp
                                  :UserPool :UserPoolClient]
                                 (map (fn [k]
