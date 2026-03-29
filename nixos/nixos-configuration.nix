@@ -25,6 +25,7 @@
     description = "Refresh ECR credentials for k3s";
     after = ["network-online.target" "fix-metadata-route.service"];
     wants = ["network-online.target"];
+    requires = ["fix-metadata-route.service"];
     path = [ pkgs.awscli2 pkgs.bash pkgs.coreutils ];
     serviceConfig = {
       Type = "oneshot";
@@ -54,8 +55,7 @@
       RemainAfterExit = true;
       ExecStart = pkgs.writeShellScript "k3s-config" ''
         set -euo pipefail
-        TOKEN=$(curl -s -X PUT "http://[fd00:ec2::254]/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
-        PRIVATE_IP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" "http://[fd00:ec2::254]/latest/meta-data/local-ipv4")
+        PRIVATE_IP=$(${pkgs.iproute2}/bin/ip -4 addr show dev ens5 | ${pkgs.gnugrep}/bin/grep -oP 'inet \K[0-9.]+')
         mkdir -p /etc/rancher/k3s
         cat > /etc/rancher/k3s/config.yaml <<EOF
         tls-san:
