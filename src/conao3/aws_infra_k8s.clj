@@ -18,6 +18,7 @@
    [conao3.aws-infra-k8s.github-oidc :as c.github-oidc]
    [conao3.aws-infra-k8s.sanplan-resources :as c.sanplan-resources]
    [conao3.aws-infra-k8s.sancode-resources :as c.sancode-resources]
+   [conao3.aws-infra-k8s.electrobunmacs-resources :as c.electrobunmacs-resources]
    [conao3.aws-infra-k8s.certificate :as c.certificate])
   (:gen-class))
 
@@ -61,6 +62,7 @@
                    "efs" (c.efs/deploy param)
                    "sanplan-resources" (c.sanplan-resources/deploy param)
                    "sancode-resources" (c.sancode-resources/deploy param)
+                   "electrobunmacs-resources" (c.electrobunmacs-resources/deploy param)
                    "certificate" (c.certificate/deploy param)
                    "all" (do
                            (run ["deploy" "network"] param)
