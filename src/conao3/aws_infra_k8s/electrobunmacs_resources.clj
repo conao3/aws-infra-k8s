@@ -39,7 +39,7 @@
     :Environment
     {:Type "LINUX_CONTAINER"
      :Image "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
-     :ComputeType "BUILD_GENERAL1_SMALL"}
+     :ComputeType "BUILD_GENERAL1_MEDIUM"}
     :Artifacts
     {:Type "NO_ARTIFACTS"}
     :LogsConfig
