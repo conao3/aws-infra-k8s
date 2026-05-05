@@ -34,6 +34,7 @@
 
     :Resources
     {:EcrAppAdmin (resource-ecr-repository "app-admin")
+     :EcrCliProxyApi (resource-ecr-repository "cli-proxy-api")
      :EcrSanplanBackend (resource-ecr-repository "sanplan-backend")
      :EcrSanplanBackendBun (resource-ecr-repository "sanplan-backend-bun")
      :EcrSanplanFrontend (resource-ecr-repository "sanplan-frontend")
@@ -43,6 +44,8 @@
     (a.cfn/list-outputs
      {:EcrAppAdminArn {"Fn::GetAtt" [:EcrAppAdmin :Arn]}
       :EcrAppAdminUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrAppAdmin}"}
+      :EcrCliProxyApiArn {"Fn::GetAtt" [:EcrCliProxyApi :Arn]}
+      :EcrCliProxyApiUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrCliProxyApi}"}
       :EcrSanplanBackendArn {"Fn::GetAtt" [:EcrSanplanBackend :Arn]}
       :EcrSanplanBackendUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrSanplanBackend}"}
       :EcrSanplanBackendBunArn {"Fn::GetAtt" [:EcrSanplanBackendBun :Arn]}

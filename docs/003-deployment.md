@@ -41,6 +41,8 @@ This deploys:
 - `rds` - RDS PostgreSQL database
 - `cognito` - Cognito User Pool
 - `efs` - EFS One Zone for persistent storage
+- `sanplan-resources` - Sanplan CodeBuild and Step Functions
+- `cli-proxy-api-resources` - CLIProxyAPI CodeBuild and Step Functions
 - `ssh-tunnel` - SSH tunnel instance (not included in `deploy all`)
 - `ami-builder` - AMI builder instance (not included in `deploy all`)
 

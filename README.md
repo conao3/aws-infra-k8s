@@ -78,6 +78,9 @@ See [docs/002-prerequisites.md](docs/002-prerequisites.md) for full setup instru
 ```bash
 # Deploy all infrastructure (VPC, ALB, k3s cluster, CloudFront, etc.)
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy all
+
+# Deploy only the CLIProxyAPI build/deploy resources
+AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy cli-proxy-api-resources
 ```
 
 ### Deploy Applications
@@ -181,6 +184,8 @@ bin/k8s-local down
 | `rds` | RDS PostgreSQL (optional) |
 | `cognito` | Cognito User Pool (optional) |
 | `github-oidc` | GitHub Actions OIDC (optional) |
+| `sanplan-resources` | Sanplan CodeBuild + Step Functions (optional) |
+| `cli-proxy-api-resources` | CLIProxyAPI CodeBuild + Step Functions (optional) |
 
 ### Global Modules (us-east-1)
 

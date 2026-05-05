@@ -19,6 +19,8 @@ spec:
       port: 80
     - protocol: TCP
       port: 3000
+    - protocol: TCP
+      port: 8317
   - to:
     - namespaceSelector:
         matchLabels:

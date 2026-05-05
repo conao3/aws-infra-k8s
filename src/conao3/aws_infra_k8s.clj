@@ -17,6 +17,7 @@
    [conao3.aws-infra-k8s.ecr :as c.ecr]
    [conao3.aws-infra-k8s.github-oidc :as c.github-oidc]
    [conao3.aws-infra-k8s.sanplan-resources :as c.sanplan-resources]
+   [conao3.aws-infra-k8s.cli-proxy-api-resources :as c.cli-proxy-api-resources]
    [conao3.aws-infra-k8s.sancode-resources :as c.sancode-resources]
    [conao3.aws-infra-k8s.electrobunmacs-resources :as c.electrobunmacs-resources]
    [conao3.aws-infra-k8s.certificate :as c.certificate])
@@ -61,6 +62,7 @@
                    "rds" (c.rds/deploy param)
                    "efs" (c.efs/deploy param)
                    "sanplan-resources" (c.sanplan-resources/deploy param)
+                   "cli-proxy-api-resources" (c.cli-proxy-api-resources/deploy param)
                    "sancode-resources" (c.sancode-resources/deploy param)
                    "electrobunmacs-resources" (c.electrobunmacs-resources/deploy param)
                    "certificate" (c.certificate/deploy param)
@@ -81,6 +83,7 @@
                            (run ["deploy" "eice"] param)
                            (run ["deploy" "efs"] param)
                            (run ["deploy" "sanplan-resources"] param)
+                           (run ["deploy" "cli-proxy-api-resources"] param)
                            ))))))
 
 (defn -main [& args]
