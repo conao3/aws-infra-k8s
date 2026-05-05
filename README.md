@@ -112,6 +112,27 @@ AWS_PROFILE=conao3.k8s bin/ssh/node prometheus
 # Open: http://localhost:30900
 ```
 
+### CLIProxyAPI Management Center
+
+The management UI is accessed through the local port exposed by `bin/k8s port-forward`.
+The OpenAI-compatible API itself is public and should use the ingress endpoint.
+
+```bash
+# Management UI URL
+echo 'http://localhost:8788/'
+
+# Public API endpoint
+echo 'https://dev-cli-proxy-api.sancode.dev/v1'
+
+# ManagementKey for the management UI
+AWS_PROFILE=conao3.dev.k8s AWS_REGION=ap-northeast-1 \
+  aws secretsmanager get-secret-value \
+    --secret-id dev-k8s-secret \
+    --query SecretString \
+    --output text \
+  | jq -r '."cli-proxy-api-management-key"'
+```
+
 ## Documentation
 
 ### Getting Started
