@@ -37,7 +37,8 @@ async function validateJWT(token) {
       {
         audience: AUD,
         issuer: TEAM_DOMAIN,
-        algorithms: ['RS256']
+        algorithms: ['RS256'],
+        clockTolerance: 300
       },
       (err, decoded) => {
         if (err) {
