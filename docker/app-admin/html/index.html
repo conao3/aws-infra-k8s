@@ -106,6 +106,7 @@
               <div class="mt-3 space-y-1">
                 <p class="text-sm"><span class="font-semibold text-gray-700">Access:</span> <code class="bg-gray-100 px-2 py-1 rounded text-xs">bin/k8s port-forward</code></p>
                 <p class="text-sm"><span class="font-semibold text-gray-700">Management UI:</span> <a href="http://localhost:8788/" target="_blank" class="text-blue-600 hover:underline">http://localhost:8788/</a></p>
+                <p class="text-sm"><span class="font-semibold text-gray-700">Custom Connection URL:</span> <code class="bg-gray-100 px-2 py-1 rounded text-xs">http://localhost:8317</code></p>
                 <p class="text-sm"><span class="font-semibold text-gray-700">Public API endpoint:</span> <code class="bg-gray-100 px-2 py-1 rounded text-xs">https://dev-cli-proxy-api.sancode.dev/v1</code></p>
                 <p class="text-sm"><span class="font-semibold text-gray-700">ManagementKey:</span> <code class="bg-gray-100 px-2 py-1 rounded text-xs">aws secretsmanager get-secret-value --secret-id dev-k8s-secret --query SecretString --output text | jq -r '."cli-proxy-api-management-key"'</code></p>
               </div>
