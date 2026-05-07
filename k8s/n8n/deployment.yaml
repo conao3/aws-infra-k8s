@@ -43,7 +43,7 @@ spec:
         - name: N8N_LISTEN_ADDRESS
           value: 0.0.0.0
         - name: N8N_SECURE_COOKIE
-          value: "true"
+          value: "false"
         - name: N8N_PUBLIC_API_DISABLED
           value: "true"
         - name: N8N_PUBLIC_API_SWAGGERUI_DISABLED

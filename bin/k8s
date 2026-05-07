@@ -237,6 +237,7 @@ cmd_port_forward() {
   check_port 9090 || exit 1
   check_port 3000 || exit 1
   check_port 8317 || exit 1
+  check_port 5678 || exit 1
 
   echo ""
   echo "Starting port-forwards..."
@@ -245,6 +246,7 @@ cmd_port_forward() {
   echo "  - Prometheus: http://localhost:9090"
   echo "  - Grafana: http://localhost:3000"
   echo "  - CLIProxyAPI: http://localhost:8317"
+  echo "  - n8n: http://localhost:5678"
   echo ""
   echo "For kubectl access:"
   echo "  export KUBECONFIG=\$(pwd)/target/kubeconfig"
@@ -266,6 +268,9 @@ cmd_port_forward() {
   PIDS+=($!)
 
   start_port_forward 8317 "kubectl port-forward svc/cli-proxy-api 8317:8317" "CLIProxyAPI"
+  PIDS+=($!)
+
+  start_port_forward 5678 "kubectl port-forward svc/n8n 5678:5678" "n8n"
   PIDS+=($!)
 
   wait
