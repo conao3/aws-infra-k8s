@@ -74,7 +74,7 @@
      :BlockDeviceMappings
      [{:DeviceName "/dev/xvda"
        :Ebs
-       {:VolumeSize 10
+       {:VolumeSize 30
         :VolumeType "gp3"
         :DeleteOnTermination true}}]
      :MetadataOptions
