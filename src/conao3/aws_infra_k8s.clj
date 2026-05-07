@@ -97,6 +97,6 @@
                :alb-certificate-domain-name "*.sancode.dev"
                :StripeEventSourceName stripe-event-source
                :domain-aliases (str/join "," (map #(format "%s.sancode.dev" %)
-                                                  ["app1" "app2" "app3" "admin" "sanplan"]))}]
+                                                  ["app1" "app2" "app3" "admin" "dev-admin" "sanplan" "dev-sanplan" "n8n" "dev-n8n"]))}]
     (run args param)
     (shutdown-agents)))
