@@ -40,6 +40,8 @@ spec:
           value: https://dev-n8n.sancode.dev/
         - name: WEBHOOK_URL
           value: https://dev-n8n.sancode.dev/
+        - name: N8N_PROXY_HOPS
+          value: "1"
         - name: N8N_LISTEN_ADDRESS
           value: 0.0.0.0
         - name: N8N_SECURE_COOKIE
