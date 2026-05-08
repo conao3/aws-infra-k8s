@@ -7,7 +7,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-  - host: dev-sanplan.sancode.dev
+  - host: ${SANPLAN_HOST}
     http:
       paths:
       - path: /graphql
@@ -34,7 +34,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-  - host: dev-sanplan.sancode.dev
+  - host: ${SANPLAN_HOST}
     http:
       paths:
       - path: /

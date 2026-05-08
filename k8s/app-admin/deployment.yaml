@@ -18,7 +18,7 @@ spec:
       - name: ecr-secret
       containers:
       - name: app-admin
-        image: 249899228725.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-app-admin:latest
+        image: ${AWS_ACCOUNT_ID}.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-app-admin:latest
         ports:
         - containerPort: 80
         env:

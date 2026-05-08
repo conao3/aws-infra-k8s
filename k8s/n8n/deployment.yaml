@@ -31,15 +31,15 @@ spec:
         - name: GENERIC_TIMEZONE
           value: Asia/Tokyo
         - name: N8N_HOST
-          value: dev-n8n.sancode.dev
+          value: ${N8N_HOST}
         - name: N8N_PORT
           value: "5678"
         - name: N8N_PROTOCOL
           value: https
         - name: N8N_EDITOR_BASE_URL
-          value: https://dev-n8n.sancode.dev/
+          value: https://${N8N_HOST}/
         - name: WEBHOOK_URL
-          value: https://dev-n8n.sancode.dev/
+          value: https://${N8N_HOST}/
         - name: N8N_PROXY_HOPS
           value: "1"
         - name: N8N_LISTEN_ADDRESS

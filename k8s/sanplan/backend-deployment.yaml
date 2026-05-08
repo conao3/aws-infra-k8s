@@ -18,7 +18,7 @@ spec:
       - name: ecr-secret
       initContainers:
       - name: migrate
-        image: 249899228725.dkr.ecr.ap-northeast-1.amazonaws.com/dev-k8s-sanplan-migrate:latest
+        image: ${AWS_ACCOUNT_ID}.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-sanplan-migrate:latest
         command: ["sh", "-c"]
         args:
         - |
@@ -41,7 +41,7 @@ spec:
           subPath: seed.sql
       containers:
       - name: sanplan-backend
-        image: 249899228725.dkr.ecr.ap-northeast-1.amazonaws.com/dev-k8s-sanplan-backend:latest
+        image: ${AWS_ACCOUNT_ID}.dkr.ecr.ap-northeast-1.amazonaws.com/${PREFIX}-sanplan-backend:latest
         ports:
         - containerPort: 3000
         envFrom:
@@ -53,7 +53,7 @@ spec:
             name: sanplan-stripe
         env:
         - name: SANPLAN_BASE_URL
-          value: "https://dev-sanplan.sancode.dev"
+          value: "https://${SANPLAN_HOST}"
         - name: RUST_LOG
           value: "info"
         - name: AWS_REGION
@@ -65,7 +65,7 @@ spec:
         - name: BUN_AI_URL
           value: "http://sanplan-backend-bun:3001"
         - name: S3_USERDATA_BUCKET
-          value: "dev-k8s-sanplan-userdata-249899228725"
+          value: "${PREFIX}-sanplan-userdata-${AWS_ACCOUNT_ID}"
         - name: GITHUB_CLIENT_ID
           value: ""
         - name: GITHUB_CLIENT_SECRET

@@ -11,9 +11,14 @@ on:
         description: 'Resource prefix'
         required: false
         default: 'dev-k8s'
+      aws-account-id:
+        description: 'AWS account ID'
+        required: false
+        default: '249899228725'
 
 env:
   PREFIX: ${{ github.event.inputs.prefix || 'dev-k8s' }}
+  AWS_ACCOUNT_ID: ${{ github.event.inputs.aws-account-id || '249899228725' }}
   AWS_REGION: ap-northeast-1
 
 jobs:
@@ -28,7 +33,7 @@ jobs:
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::249899228725:role/dev-k8s-github-actions
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.PREFIX }}-github-actions
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: aws-actions/amazon-ecr-login@v2
@@ -40,6 +45,20 @@ jobs:
           ECR_REGISTRY="${{ steps.ecr-login.outputs.registry }}"
           IMAGE_NAME="${PREFIX}-app-admin"
           IMAGE_TAG="${GITHUB_SHA::8}"
+          ENV_NAME="${PREFIX%%-*}"
+
+          if [ "${ENV_NAME}" = "prd" ]; then
+            sed -i \
+              -e 's|https://dev-sanplan.sancode.dev|https://sanplan.sancode.dev|g' \
+              -e 's|https://dev-app1.sancode.dev|https://app1.sancode.dev|g' \
+              -e 's|https://dev-app2.sancode.dev|https://app2.sancode.dev|g' \
+              -e 's|https://dev-app3.sancode.dev|https://app3.sancode.dev|g' \
+              -e 's|https://dev-cli-proxy-api.sancode.dev/v1|https://cli-proxy-api.sancode.dev/v1|g' \
+              -e 's|https://dev-n8n.sancode.dev/|https://n8n.sancode.dev/|g' \
+              -e 's|dev-k8s-secret|prd-k8s-secret|g' \
+              -e 's|conao3.dev.k8s|conao3.prd.k8s|g' \
+              docker/app-admin/html/index.html
+          fi
 
           docker build \
             -t "${ECR_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}" \

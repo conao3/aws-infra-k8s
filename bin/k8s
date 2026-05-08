@@ -69,17 +69,46 @@ cmd_deploy() {
 
   sed -i.bak "s/\${EFS_FILE_SYSTEM_ID}/${EFS_FILE_SYSTEM_ID}/g" "${TEMP_DIR}/aws-efs-csi-driver/storageclass.yaml"
 
+  AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+  ENV_NAME="${DEPLOY_ENV:-${PREFIX%%-*}}"
+  if [ "${ENV_NAME}" = "prd" ]; then
+    ADMIN_HOST="admin.sancode.dev"
+    APP1_HOST="app1.sancode.dev"
+    APP2_HOST="app2.sancode.dev"
+    APP3_HOST="app3.sancode.dev"
+    SANPLAN_HOST="sanplan.sancode.dev"
+    N8N_HOST="n8n.sancode.dev"
+  else
+    ADMIN_HOST="${ENV_NAME}-admin.sancode.dev"
+    APP1_HOST="${ENV_NAME}-app1.sancode.dev"
+    APP2_HOST="${ENV_NAME}-app2.sancode.dev"
+    APP3_HOST="${ENV_NAME}-app3.sancode.dev"
+    SANPLAN_HOST="${ENV_NAME}-sanplan.sancode.dev"
+    N8N_HOST="${ENV_NAME}-n8n.sancode.dev"
+  fi
+
   COGNITO_USER_POOL_ID=$(aws cloudformation list-exports \
     --query "Exports[?Name=='${PREFIX}-UserPool'].Value" \
     --output text)
   COGNITO_CLIENT_ID=$(aws cloudformation list-exports \
     --query "Exports[?Name=='${PREFIX}-UserPoolClient'].Value" \
     --output text)
+  STRIPE_BILLING_QUEUE_URL=$(aws cloudformation list-exports \
+    --query "Exports[?Name=='${PREFIX}-SanplanBillingQueueUrl'].Value" \
+    --output text)
 
   find "${TEMP_DIR}" -type f -name '*.yaml' -exec sed -i \
     -e "s/\${PREFIX}/${PREFIX}/g" \
+    -e "s/\${AWS_ACCOUNT_ID}/${AWS_ACCOUNT_ID}/g" \
+    -e "s/\${ADMIN_HOST}/${ADMIN_HOST}/g" \
+    -e "s/\${APP1_HOST}/${APP1_HOST}/g" \
+    -e "s/\${APP2_HOST}/${APP2_HOST}/g" \
+    -e "s/\${APP3_HOST}/${APP3_HOST}/g" \
+    -e "s/\${SANPLAN_HOST}/${SANPLAN_HOST}/g" \
+    -e "s/\${N8N_HOST}/${N8N_HOST}/g" \
     -e "s/\${COGNITO_USER_POOL_ID}/${COGNITO_USER_POOL_ID}/g" \
     -e "s/\${COGNITO_CLIENT_ID}/${COGNITO_CLIENT_ID}/g" \
+    -e "s|\${STRIPE_BILLING_QUEUE_URL}|${STRIPE_BILLING_QUEUE_URL}|g" \
     {} +
 
   set +x
@@ -90,7 +119,7 @@ cmd_deploy() {
   local aws_account_id
   local aws_region
   local ecr_password
-  aws_account_id=$(aws sts get-caller-identity --query Account --output text)
+  aws_account_id="${AWS_ACCOUNT_ID}"
   aws_region="${AWS_REGION:-${AWS_DEFAULT_REGION:-ap-northeast-1}}"
   ecr_password=$(aws ecr get-login-password --region "${aws_region}")
 
