@@ -87,6 +87,11 @@ cmd_deploy() {
     N8N_HOST="${ENV_NAME}-n8n.sancode.dev"
   fi
 
+  if [ "${ENV_NAME}" = "prd" ]; then
+    rm -rf "${TEMP_DIR}/sanplan"
+    sed -i.bak '/^[[:space:]]*- sanplan$/d' "${TEMP_DIR}/kustomization.yaml"
+  fi
+
   COGNITO_USER_POOL_ID=$(aws cloudformation list-exports \
     --query "Exports[?Name=='${PREFIX}-UserPool'].Value" \
     --output text)

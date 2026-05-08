@@ -82,7 +82,8 @@
                            ;; (run ["deploy" "ami-builder"] param)
                            (run ["deploy" "eice"] param)
                            (run ["deploy" "efs"] param)
-                           (run ["deploy" "sanplan-resources"] param)
+                           (when-not (= "prd" (:env param))
+                             (run ["deploy" "sanplan-resources"] param))
                            (run ["deploy" "cli-proxy-api-resources"] param)
                            ))))))
 
@@ -92,7 +93,7 @@
         cognito-domain (if (= env "prd") "auth-k8s.sancode.dev" (format "%s-auth-k8s.sancode.dev" env))
         stripe-event-source (System/getenv "STRIPE_EVENT_SOURCE_NAME")
         app-domains (if (= env "prd")
-                      ["admin" "sanplan" "n8n"]
+                      ["admin" "n8n"]
                       ["dev-app1" "dev-app2" "dev-app3" "dev-admin" "dev-sanplan" "dev-n8n" "dev-cli-proxy-api"])
         param {:env env
                :prefix prefix

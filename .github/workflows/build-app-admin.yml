@@ -48,8 +48,8 @@ jobs:
           ENV_NAME="${PREFIX%%-*}"
 
           if [ "${ENV_NAME}" = "prd" ]; then
+            perl -0pi -e 's|\s*<!-- SANPLAN_CARD_START -->.*?<!-- SANPLAN_CARD_END -->\s*|\n|s' docker/app-admin/html/index.html
             sed -i \
-              -e 's|https://dev-sanplan.sancode.dev|https://sanplan.sancode.dev|g' \
               -e 's|https://dev-app1.sancode.dev|https://app1.sancode.dev|g' \
               -e 's|https://dev-app2.sancode.dev|https://app2.sancode.dev|g' \
               -e 's|https://dev-app3.sancode.dev|https://app3.sancode.dev|g' \
