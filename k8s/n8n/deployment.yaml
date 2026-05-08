@@ -77,6 +77,11 @@ spec:
             secretKeyRef:
               name: n8n-owner
               key: password-hash
+        - name: CLI_PROXY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: cli-proxy-api-client
+              key: api-key
         volumeMounts:
         - name: data
           mountPath: /home/node/.n8n

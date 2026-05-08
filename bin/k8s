@@ -120,6 +120,7 @@ cmd_deploy() {
   echo "Refreshing Kubernetes secrets..."
   : "${GRAFANA_ADMIN_USER:?Set GRAFANA_ADMIN_USER before deploying}"
   : "${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD before deploying}"
+  : "${CLI_PROXY_API_KEY:?Set CLI_PROXY_API_KEY before deploying}"
 
   local aws_account_id
   local aws_region
@@ -138,6 +139,11 @@ cmd_deploy() {
   KUBECONFIG="${kubeconfig_file}" kubectl create secret generic grafana-admin \
     --from-literal=username="${GRAFANA_ADMIN_USER}" \
     --from-literal=password="${GRAFANA_ADMIN_PASSWORD}" \
+    --dry-run=client \
+    -o yaml | KUBECONFIG="${kubeconfig_file}" kubectl apply -f -
+
+  KUBECONFIG="${kubeconfig_file}" kubectl create secret generic cli-proxy-api-client \
+    --from-literal=api-key="${CLI_PROXY_API_KEY}" \
     --dry-run=client \
     -o yaml | KUBECONFIG="${kubeconfig_file}" kubectl apply -f -
   set -x
@@ -343,6 +349,7 @@ Environment Variables:
   AWS_PROFILE           AWS profile to use
   GRAFANA_ADMIN_USER    Grafana admin username for deploy
   GRAFANA_ADMIN_PASSWORD Grafana admin password for deploy
+  CLI_PROXY_API_KEY     CLIProxyAPI Bearer API key for n8n workflows
 
 Local kubectl access (healthy instance):
   Terminal 1: AWS_PROFILE=conao3.k8s bin/k8s port-forward
