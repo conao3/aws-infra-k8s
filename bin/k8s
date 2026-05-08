@@ -82,14 +82,31 @@ cmd_deploy() {
     -e "s/\${COGNITO_CLIENT_ID}/${COGNITO_CLIENT_ID}/g" \
     {} +
 
+  set +x
+  echo "Refreshing Kubernetes secrets..."
   : "${GRAFANA_ADMIN_USER:?Set GRAFANA_ADMIN_USER before deploying}"
   : "${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD before deploying}"
+
+  local aws_account_id
+  local aws_region
+  local ecr_password
+  aws_account_id=$(aws sts get-caller-identity --query Account --output text)
+  aws_region="${AWS_REGION:-${AWS_DEFAULT_REGION:-ap-northeast-1}}"
+  ecr_password=$(aws ecr get-login-password --region "${aws_region}")
+
+  KUBECONFIG="${kubeconfig_file}" kubectl create secret docker-registry ecr-secret \
+    --docker-server="${aws_account_id}.dkr.ecr.${aws_region}.amazonaws.com" \
+    --docker-username=AWS \
+    --docker-password="${ecr_password}" \
+    --dry-run=client \
+    -o yaml | KUBECONFIG="${kubeconfig_file}" kubectl apply -f -
 
   KUBECONFIG="${kubeconfig_file}" kubectl create secret generic grafana-admin \
     --from-literal=username="${GRAFANA_ADMIN_USER}" \
     --from-literal=password="${GRAFANA_ADMIN_PASSWORD}" \
     --dry-run=client \
     -o yaml | KUBECONFIG="${kubeconfig_file}" kubectl apply -f -
+  set -x
 
   KUBECONFIG="${kubeconfig_file}" kubectl apply -k "${TEMP_DIR}/"
 }
