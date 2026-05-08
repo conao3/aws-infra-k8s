@@ -49,7 +49,7 @@
     after = ["network-online.target" "fix-metadata-route.service" "k3s.service"];
     wants = ["network-online.target" "k3s.service"];
     requires = ["fix-metadata-route.service" "k3s.service"];
-    path = [pkgs.awscli2 pkgs.bash pkgs.coreutils pkgs.gnused];
+    path = [pkgs.awscli2 pkgs.bash pkgs.coreutils pkgs.curl pkgs.gnused];
     serviceConfig = {
       Type = "oneshot";
       Environment = [
@@ -58,10 +58,13 @@
       ];
       ExecStart = pkgs.writeShellScript "k3s-publish-kubeconfig" ''
         set -euo pipefail
+        token="$(${pkgs.curl}/bin/curl -fsS -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")"
+        role_name="$(${pkgs.curl}/bin/curl -fsS -H "X-aws-ec2-metadata-token: $token" "http://169.254.169.254/latest/meta-data/iam/security-credentials/")"
+        prefix="''${role_name%-cluster}"
         private_ip="$(${pkgs.iproute2}/bin/ip -4 addr show dev ens5 | ${pkgs.gnugrep}/bin/grep -oP 'inet \K[0-9.]+' | head -n1)"
         kubeconfig="$(${pkgs.gnused}/bin/sed "s|127.0.0.1|$private_ip|g" /etc/rancher/k3s/k3s.yaml)"
         ${pkgs.awscli2}/bin/aws ssm put-parameter \
-          --name "dev-k8s-kubeconfig" \
+          --name "$prefix-kubeconfig" \
           --region "ap-northeast-1" \
           --type "SecureString" \
           --value "$kubeconfig" \
