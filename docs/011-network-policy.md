@@ -126,9 +126,9 @@ NetworkPolicy blocks unnecessary traffic such as:
 ### Check application access
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" https://app1.sancode.dev/index.html
-curl -s -o /dev/null -w "%{http_code}\n" https://app2.sancode.dev/index.html
-curl -s -o /dev/null -w "%{http_code}\n" https://app3.sancode.dev/index.html
+curl -s -o /dev/null -w "%{http_code}\n" https://dev-app1.sancode.dev/index.html
+curl -s -o /dev/null -w "%{http_code}\n" https://dev-app2.sancode.dev/index.html
+curl -s -o /dev/null -w "%{http_code}\n" https://dev-app3.sancode.dev/index.html
 ```
 
 All should return `200`.

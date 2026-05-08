@@ -91,12 +91,14 @@
         prefix (format "%s-%s" env "k8s")
         cognito-domain (if (= env "prd") "auth-k8s.sancode.dev" (format "%s-auth-k8s.sancode.dev" env))
         stripe-event-source (System/getenv "STRIPE_EVENT_SOURCE_NAME")
+        app-domains (if (= env "prd")
+                      ["admin" "sanplan" "n8n"]
+                      ["dev-app1" "dev-app2" "dev-app3" "dev-admin" "dev-sanplan" "dev-n8n" "dev-cli-proxy-api"])
         param {:env env
                :prefix prefix
                :domain-name cognito-domain
                :alb-certificate-domain-name "*.sancode.dev"
                :StripeEventSourceName stripe-event-source
-               :domain-aliases (str/join "," (map #(format "%s.sancode.dev" %)
-                                                  ["app1" "app2" "app3" "admin" "dev-admin" "sanplan" "dev-sanplan" "n8n" "dev-n8n"]))}]
+               :domain-aliases (str/join "," (map #(format "%s.sancode.dev" %) app-domains))}]
     (run args param)
     (shutdown-agents)))
