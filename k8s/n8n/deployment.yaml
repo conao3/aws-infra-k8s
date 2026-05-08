@@ -50,6 +50,8 @@ spec:
           value: "true"
         - name: N8N_PUBLIC_API_SWAGGERUI_DISABLED
           value: "true"
+        - name: N8N_BLOCK_ENV_ACCESS_IN_NODE
+          value: "false"
         - name: N8N_ENCRYPTION_KEY
           valueFrom:
             secretKeyRef:
