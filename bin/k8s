@@ -236,25 +236,21 @@ cmd_port_forward() {
   echo "Kubeconfig saved to: ${kubeconfig_file}"
   echo ""
 
-  cleanup() {
-    echo ""
-    echo "Stopping all port-forwards..."
-    for pid in "${PIDS[@]}"; do
-      kill "${pid}" 2>/dev/null || true
-    done
-  }
-
-  trap cleanup SIGINT SIGTERM EXIT
-
   cleanup_existing_forwards() {
     echo "Checking for existing port-forward processes..."
 
     local pids
-    pids=$(pgrep -f "ssh.*kubectl port-forward" || true)
+    pids=$(
+      {
+        pgrep -f "ssh .* -L (6443|8443|9090|3000|8317|5678):localhost:" || true
+        pgrep -f "ssh.*kubectl port-forward" || true
+      } | sort -u
+    )
     if [ -n "${pids}" ]; then
       echo "Found existing local port-forward processes, killing them..."
       echo "${pids}" | xargs kill 2>/dev/null || true
       sleep 1
+      echo "${pids}" | xargs kill -9 2>/dev/null || true
     fi
 
     echo "Checking remote port-forward processes..."
@@ -262,6 +258,18 @@ cmd_port_forward() {
       "pkill kubectl 2>/dev/null && echo 'Killed remote kubectl processes' || echo 'No remote processes found'"
     sleep 1
   }
+
+  cleanup() {
+    echo ""
+    echo "Stopping all port-forwards..."
+    for pid in "${PIDS[@]}"; do
+      kill -- "-${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
+    done
+    sleep 1
+    cleanup_existing_forwards 2>/dev/null || true
+  }
+
+  trap cleanup SIGINT SIGTERM EXIT
 
   check_port() {
     local port=$1
@@ -280,10 +288,15 @@ cmd_port_forward() {
     local remote_cmd=$2
     local label=$3
 
-    ssh "${SSH_OPTS[@]}" \
-      -L "${port}":localhost:"${port}" \
-      "root@${PRIVATE_IP}" \
-      "${remote_cmd}" 2>&1 | sed "s/^/[${label}] /" &
+    setsid bash -c '
+      label=$1
+      port=$2
+      private_ip=$3
+      remote_cmd=$4
+      shift 4
+      ssh "$@" -L "${port}:localhost:${port}" "root@${private_ip}" "${remote_cmd}" 2>&1 |
+        sed "s/^/[${label}] /"
+    ' bash "${label}" "${port}" "${PRIVATE_IP}" "${remote_cmd}" "${SSH_OPTS[@]}" &
   }
 
   cleanup_existing_forwards
@@ -312,7 +325,12 @@ cmd_port_forward() {
   echo "Press Ctrl-C to stop all port-forwards"
   echo ""
 
-  ssh "${SSH_OPTS[@]}" -L 6443:localhost:6443 -N "root@${PRIVATE_IP}" 2>&1 | sed 's/^/[K8s API] /' &
+  setsid bash -c '
+    private_ip=$1
+    shift
+    ssh "$@" -L 6443:localhost:6443 -N "root@${private_ip}" 2>&1 |
+      sed "s/^/[K8s API] /"
+  ' bash "${PRIVATE_IP}" "${SSH_OPTS[@]}" &
   PIDS+=($!)
 
   start_port_forward 8443 "kubectl port-forward -n kubernetes-dashboard svc/kubernetes-dashboard 8443:443" "Dashboard"
