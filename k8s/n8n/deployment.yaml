@@ -84,6 +84,11 @@ spec:
             secretKeyRef:
               name: cli-proxy-api-client
               key: api-key
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: n8n-github
+              key: token
         volumeMounts:
         - name: data
           mountPath: /home/node/.n8n

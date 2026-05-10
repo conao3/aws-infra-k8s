@@ -121,6 +121,7 @@ cmd_deploy() {
   : "${GRAFANA_ADMIN_USER:?Set GRAFANA_ADMIN_USER before deploying}"
   : "${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD before deploying}"
   : "${CLI_PROXY_API_KEY:?Set CLI_PROXY_API_KEY before deploying}"
+  : "${GITHUB_TOKEN:?Set GITHUB_TOKEN before deploying}"
 
   local aws_account_id
   local aws_region
@@ -144,6 +145,11 @@ cmd_deploy() {
 
   KUBECONFIG="${kubeconfig_file}" kubectl create secret generic cli-proxy-api-client \
     --from-literal=api-key="${CLI_PROXY_API_KEY}" \
+    --dry-run=client \
+    -o yaml | KUBECONFIG="${kubeconfig_file}" kubectl apply -f -
+
+  KUBECONFIG="${kubeconfig_file}" kubectl create secret generic n8n-github \
+    --from-literal=token="${GITHUB_TOKEN}" \
     --dry-run=client \
     -o yaml | KUBECONFIG="${kubeconfig_file}" kubectl apply -f -
   set -x
