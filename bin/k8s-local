@@ -27,6 +27,10 @@ nodes:
     hostPort: 30300
     protocol: TCP
 EOF
+
+  for cid in $(docker ps -aq --filter "label=io.x-k8s.kind.cluster=${CLUSTER_NAME}"); do
+    docker update --restart=no "${cid}"
+  done
 }
 
 cmd_deploy() {
