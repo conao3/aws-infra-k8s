@@ -20,7 +20,8 @@
    [conao3.aws-infra-k8s.cli-proxy-api-resources :as c.cli-proxy-api-resources]
    [conao3.aws-infra-k8s.sancode-resources :as c.sancode-resources]
    [conao3.aws-infra-k8s.electrobunmacs-resources :as c.electrobunmacs-resources]
-   [conao3.aws-infra-k8s.certificate :as c.certificate])
+   [conao3.aws-infra-k8s.certificate :as c.certificate]
+   [conao3.aws-infra-k8s.recapcoach :as c.recapcoach])
   (:gen-class))
 
 (defn parse-args [args]
@@ -66,6 +67,9 @@
                    "sancode-resources" (c.sancode-resources/deploy param)
                    "electrobunmacs-resources" (c.electrobunmacs-resources/deploy param)
                    "certificate" (c.certificate/deploy param)
+
+                   ;; k8s に載せない (Lambda + Function URL)。`all` には含めない
+                   "recapcoach" (c.recapcoach/deploy param)
                    "all" (do
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
