@@ -1,5 +1,5 @@
 (ns conao3.aws-infra-k8s.recapcoach
-  "recapcoach (conao3/ts-recapcoach) のバックエンド。Lambda + Function URL。
+  "recapcoach (conao3/ts-recapcoach) のバックエンド。Lambda + Function URL。LLM は Vercel AI Gateway (Bedrock は使わない)。
   k8s には載せない。コードは ts-recapcoach の `pnpm --filter @recapcoach/api build` の成果物 (apps/api/dist/lambda)。"
   (:require
    [babashka.fs :as fs]
@@ -31,16 +31,9 @@
     :MemorySize 512
     :Environment
     {:Variables
-     {:BEDROCK_MODEL_ID {:Ref :BedrockModelId}
+     {:AI_GATEWAY_MODEL {:Ref :AiGatewayModel}
+      :AI_GATEWAY_API_KEY {:Ref :AiGatewayApiKey}
       :API_TOKEN {:Ref :ApiToken}}}
-    :Policies
-    [{:Version "2012-10-17"
-      :Statement
-      [{:Effect "Allow"
-        :Action ["bedrock:InvokeModel"]
-        ;; global. などの推論プロファイルは、複数リージョンの foundation-model を使う
-        :Resource ["arn:aws:bedrock:*::foundation-model/*"
-                   {"Fn::Sub" "arn:aws:bedrock:*:${AWS::AccountId}:inference-profile/*"}]}]}]
     ;; 認証はアプリ側 (Authorization: Bearer)。字幕は保存せず、ログにも出さない
     :FunctionUrlConfig {:AuthType "NONE"}}})
 
@@ -48,8 +41,9 @@
   (a.cfn/template
    {:Parameters
     (merge
-     (a.cfn/list-string-parameters [:Env :Prefix :BedrockModelId])
-     {:ApiToken {:Type "String" :NoEcho true}})
+     (a.cfn/list-string-parameters [:Env :Prefix :AiGatewayModel])
+     {:ApiToken {:Type "String" :NoEcho true}
+      :AiGatewayApiKey {:Type "String" :NoEcho true}})
 
     :Resources
     {:LogGroup (resource-log-group)
@@ -72,7 +66,8 @@
         code-uri (str (fs/absolutize
                        (or (System/getenv "RECAPCOACH_DIST")
                            (fs/expand-home "~/ghq/github.com/conao3/ts-recapcoach/apps/api/dist/lambda"))))
-        model-id (required-env "RECAPCOACH_BEDROCK_MODEL_ID")
+        model-id (required-env "RECAPCOACH_AI_GATEWAY_MODEL")
+        gateway-key (required-env "RECAPCOACH_AI_GATEWAY_API_KEY")
         api-token (required-env "RECAPCOACH_API_TOKEN")]
     (when-not (fs/exists? (fs/path code-uri "index.mjs"))
       (throw (ex-info (format "build first: pnpm --filter @recapcoach/api build (%s)" code-uri)
@@ -96,7 +91,8 @@
                    "--parameter-overrides"
                    (->> {:Env (-> param :env)
                          :Prefix (-> param :prefix)
-                         :BedrockModelId model-id
+                         :AiGatewayModel model-id
+                         :AiGatewayApiKey gateway-key
                          :ApiToken api-token}
                         (map (fn [[k v]]
                                (format "%s=\"%s\"" (name k) v)))
