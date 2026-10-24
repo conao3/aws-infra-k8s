@@ -25,7 +25,7 @@ When enabled the settings are: per-IP rate limit (600 requests per 5 minutes, bl
 
 ## Prerequisites
 
-1. Secrets Manager `<prefix>-secret` has `google-client-id` and `google-client-secret` ([002](002-prerequisites.md)).
+1. SSM parameters `/<prefix>/cognito/google-client-id` and `/<prefix>/cognito/google-client-secret` exist ([002](002-prerequisites.md), section 3b).
 2. SSM parameters (String): `/<prefix>/recapcoach/ai-gateway-api-key` and `/<prefix>/recapcoach/ai-gateway-model`.
 3. Build the Lambda bundles in ts-recapcoach: `pnpm --filter @recapcoach/api build` (`apps/api/dist/lambda/index.mjs` and `worker.mjs`).
 

@@ -60,10 +60,26 @@ rm /tmp/dev-k8s-secret.json
 |-----|-------------|---------|
 | `rds-postgres-password` | RDS PostgreSQL master password | rds stack |
 | `sancode-cloudflare-api-token` | Cloudflare API token for Pages deploy | sancode-resources CodeBuild |
-| `google-client-id` | Google OAuth client ID for the shared Cognito user pool | cognito stack (dynamic reference) |
-| `google-client-secret` | Google OAuth client secret for the shared Cognito user pool | cognito stack (dynamic reference) |
 
-The cognito stack reads `google-client-id` and `google-client-secret` with `{{resolve:secretsmanager:<prefix>-secret:SecretString:<key>}}`, so the values never appear on the command line or in stack parameters. CloudFormation reads them only when the identity provider resource is created or updated; after changing the secret, update the cognito stack to apply it.
+The Google OAuth client for the shared Cognito user pool is not in this secret. See "3b. SSM Parameters for Cognito" below.
+
+### 3b. SSM Parameters for Cognito
+
+The cognito stack reads the Google OAuth client from two plain-text (`String`) SSM parameters with `{{resolve:ssm:<name>}}`, so the values never appear on the command line or in stack parameters. `ssm-secure` (SecureString) cannot be used because `AWS::Cognito::UserPoolIdentityProvider` is not on CloudFormation's supported list; Secrets Manager dynamic references work but cost about $0.40/month. CloudFormation reads the parameters only when the identity provider resource is created or updated; after changing them, update the cognito stack to apply it.
+
+| Parameter | Description |
+|-----------|-------------|
+| `/<prefix>/cognito/google-client-id` | Google OAuth client ID |
+| `/<prefix>/cognito/google-client-secret` | Google OAuth client secret |
+
+```bash
+aws ssm put-parameter --type String --name /dev-k8s/cognito/google-client-id \
+  --value "$(cat ~/.config/recapcoach/google-client-id)" --profile conao3.dev.k8s
+aws ssm put-parameter --type String --name /dev-k8s/cognito/google-client-secret \
+  --value "$(cat ~/.config/recapcoach/google-client-secret)" --profile conao3.dev.k8s
+```
+
+Anyone with `ssm:GetParameter` can read the secret, so keep it to the dev account's administrators.
 
 ### 4. CodeBuild GitHub Source Credentials
 

@@ -61,9 +61,10 @@
     :UserPoolId {:Ref :UserPool}
     :ProviderDetails
     {:authorize_scopes "email openid profile"
-     ;; Secrets Manager の動的参照。値はコマンドラインにもパラメータにも出ない
-     :client_id (sub "{{resolve:secretsmanager:${Prefix}-secret:SecretString:google-client-id}}")
-     :client_secret (sub "{{resolve:secretsmanager:${Prefix}-secret:SecretString:google-client-secret}}")}
+     ;; SSM Parameter Store (String) の動的参照。値はコマンドラインにもパラメータにも出ない。
+     ;; ssm-secure (SecureString) は UserPoolIdentityProvider に使えないので平文の String を読む
+     :client_id (sub "{{resolve:ssm:/${Prefix}/cognito/google-client-id}}")
+     :client_secret (sub "{{resolve:ssm:/${Prefix}/cognito/google-client-secret}}")}
     :AttributeMapping
     {:email "email"
      :email_verified "email_verified"
@@ -228,8 +229,8 @@
 
     (c.util/eshell "sam" "validate" "--lint" "--template-file" (str (fs/path file)))
     (c.util/ensure-stack-deployable stack-name)
-    ;; Google の client_id / client_secret は、テンプレートが Secrets Manager `{prefix}-secret` の
-    ;; 動的参照 (google-client-id / google-client-secret) で受けるので、ここでは取得しない
+    ;; Google の client_id / client_secret は、テンプレートが SSM パラメータ
+    ;; `/{prefix}/cognito/google-client-{id,secret}` の動的参照で受けるので、ここでは取得しない
     (let [overrides (cond-> {:Env (-> param :env)
                              :Prefix (-> param :prefix)}
                       prd? (assoc :CertificateArn (prd-certificate-arn param)))]
