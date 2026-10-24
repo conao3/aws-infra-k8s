@@ -68,7 +68,7 @@
                    "electrobunmacs-resources" (c.electrobunmacs-resources/deploy param)
                    "certificate" (c.certificate/deploy param)
 
-                   ;; k8s に載せない (Lambda + Function URL)。`all` には含めない
+                   ;; k8s に載せない (API Gateway + Cognito + WAF + Lambda + SNS/SQS/DynamoDB)。`all` には含めない
                    "recapcoach" (c.recapcoach/deploy param)
                    "all" (do
                            (run ["deploy" "network"] param)
