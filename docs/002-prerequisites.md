@@ -60,6 +60,10 @@ rm /tmp/dev-k8s-secret.json
 |-----|-------------|---------|
 | `rds-postgres-password` | RDS PostgreSQL master password | rds stack |
 | `sancode-cloudflare-api-token` | Cloudflare API token for Pages deploy | sancode-resources CodeBuild |
+| `google-client-id` | Google OAuth client ID for the shared Cognito user pool | cognito stack (dynamic reference) |
+| `google-client-secret` | Google OAuth client secret for the shared Cognito user pool | cognito stack (dynamic reference) |
+
+The cognito stack reads `google-client-id` and `google-client-secret` with `{{resolve:secretsmanager:<prefix>-secret:SecretString:<key>}}`, so the values never appear on the command line or in stack parameters. CloudFormation reads them only when the identity provider resource is created or updated; after changing the secret, update the cognito stack to apply it.
 
 ### 4. CodeBuild GitHub Source Credentials
 

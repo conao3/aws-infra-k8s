@@ -39,10 +39,11 @@ This deploys:
 - `eice` - EC2 Instance Connect Endpoint
 - `github-oidc` - GitHub Actions OIDC provider and IAM role
 - `rds` - RDS PostgreSQL database
-- `cognito` - Cognito User Pool
+- `cognito` - Shared Cognito User Pool (Google IdP, one app client per app; admin-create-user only). Dev uses the Cognito prefix domain `<prefix>-auth-<account id>`; prd uses the custom domain `auth-k8s.sancode.dev`
 - `efs` - EFS One Zone for persistent storage
 - `sanplan-resources` - Sanplan CodeBuild and Step Functions
 - `cli-proxy-api-resources` - CLIProxyAPI CodeBuild and Step Functions
+- `recapcoach` - recapcoach backend (API Gateway + WAF + Lambda + SNS/SQS + DynamoDB + S3). Requires `cognito` first; not included in `deploy all`. See [013-recapcoach.md](013-recapcoach.md)
 - `ssh-tunnel` - SSH tunnel instance (not included in `deploy all`)
 - `ami-builder` - AMI builder instance (not included in `deploy all`)
 

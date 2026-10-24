@@ -4,8 +4,12 @@
    [cheshire.core :as json]
    [clojure.string :as str]
    [clojure.java.io :as io]
+   [conao3.aws-infra-k8s.recapcoach-extension :as c.recapcoach-extension]
    [conao3.aws-infra-k8s.util :as c.util]
    [conao3.aws-infra.cfn :as a.cfn]))
+
+(defn- sub [s] {"Fn::Sub" s})
+(defn- get-att [resource attr] {"Fn::GetAtt" [resource attr]})
 
 (defn resource-user-pool []
   {:Type "AWS::Cognito::UserPool"
@@ -24,17 +28,29 @@
     ;;             :RequireSymbols false}}
     :AccountRecoverySetting
     {:RecoveryMechanisms [{:Name "verified_email"
-                           :Priority 1}]}}})
+                           :Priority 1}]}
+    ;; ネイティブのセルフサインアップは禁止。テスト用のユーザーは admin-create-user で作る。
+    ;; Google の連携ユーザーは初回サインインで作られるので、許可はアプリ側で判定する
+    :AdminCreateUserConfig {:AllowAdminCreateUserOnly true}}})
 
-(defn resource-user-pool-domain []
+(defn resource-user-pool-domain
+  "prd はカスタムドメイン (ACM が要る)。"
+  []
   {:Condition "IsPrd"
-  :Type "AWS::Cognito::UserPoolDomain"
+   :Type "AWS::Cognito::UserPoolDomain"
    :Properties
-   {:Domain {"Fn::If" ["IsPrd"
-                       "auth-k8s.sancode.dev"
-                       {"Fn::Sub" "${Env}-auth-k8s.sancode.dev"}]}
+   {:Domain "auth-k8s.sancode.dev"
     :CustomDomainConfig
     {:CertificateArn {"Ref" "CertificateArn"}}
+    :UserPoolId {:Ref :UserPool}}})
+
+(defn resource-user-pool-domain-prefix
+  "prd 以外は Cognito のプレフィックスドメイン (<prefix>-auth-<アカウント ID>.auth.<region>.amazoncognito.com)。"
+  []
+  {:Condition "IsNotPrd"
+   :Type "AWS::Cognito::UserPoolDomain"
+   :Properties
+   {:Domain (sub "${Prefix}-auth-${AWS::AccountId}")
     :UserPoolId {:Ref :UserPool}}})
 
 (defn resource-user-pool-identity-provider-google []
@@ -45,10 +61,12 @@
     :UserPoolId {:Ref :UserPool}
     :ProviderDetails
     {:authorize_scopes "email openid profile"
-     :client_id {"Ref" "GoogleClientId"}
-     :client_secret {"Ref" "GoogleClientSecret"}}
+     ;; Secrets Manager の動的参照。値はコマンドラインにもパラメータにも出ない
+     :client_id (sub "{{resolve:secretsmanager:${Prefix}-secret:SecretString:google-client-id}}")
+     :client_secret (sub "{{resolve:secretsmanager:${Prefix}-secret:SecretString:google-client-secret}}")}
     :AttributeMapping
     {:email "email"
+     :email_verified "email_verified"
      :username "sub"}}})
 
 (defn resource-user-pool-client []
@@ -75,6 +93,31 @@
     :AllowedOAuthScopes ["email" "openid" "profile"]
     :AllowedOAuthFlowsUserPoolClient true
     :SupportedIdentityProviders ["COGNITO" "Google"]}})
+
+(defn resource-user-pool-client-recapcoach
+  "recapcoach の Chrome 拡張用。認可コード + PKCE (シークレットなし)。"
+  []
+  {:Type "AWS::Cognito::UserPoolClient"
+   :DependsOn ["UserPoolIdentityProviderGoogle"]
+   :Properties
+   {:ClientName (a.cfn/prefix "user-pool-client-recapcoach")
+    :UserPoolId {:Ref :UserPool}
+    :GenerateSecret false
+    :ExplicitAuthFlows ["ALLOW_ADMIN_USER_PASSWORD_AUTH"
+                        "ALLOW_REFRESH_TOKEN_AUTH"]
+    :PreventUserExistenceErrors "ENABLED"
+    :EnableTokenRevocation true
+    ;; chrome.identity.launchWebAuthFlow のリダイレクト先 (拡張機能 ID ごと)
+    :CallbackURLs (c.recapcoach-extension/callback-urls)
+    :LogoutURLs (c.recapcoach-extension/callback-urls)
+    :AllowedOAuthFlows ["code"]
+    :AllowedOAuthScopes ["email" "openid" "profile"]
+    :AllowedOAuthFlowsUserPoolClient true
+    :SupportedIdentityProviders ["COGNITO" "Google"]
+    :TokenValidityUnits {:IdToken "minutes" :AccessToken "minutes" :RefreshToken "days"}
+    :IdTokenValidity 60
+    :AccessTokenValidity 60
+    :RefreshTokenValidity 30}})
 
 (defn resource-identity-pool []
   {:Type "AWS::Cognito::IdentityPool"
@@ -128,17 +171,22 @@
 (defn cfn [_param]
   (a.cfn/template
    {:Parameters
-    (a.cfn/list-string-parameters
-     [:Env :Prefix :CertificateArn :GoogleClientId :GoogleClientSecret])
+    (merge
+     (a.cfn/list-string-parameters [:Env :Prefix])
+     ;; prd のカスタムドメインの証明書。prd 以外は使わない
+     {:CertificateArn {:Type "String" :Default ""}})
 
     :Conditions
-    {:IsPrd {"Fn::Equals" [{"Ref" "Env"} "prd"]}}
+    {:IsPrd {"Fn::Equals" [{"Ref" "Env"} "prd"]}
+     :IsNotPrd {"Fn::Not" [{:Condition "IsPrd"}]}}
 
     :Resources
     {:UserPool (resource-user-pool)
      :UserPoolDomain (resource-user-pool-domain)
+     :UserPoolDomainPrefix (resource-user-pool-domain-prefix)
      :UserPoolIdentityProviderGoogle (resource-user-pool-identity-provider-google)
      :UserPoolClient (resource-user-pool-client)
+     :UserPoolClientRecapcoach (resource-user-pool-client-recapcoach)
      :IdentityPool (resource-identity-pool)
      :IdentityPoolRoleAuthenticated (resource-identity-pool-role-authenticated)
      :IdentityPoolRoleUnauthenticated (resource-identity-pool-role-unauthenticated)
@@ -147,49 +195,30 @@
     :Outputs
     (a.cfn/list-outputs
      {:UserPool {:Ref :UserPool}
+      :UserPoolArn (get-att :UserPool :Arn)
+      ;; ホスト UI のドメイン。prd はカスタムドメイン、それ以外はプレフィックスドメイン
       :UserPoolDomain {"Fn::If" ["IsPrd"
                                  "auth-k8s.sancode.dev"
-                                 {"Fn::Sub" "${Env}-auth-k8s.sancode.dev"}]}
+                                 (sub "${Prefix}-auth-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com")]}
       :UserPoolClient {:Ref :UserPoolClient}
+      :RecapcoachUserPoolClient {:Ref :UserPoolClientRecapcoach}
       :IdentityPool {:Ref :IdentityPool}})}))
 
-(defn- ensure-dev-user-pool-domain! [param cert-arn]
-  (when-not (= "prd" (:env param))
-    (let [domain (format "%s-auth-k8s.sancode.dev" (:env param))
-          user-pool-id (-> (c.util/eshell {:out :string}
-                                          "aws" "cloudformation" "describe-stacks"
-                                          "--stack-name" (str (:prefix param) "-cognito")
-                                          "--query" "Stacks[0].Outputs[?OutputKey==`UserPool`].OutputValue | [0]"
-                                          "--output" "text")
-                           :out
-                           str/trim)
-          out (c.util/eshell {:out :string :err :string}
-                             "aws" "cognito-idp" "describe-user-pool-domain"
-                             "--domain" domain)
-          domain-description (some-> (:out out) not-empty (json/parse-string keyword) :DomainDescription)
-          status (:Status domain-description)
-          current-user-pool-id (:UserPoolId domain-description)]
-      (cond
-        (and (= current-user-pool-id user-pool-id) (not (str/blank? status)))
-        (c.util/eprintln (format "Cognito custom domain already exists: %s (%s)" domain status))
-
-        (and current-user-pool-id (not= current-user-pool-id user-pool-id))
-        (throw (ex-info (format "Cognito custom domain %s is attached to another user pool: %s" domain current-user-pool-id)
-                        {:domain domain
-                         :current-user-pool-id current-user-pool-id
-                         :expected-user-pool-id user-pool-id}))
-
-        :else
-        (do
-          (c.util/eprintln (format "Create Cognito custom domain: %s" domain))
-          (c.util/eshell "aws" "cognito-idp" "create-user-pool-domain"
-                         "--domain" domain
-                         "--user-pool-id" user-pool-id
-                         "--custom-domain-config" (format "CertificateArn=%s" cert-arn)))))))
+(defn- prd-certificate-arn [param]
+  (let [exports (->> (-> (c.util/eshell {:out :string} "aws" "cloudformation" "list-exports" "--region" "us-east-1")
+                         :out
+                         (json/parse-string keyword))
+                     :Exports
+                     (map (fn [elm] [(keyword (:Name elm)) (:Value elm)]))
+                     (into {}))]
+    (or (get exports (keyword (format "%s-%s" (-> param :prefix) "CertificateArn")))
+        (throw (ex-info "CertificateArn export not found in us-east-1 (deploy certificate first)"
+                        {:prefix (:prefix param)})))))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/cognito.json")
-        stack-name (str (-> param :prefix) "-" "cognito")]
+        stack-name (str (-> param :prefix) "-" "cognito")
+        prd? (= "prd" (:env param))]
     (fs/create-dirs (fs/parent file))
 
     (c.util/eprintln (format "Write: %s" (fs/path file)))
@@ -197,28 +226,13 @@
       (-> (cfn param)
           (json/generate-stream writer)))
 
-    (c.util/eshell "sam" "validate" "--template-file" (str (fs/path file)))
+    (c.util/eshell "sam" "validate" "--lint" "--template-file" (str (fs/path file)))
     (c.util/ensure-stack-deployable stack-name)
-    (let [exports (->> (-> (c.util/eshell {:out :string} "aws" "cloudformation" "list-exports" "--region" "us-east-1")
-                           :out
-                           (json/parse-string keyword))
-                       :Exports
-                       (map (fn [elm] [(keyword (:Name elm)) (:Value elm)]))
-                       (into {}))
-          cert-arn (get exports (keyword (format "%s-%s" (-> param :prefix) "CertificateArn")))
-          secret-json (-> (c.util/eshell {:out :string}
-                                         "aws" "secretsmanager" "get-secret-value"
-                                         "--secret-id" (format "%s-secret" (:prefix param))
-                                         "--query" "SecretString"
-                                         "--output" "text")
-                          :out
-                          (json/parse-string keyword))
-          google-client-id (or (get secret-json :google-client-id)
-                               (throw (ex-info "Missing google-client-id in Secrets Manager"
-                                               {:secret-id (format "%s-secret" (:prefix param))})))
-          google-client-secret (or (get secret-json :google-client-secret)
-                                   (throw (ex-info "Missing google-client-secret in Secrets Manager"
-                                                   {:secret-id (format "%s-secret" (:prefix param))})))]
+    ;; Google の client_id / client_secret は、テンプレートが Secrets Manager `{prefix}-secret` の
+    ;; 動的参照 (google-client-id / google-client-secret) で受けるので、ここでは取得しない
+    (let [overrides (cond-> {:Env (-> param :env)
+                             :Prefix (-> param :prefix)}
+                      prd? (assoc :CertificateArn (prd-certificate-arn param)))]
       (c.util/eshell "sam" "deploy"
                      "--template-file" (str (fs/path file))
                      "--stack-name" stack-name
@@ -227,10 +241,6 @@
                      "--no-fail-on-empty-changeset"
                      "--on-failure" "DELETE"
                      "--parameter-overrides"
-                     (format "Env=\"%s\" Prefix=\"%s\" CertificateArn=\"%s\" GoogleClientId=\"%s\" GoogleClientSecret=\"%s\""
-                             (-> param :env)
-                             (-> param :prefix)
-                             cert-arn
-                             google-client-id
-                             google-client-secret))
-      (ensure-dev-user-pool-domain! param cert-arn))))
+                     (->> overrides
+                          (map (fn [[k v]] (format "%s=\"%s\"" (name k) v)))
+                          (str/join " "))))))

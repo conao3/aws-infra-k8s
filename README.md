@@ -203,10 +203,11 @@ bin/k8s-local down
 | `eice` | EC2 Instance Connect Endpoint |
 | `efs` | EFS One Zone for persistent storage |
 | `rds` | RDS PostgreSQL (optional) |
-| `cognito` | Cognito User Pool (optional) |
+| `cognito` | Shared Cognito User Pool with Google IdP and per-app clients (optional) |
 | `github-oidc` | GitHub Actions OIDC (optional) |
 | `sanplan-resources` | Sanplan CodeBuild + Step Functions (optional) |
 | `cli-proxy-api-resources` | CLIProxyAPI CodeBuild + Step Functions (optional) |
+| `recapcoach` | recapcoach backend: API Gateway + WAF + Lambda + SNS/SQS + DynamoDB + S3 (optional, needs `cognito`, not in `all`) |
 
 ### Global Modules (us-east-1)
 

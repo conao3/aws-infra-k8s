@@ -1,6 +1,8 @@
 (ns conao3.aws-infra-k8s.recapcoach
-  "recapcoach (conao3/ts-recapcoach) のバックエンド。API Gateway (REST API) + Cognito + WAF の入口、
-  モノリスの API Lambda、重い処理を SNS → SQS → コンシューマの Lambda で非同期に処理し、結果を DynamoDB (TTL) に置く。
+  "recapcoach (conao3/ts-recapcoach) のバックエンド。API Gateway (REST API) + WAF の入口。認証は共有の Cognito
+  ユーザープール (cognito スタック。先にデプロイする) のオーソライザー。モノリスの API Lambda、
+  重い処理を SNS → SQS → コンシューマの Lambda で非同期に処理し、結果を DynamoDB (TTL) に置く。
+  字幕は API Gateway / WAF を通さず、署名付き POST で S3 に直接置かせる。ユーザーは DynamoDB の users 表。
   LLM は Vercel AI Gateway (キーとモデル ID は SSM パラメータを参照する)。k8s には載せない。
   コードは ts-recapcoach の `pnpm --filter @recapcoach/api build` の成果物 (apps/api/dist/lambda の index.mjs と worker.mjs)。"
   (:require
@@ -8,6 +10,7 @@
    [cheshire.core :as json]
    [clojure.java.io :as io]
    [clojure.string :as str]
+   [conao3.aws-infra-k8s.recapcoach-extension :as c.recapcoach-extension]
    [conao3.aws-infra-k8s.util :as c.util]
    [conao3.aws-infra.cfn :as a.cfn]))
 
@@ -35,51 +38,61 @@
    :Properties {:LogGroupName name
                 :RetentionInDays 30}})
 
-;; --- Cognito (ユーザー作成が必須。ホスト UI + PKCE の認可コードフローで ID トークンを得る) ---
+;; --- 共有の Cognito ユーザープール (cognito スタックの Export) ---
+;; recapcoach → cognito の順に消す (Export を使っている間は cognito を消せない)
 
-(defn resource-user-pool []
-  {:Type "AWS::Cognito::UserPool"
-   :Properties
-   {:UserPoolName (prefix-name "users")
-    :UsernameAttributes ["email"]
-    :AutoVerifiedAttributes ["email"]
-    :MfaConfiguration "OFF"
-    :Policies {:PasswordPolicy {:MinimumLength 10
-                                :RequireUppercase true
-                                :RequireLowercase true
-                                :RequireNumbers true
-                                :RequireSymbols false
-                                :TemporaryPasswordValidityDays 7}}
-    :AccountRecoverySetting {:RecoveryMechanisms [{:Name "verified_email" :Priority 1}]}
-    :AdminCreateUserConfig {:AllowAdminCreateUserOnly false}}})
+(defn- import-value [export-suffix]
+  {"Fn::ImportValue" (sub (str "${Prefix}-" export-suffix))})
 
-(defn resource-user-pool-domain []
-  {:Type "AWS::Cognito::UserPoolDomain"
-   :Properties
-   {:Domain (sub "${Prefix}-recapcoach-${AWS::AccountId}")
-    :UserPoolId {:Ref :UserPool}}})
+;; --- ユーザー (管理人だけが登録する) ---
 
-(defn resource-user-pool-client []
-  {:Type "AWS::Cognito::UserPoolClient"
+(defn resource-users-table []
+  {:Type "AWS::DynamoDB::Table"
    :Properties
-   {:ClientName (prefix-name "extension")
-    :UserPoolId {:Ref :UserPool}
-    :GenerateSecret false
-    ;; ホスト UI の認可コードフローだけ。パスワードを直接送るフローは許可しない
-    :ExplicitAuthFlows ["ALLOW_REFRESH_TOKEN_AUTH"]
-    :AllowedOAuthFlows ["code"]
-    :AllowedOAuthFlowsUserPoolClient true
-    :AllowedOAuthScopes ["openid" "email" "profile"]
-    :SupportedIdentityProviders ["COGNITO"]
-    ;; Chrome 拡張の chrome.identity.launchWebAuthFlow のリダイレクト先
-    :CallbackURLs [(sub "https://${ExtensionId}.chromiumapp.org/")]
-    :LogoutURLs [(sub "https://${ExtensionId}.chromiumapp.org/")]
-    :PreventUserExistenceErrors "ENABLED"
-    :EnableTokenRevocation true
-    :TokenValidityUnits {:IdToken "minutes" :AccessToken "minutes" :RefreshToken "days"}
-    :IdTokenValidity 60
-    :AccessTokenValidity 60
-    :RefreshTokenValidity 30}})
+   {:TableName (prefix-name "users")
+    :BillingMode "PAY_PER_REQUEST"
+    ;; 小文字にしたメールアドレス。属性は userId (ジョブ・利用量のキー) と plan
+    :AttributeDefinitions [{:AttributeName "email" :AttributeType "S"}]
+    :KeySchema [{:AttributeName "email" :KeyType "HASH"}]}})
+
+;; --- 字幕の置き場 (署名付き POST で直接置かせ、API とワーカーが読んで消す) ---
+
+(defn resource-uploads-bucket []
+  {:Type "AWS::S3::Bucket"
+   :Properties
+   {:PublicAccessBlockConfiguration {:BlockPublicAcls true
+                                     :BlockPublicPolicy true
+                                     :IgnorePublicAcls true
+                                     :RestrictPublicBuckets true}
+    :OwnershipControls {:Rules [{:ObjectOwnership "BucketOwnerEnforced"}]}
+    :BucketEncryption {:ServerSideEncryptionConfiguration
+                       [{:ServerSideEncryptionByDefault {:SSEAlgorithm "AES256"}}]}
+    :LifecycleConfiguration
+    {:Rules [{:Id "expire-uploads"
+              :Status "Enabled"
+              :Prefix "uploads/"
+              :ExpirationInDays 1
+              :AbortIncompleteMultipartUpload {:DaysAfterInitiation 1}}]}
+    ;; 拡張機能のオリジンからの POST だけ
+    :CorsConfiguration {:CorsRules [{:AllowedOrigins (c.recapcoach-extension/origins)
+                                     :AllowedMethods ["POST"]
+                                     :AllowedHeaders ["*"]
+                                     :MaxAge 3000}]}}})
+
+(defn resource-uploads-bucket-policy []
+  {:Type "AWS::S3::BucketPolicy"
+   :Properties
+   {:Bucket {:Ref :UploadsBucket}
+    :PolicyDocument
+    {:Version "2012-10-17"
+     :Statement
+     [{:Sid "DenyInsecureTransport"
+       :Effect "Deny"
+       :Principal "*"
+       :Action "s3:*"
+       :Resource [(get-att :UploadsBucket :Arn)
+                  (sub "${UploadsBucket.Arn}/*")]
+       :Condition {:Bool {"aws:SecureTransport" "false"}}}]}}})
 
 ;; --- ジョブ (SNS → SQS → コンシューマの Lambda → DynamoDB) ---
 
@@ -171,6 +184,15 @@
                :Resource (get-att log-group :Arn)}]
              statements)}}]}})
 
+(defn- uploads-objects-arn [] (sub "${UploadsBucket.Arn}/uploads/*"))
+
+;; 無いキーを GetObject したときに 403 でなく 404 (NoSuchKey) を返すための ListBucket。
+;; バケットには uploads/ しか置かない
+(defn- uploads-list-statement []
+  {:Effect "Allow"
+   :Action "s3:ListBucket"
+   :Resource (get-att :UploadsBucket :Arn)})
+
 (defn resource-api-function-role []
   (lambda-role
    :ApiLogGroup
@@ -178,8 +200,16 @@
      :Action ["dynamodb:PutItem" "dynamodb:GetItem" "dynamodb:DeleteItem"]
      :Resource (get-att :JobsTable :Arn)}
     {:Effect "Allow"
+     :Action "dynamodb:GetItem"
+     :Resource (get-att :UsersTable :Arn)}
+    {:Effect "Allow"
      :Action "sns:Publish"
-     :Resource {:Ref :JobsTopic}}]))
+     :Resource {:Ref :JobsTopic}}
+    ;; PutObject は署名付き POST の署名者として要る
+    {:Effect "Allow"
+     :Action ["s3:PutObject" "s3:GetObject" "s3:DeleteObject"]
+     :Resource (uploads-objects-arn)}
+    (uploads-list-statement)]))
 
 (defn resource-worker-function-role []
   (lambda-role
@@ -189,7 +219,11 @@
      :Resource (get-att :JobsTable :Arn)}
     {:Effect "Allow"
      :Action ["sqs:ReceiveMessage" "sqs:DeleteMessage" "sqs:GetQueueAttributes"]
-     :Resource (get-att :JobsQueue :Arn)}]))
+     :Resource (get-att :JobsQueue :Arn)}
+    {:Effect "Allow"
+     :Action ["s3:GetObject" "s3:DeleteObject"]
+     :Resource (uploads-objects-arn)}
+    (uploads-list-statement)]))
 
 ;; --- Lambda ---
 
@@ -209,9 +243,13 @@
     {:Variables
      {:AI_GATEWAY_MODEL {:Ref :AiGatewayModel}
       :AI_GATEWAY_API_KEY {:Ref :AiGatewayApiKey}
-      :ALLOWED_ORIGINS (sub "chrome-extension://${ExtensionId}")
+      :ALLOWED_ORIGINS (str/join "," (c.recapcoach-extension/origins))
+      ;; ID トークンの aud がこのクライアントのものか、API で確かめる
+      :COGNITO_CLIENT_ID (import-value "RecapcoachUserPoolClient")
+      :USERS_TABLE {:Ref :UsersTable}
       :JOBS_TABLE {:Ref :JobsTable}
-      :JOBS_TOPIC_ARN {:Ref :JobsTopic}}}
+      :JOBS_TOPIC_ARN {:Ref :JobsTopic}
+      :UPLOADS_BUCKET {:Ref :UploadsBucket}}}
     :Events
     {;; /healthz だけ認証なし。それ以外のパスは既定のオーソライザー (Cognito) で守る
      :Health {:Type "Api"
@@ -240,7 +278,8 @@
     {:Variables
      {:AI_GATEWAY_MODEL {:Ref :AiGatewayModel}
       :AI_GATEWAY_API_KEY {:Ref :AiGatewayApiKey}
-      :JOBS_TABLE {:Ref :JobsTable}}}
+      :JOBS_TABLE {:Ref :JobsTable}
+      :UPLOADS_BUCKET {:Ref :UploadsBucket}}}
     :Events
     {:Jobs {:Type "SQS"
             :Properties {:Queue (get-att :JobsQueue :Arn)
@@ -261,7 +300,7 @@
     :OpenApiVersion "3.0.1"
     :EndpointConfiguration {:Type "REGIONAL"}
     :Auth {:DefaultAuthorizer "CognitoAuth"
-           :Authorizers {:CognitoAuth {:UserPoolArn (get-att :UserPool :Arn)
+           :Authorizers {:CognitoAuth {:UserPoolArn (import-value "UserPoolArn")
                                        :Identity {:Header "Authorization"}}}}
     :MethodSettings [{:ResourcePath "/*"
                       :HttpMethod "*"
@@ -350,19 +389,16 @@
      {:AiGatewayApiKey {:Type "AWS::SSM::Parameter::Value<String>"
                         :Description "Vercel AI Gateway の API キーを置いた SSM パラメータ (String) の名前"}
       :AiGatewayModel {:Type "AWS::SSM::Parameter::Value<String>"
-                       :Description "AI Gateway のモデル ID (anthropic/claude-sonnet-4.6 など) を置いた SSM パラメータ (String) の名前"}
-      :ExtensionId {:Type "String"
-                    :AllowedPattern "[a-p]{32}"
-                    :Description "Chrome 拡張の ID。CORS の許可オリジンと Cognito のコールバック URL になる"}})
+                       :Description "AI Gateway のモデル ID (anthropic/claude-sonnet-4.6 など) を置いた SSM パラメータ (String) の名前"}})
 
     :Resources
     {:ApiLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-recapcoach-api"))
      :WorkerLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-recapcoach-worker"))
      :ApiAccessLogGroup (resource-log-group (sub "/aws/apigateway/${Prefix}-recapcoach-api-access"))
 
-     :UserPool (resource-user-pool)
-     :UserPoolDomain (resource-user-pool-domain)
-     :UserPoolClient (resource-user-pool-client)
+     :UsersTable (resource-users-table)
+     :UploadsBucket (resource-uploads-bucket)
+     :UploadsBucketPolicy (resource-uploads-bucket-policy)
 
      :JobsTable (resource-jobs-table)
      :JobsTopic (resource-jobs-topic)
@@ -389,17 +425,10 @@
      {:RecapcoachApiUrl (sub (str "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/${Api.Stage}"))
       :RecapcoachApiFunction {:Ref :ApiFunction}
       :RecapcoachWorkerFunction {:Ref :WorkerFunction}
-      :RecapcoachUserPoolId {:Ref :UserPool}
-      :RecapcoachUserPoolClientId {:Ref :UserPoolClient}
-      :RecapcoachHostedUiDomain (sub "${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com")
+      :RecapcoachUsersTable {:Ref :UsersTable}
+      :RecapcoachUploadsBucket {:Ref :UploadsBucket}
       :RecapcoachJobsTable {:Ref :JobsTable}
       :RecapcoachJobsDlqUrl {:Ref :JobsDlq}})}))
-
-(defn- required-env [name]
-  (let [v (System/getenv name)]
-    (when (str/blank? v)
-      (throw (ex-info (format "%s is not set" name) {:name name})))
-    v))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/recapcoach.json")
@@ -407,8 +436,7 @@
         stack-name (str prefix "-" "recapcoach")
         code-uri (str (fs/absolutize
                        (or (System/getenv "RECAPCOACH_DIST")
-                           (fs/expand-home "~/ghq/github.com/conao3/ts-recapcoach/apps/api/dist/lambda"))))
-        extension-id (required-env "RECAPCOACH_EXTENSION_ID")]
+                           (fs/expand-home "~/ghq/github.com/conao3/ts-recapcoach/apps/api/dist/lambda"))))]
     (doseq [entry ["index.mjs" "worker.mjs"]]
       (when-not (fs/exists? (fs/path code-uri entry))
         (throw (ex-info (format "build first: pnpm --filter @recapcoach/api build (%s/%s)" code-uri entry)
@@ -434,8 +462,7 @@
                    (->> {:Env (-> param :env)
                          :Prefix prefix
                          :AiGatewayApiKey (format "/%s/recapcoach/ai-gateway-api-key" prefix)
-                         :AiGatewayModel (format "/%s/recapcoach/ai-gateway-model" prefix)
-                         :ExtensionId extension-id}
+                         :AiGatewayModel (format "/%s/recapcoach/ai-gateway-model" prefix)}
                         (map (fn [[k v]]
                                (format "%s=\"%s\"" (name k) v)))
                         (str/join " ")))))
