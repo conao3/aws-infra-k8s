@@ -299,6 +299,8 @@
     :StageName stage-name
     :OpenApiVersion "3.0.1"
     :EndpointConfiguration {:Type "REGIONAL"}
+    ;; Cloudflare の背後に置くとき、既定の execute-api のエンドポイントを塞ぐ
+    :DisableExecuteApiEndpoint {"Fn::If" ["DisableExecuteApi" true false]}
     :Auth {:DefaultAuthorizer "CognitoAuth"
            :Authorizers {:CognitoAuth {:UserPoolArn (import-value "UserPoolArn")
                                        :Identity {:Header "Authorization"}}}}
@@ -349,6 +351,7 @@
 
 (defn resource-web-acl []
   {:Type "AWS::WAFv2::WebACL"
+   :Condition "UseWaf"
    :Properties
    {:Name (prefix-name "api")
     :Scope "REGIONAL"
@@ -377,9 +380,27 @@
 
 (defn resource-web-acl-association []
   {:Type "AWS::WAFv2::WebACLAssociation"
+   :Condition "UseWaf"
    :Properties
    {:WebACLArn (get-att :WebAcl :Arn)
     :ResourceArn (sub "arn:aws:apigateway:${AWS::Region}::/restapis/${Api}/stages/${Api.Stage}")}})
+
+(defn resource-api-domain-name []
+  {:Type "AWS::ApiGateway::DomainName"
+   :Condition "UseApiDomain"
+   :Properties
+   {:DomainName {:Ref :ApiDomainName}
+    :RegionalCertificateArn {:Ref :ApiCertificateArn}
+    :EndpointConfiguration {:Types ["REGIONAL"]}
+    :SecurityPolicy "TLS_1_2"}})
+
+(defn resource-api-base-path-mapping []
+  {:Type "AWS::ApiGateway::BasePathMapping"
+   :Condition "UseApiDomain"
+   :Properties
+   {:DomainName {:Ref :ApiDomain}
+    :RestApiId {:Ref :Api}
+    :Stage {:Ref "Api.Stage"}}})
 
 (defn cfn [param]
   (a.cfn/template
@@ -389,7 +410,30 @@
      {:AiGatewayApiKey {:Type "AWS::SSM::Parameter::Value<String>"
                         :Description "Vercel AI Gateway の API キーを置いた SSM パラメータ (String) の名前"}
       :AiGatewayModel {:Type "AWS::SSM::Parameter::Value<String>"
-                       :Description "AI Gateway のモデル ID (anthropic/claude-sonnet-4.6 など) を置いた SSM パラメータ (String) の名前"}})
+                       :Description "AI Gateway のモデル ID (anthropic/claude-sonnet-4.6 など) を置いた SSM パラメータ (String) の名前"}
+
+      :EnableWaf {:Type "String"
+                  :AllowedValues ["true" "false"]
+                  :Default "false"
+                  :Description "true で AWS WAF (Web ACL) を REST API のステージに付ける。固定費が月 7 USD 前後かかる。既定は付けない (Cloudflare の背後に置く前提)"}
+
+      ;; Cloudflare の背後に置くための準備。既定は空 / false で、何も作らない
+      :DisableExecuteApiEndpoint {:Type "String"
+                                  :AllowedValues ["true" "false"]
+                                  :Default "false"
+                                  :Description "true で既定の execute-api のエンドポイントを無効にする (カスタムドメインを作ってから)"}
+      :ApiDomainName {:Type "String"
+                      :Default ""
+                      :Description "リージョナルのカスタムドメイン (例 dev-recapcoach-api.sancode.dev)。空なら作らない"}
+      :ApiCertificateArn {:Type "String"
+                          :Default ""
+                          :Description "カスタムドメインの ACM 証明書 (API と同じリージョン) の ARN。空なら作らない"}})
+
+    :Conditions
+    {:UseWaf {"Fn::Equals" [{:Ref :EnableWaf} "true"]}
+     :DisableExecuteApi {"Fn::Equals" [{:Ref :DisableExecuteApiEndpoint} "true"]}
+     :UseApiDomain {"Fn::And" [{"Fn::Not" [{"Fn::Equals" [{:Ref :ApiDomainName} ""]}]}
+                               {"Fn::Not" [{"Fn::Equals" [{:Ref :ApiCertificateArn} ""]}]}]}}
 
     :Resources
     {:ApiLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-recapcoach-api"))
@@ -417,18 +461,25 @@
      :ApiGatewayAccount (resource-api-gateway-account)
      :Api (resource-api)
 
+     :ApiDomain (resource-api-domain-name)
+     :ApiBasePathMapping (resource-api-base-path-mapping)
+
      :WebAcl (resource-web-acl)
      :WebAclAssociation (resource-web-acl-association)}
 
     :Outputs
-    (a.cfn/list-outputs
+    (merge
+     (a.cfn/list-outputs
      {:RecapcoachApiUrl (sub (str "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/${Api.Stage}"))
       :RecapcoachApiFunction {:Ref :ApiFunction}
       :RecapcoachWorkerFunction {:Ref :WorkerFunction}
       :RecapcoachUsersTable {:Ref :UsersTable}
       :RecapcoachUploadsBucket {:Ref :UploadsBucket}
       :RecapcoachJobsTable {:Ref :JobsTable}
-      :RecapcoachJobsDlqUrl {:Ref :JobsDlq}})}))
+      :RecapcoachJobsDlqUrl {:Ref :JobsDlq}})
+     ;; Cloudflare の CNAME の向け先 (カスタムドメインを作ったときだけ)
+     {:RecapcoachApiDomainTarget {:Condition "UseApiDomain"
+                                  :Value (get-att :ApiDomain :RegionalDomainName)}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/recapcoach.json")
@@ -459,10 +510,19 @@
                    "--no-fail-on-empty-changeset"
                    "--on-failure" "DELETE"
                    "--parameter-overrides"
-                   (->> {:Env (-> param :env)
-                         :Prefix prefix
-                         :AiGatewayApiKey (format "/%s/recapcoach/ai-gateway-api-key" prefix)
-                         :AiGatewayModel (format "/%s/recapcoach/ai-gateway-model" prefix)}
+                   (->> (cond-> {:Env (-> param :env)
+                                 :Prefix prefix
+                                 :AiGatewayApiKey (format "/%s/recapcoach/ai-gateway-api-key" prefix)
+                                 :AiGatewayModel (format "/%s/recapcoach/ai-gateway-model" prefix)
+                                 ;; WAF は固定費がかかるので、RECAPCOACH_ENABLE_WAF=true のときだけ付ける
+                                 :EnableWaf (if (= "true" (System/getenv "RECAPCOACH_ENABLE_WAF")) "true" "false")}
+                          ;; Cloudflare の背後に置くときだけ設定する (未設定なら何も作らない)
+                          (System/getenv "RECAPCOACH_API_DOMAIN_NAME")
+                          (assoc :ApiDomainName (System/getenv "RECAPCOACH_API_DOMAIN_NAME"))
+                          (System/getenv "RECAPCOACH_API_CERTIFICATE_ARN")
+                          (assoc :ApiCertificateArn (System/getenv "RECAPCOACH_API_CERTIFICATE_ARN"))
+                          (= "true" (System/getenv "RECAPCOACH_DISABLE_EXECUTE_API_ENDPOINT"))
+                          (assoc :DisableExecuteApiEndpoint "true"))
                         (map (fn [[k v]]
                                (format "%s=\"%s\"" (name k) v)))
                         (str/join " ")))))
