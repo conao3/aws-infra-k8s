@@ -64,4 +64,6 @@ Steps for a new environment:
 
 The Google OAuth client ("Sancode Auth") must list `https://<cognito domain>/oauth2/idpresponse` as an authorized redirect URI. `dev-auth-k8s.sancode.dev` is registered.
 
-Not done yet: restricting the API to Cloudflare source IPs. The proxied record hides the origin, but the regional endpoint still answers to anyone who sends the right `Host` and SNI. Add a resource policy (`Auth.ResourcePolicy.IpRangeWhitelist` in SAM, ranges from `https://www.cloudflare.com/ips-v4` and `ips-v6`; `bin/update-cloudflare-ips` already fetches them for the CloudFront WAF) when you want that.
+The API accepts only Cloudflare source IPs. When the custom domain exists, the REST API gets a resource policy (`Auth.ResourcePolicy.IpRangeWhitelist` in SAM: Allow all, then an explicit Deny for sources not in the Cloudflare ranges) built from `resources/cloudflare-ips.edn`. Refresh that file with `bin/update-cloudflare-ips` when Cloudflare changes the ranges (https://www.cloudflare.com/ips/), then redeploy. Without the custom domain no policy is added, so the default endpoint stays testable. Checked on dev: a request sent straight to the regional endpoint with the right `Host` gets `403 ... explicit deny in a resource-based policy`, and the same request through Cloudflare gets 200.
+
+Both Lambdas log in JSON (`LoggingConfig.LogFormat: JSON`), so the application's structured logs can be queried in CloudWatch Logs Insights by `message.event` (event list in ts-recapcoach `README.md`, section "ログ").

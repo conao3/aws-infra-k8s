@@ -8,6 +8,7 @@
   (:require
    [babashka.fs :as fs]
    [cheshire.core :as json]
+   [clojure.edn :as edn]
    [clojure.java.io :as io]
    [clojure.string :as str]
    [conao3.aws-infra-k8s.recapcoach-extension :as c.recapcoach-extension]
@@ -232,6 +233,8 @@
    :DependsOn ["ApiLogGroup"]
    :Properties
    {:FunctionName (prefix-name "api")
+    ;; 1 行 1 JSON のログ (アプリの構造化ログを Logs Insights で event ごとに集計できる)
+    :LoggingConfig {:LogFormat "JSON"}
     :Runtime "nodejs22.x"
     :Architectures ["arm64"]
     :Handler "index.handler"
@@ -267,6 +270,8 @@
    :DependsOn ["WorkerLogGroup"]
    :Properties
    {:FunctionName (prefix-name "worker")
+    ;; 1 行 1 JSON のログ (アプリの構造化ログを Logs Insights で event ごとに集計できる)
+    :LoggingConfig {:LogFormat "JSON"}
     :Runtime "nodejs22.x"
     :Architectures ["arm64"]
     :Handler "worker.handler"
@@ -290,7 +295,16 @@
 
 ;; --- API Gateway (REST API) ---
 
-(defn resource-api []
+(defn- cloudflare-ip-ranges
+  "Cloudflare が原点に接続してくる IPv4 / IPv6 の範囲 (`bin/update-cloudflare-ips` で更新する)。"
+  []
+  (let [ips (-> (io/resource "cloudflare-ips.edn") slurp edn/read-string)]
+    (vec (concat (:ipv4 ips) (:ipv6 ips)))))
+
+(defn resource-api
+  "cloudflare-only? が真なら、リソースポリシーで Cloudflare の IP 以外からの呼び出しを拒否する
+   (カスタムドメインを Cloudflare の背後に置いたとき)。"
+  [cloudflare-only?]
   {:Type "AWS::Serverless::Api"
    ;; アクセスログの出力先ロールが設定されてからステージを作る
    :DependsOn ["ApiGatewayAccount"]
@@ -301,9 +315,10 @@
     :EndpointConfiguration {:Type "REGIONAL"}
     ;; Cloudflare の背後に置くとき、既定の execute-api のエンドポイントを塞ぐ
     :DisableExecuteApiEndpoint {"Fn::If" ["DisableExecuteApi" true false]}
-    :Auth {:DefaultAuthorizer "CognitoAuth"
-           :Authorizers {:CognitoAuth {:UserPoolArn (import-value "UserPoolArn")
-                                       :Identity {:Header "Authorization"}}}}
+    :Auth (cond-> {:DefaultAuthorizer "CognitoAuth"
+                   :Authorizers {:CognitoAuth {:UserPoolArn (import-value "UserPoolArn")
+                                               :Identity {:Header "Authorization"}}}}
+            cloudflare-only? (assoc :ResourcePolicy {:IpRangeWhitelist (cloudflare-ip-ranges)}))
     :MethodSettings [{:ResourcePath "/*"
                       :HttpMethod "*"
                       :ThrottlingRateLimit 20
@@ -459,7 +474,7 @@
 
      :ApiGatewayAccountRole (resource-api-gateway-account-role)
      :ApiGatewayAccount (resource-api-gateway-account)
-     :Api (resource-api)
+     :Api (resource-api (:cloudflare-only? param))
 
      :ApiDomain (resource-api-domain-name)
      :ApiBasePathMapping (resource-api-base-path-mapping)
@@ -506,7 +521,7 @@
 
     (c.util/eprintln (format "Write: %s" (fs/path file)))
     (with-open [writer (io/writer file)]
-      (-> (cfn (assoc param :code-uri code-uri))
+      (-> (cfn (assoc param :code-uri code-uri :cloudflare-only? (boolean api-cert)))
           (json/generate-stream writer)))
 
     (c.util/eshell "sam" "validate" "--lint" "--template-file" (str (fs/path file)))
