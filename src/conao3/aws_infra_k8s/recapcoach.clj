@@ -253,6 +253,9 @@
 (defn- stripe-ref [name]
   (sub (str "{{resolve:ssm:/${Prefix}/recapcoach/" name "}}")))
 
+(defn- ai-gateway-api-key-ref []
+  (sub "{{resolve:ssm:/${Prefix}/recapcoach/ai-gateway-api-key}}"))
+
 (defn resource-stripe-dlq []
   {:Type "AWS::SQS::Queue"
    :Properties
@@ -373,7 +376,7 @@
     {:Variables
      (merge
       {:AI_GATEWAY_MODEL {:Ref :AiGatewayModel}
-      :AI_GATEWAY_API_KEY {:Ref :AiGatewayApiKey}
+      :AI_GATEWAY_API_KEY (ai-gateway-api-key-ref)
       :ALLOWED_ORIGINS (str/join "," (c.recapcoach-extension/origins))
       ;; ID トークンの aud がこのクライアントのものか、API で確かめる
       :COGNITO_CLIENT_ID (import-value "RecapcoachUserPoolClient")
@@ -412,7 +415,7 @@
     :Environment
     {:Variables
      {:AI_GATEWAY_MODEL {:Ref :AiGatewayModel}
-      :AI_GATEWAY_API_KEY {:Ref :AiGatewayApiKey}
+      :AI_GATEWAY_API_KEY (ai-gateway-api-key-ref)
       :JOBS_TABLE {:Ref :JobsTable}
       :UPLOADS_BUCKET {:Ref :UploadsBucket}}}
     :Events
@@ -552,9 +555,7 @@
    {:Parameters
     (merge
      (a.cfn/list-string-parameters [:Env :Prefix])
-     {:AiGatewayApiKey {:Type "AWS::SSM::Parameter::Value<String>"
-                        :Description "Vercel AI Gateway の API キーを置いた SSM パラメータ (String) の名前"}
-      :AiGatewayModel {:Type "AWS::SSM::Parameter::Value<String>"
+     {:AiGatewayModel {:Type "AWS::SSM::Parameter::Value<String>"
                        :Description "AI Gateway のモデル ID (anthropic/claude-sonnet-4.6 など) を置いた SSM パラメータ (String) の名前"}
 
       :EnableWaf {:Type "String"
@@ -692,7 +693,7 @@
 
     (c.util/eshell "sam" "validate" "--lint" "--template-file" (str (fs/path file)))
     (c.util/ensure-stack-deployable stack-name)
-    ;; AI Gateway のキーとモデル ID は SSM パラメータ (String) に先に置いておく。ここでは名前だけを渡す
+    ;; AI Gateway のキーとモデル ID は SSM パラメータ (String) に先に置いておく。モデル ID は名前だけを渡し、キーはテンプレートが動的参照で読む (スタックのパラメータに値を出さない)
     (c.util/eshell "sam" "deploy"
                    "--template-file" (str (fs/path file))
                    "--stack-name" stack-name
@@ -703,7 +704,6 @@
                    "--parameter-overrides"
                    (->> (cond-> {:Env (-> param :env)
                                  :Prefix prefix
-                                 :AiGatewayApiKey (format "/%s/recapcoach/ai-gateway-api-key" prefix)
                                  :AiGatewayModel (format "/%s/recapcoach/ai-gateway-model" prefix)
                                  ;; WAF は固定費がかかるので、RECAPCOACH_ENABLE_WAF=true のときだけ付ける
                                  :EnableWaf (if (= "true" (System/getenv "RECAPCOACH_ENABLE_WAF")) "true" "false")}

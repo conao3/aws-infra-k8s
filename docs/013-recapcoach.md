@@ -9,8 +9,8 @@ The `recapcoach` module builds the backend of [ts-recapcoach](https://github.com
 | Entry | API Gateway REST API (stage `prod`, access logs, throttling) with a Cognito authorizer; API Gateway account settings (role for access logs). Optional (`EnableWaf=true`): WAFv2 web ACL with a per-IP rate limit and `AWSManagedRulesCommonRuleSet` (`SizeRestrictions_BODY` set to Count) |
 | Compute | API Lambda (Hono monolith, 29 s) and worker Lambda (120 s, SQS event source, max concurrency 5) |
 | Async jobs | SNS topic, SQS queue (visibility timeout 720 s = 6 x the worker timeout) and DLQ, DynamoDB `jobs` table (TTL `expiresAt`, key `userId` + `jobId`) |
-| Users | DynamoDB `users` table (key: lowercase `email`; attributes `userId`, `plan`). Only the administrator writes it |
-| Usage | DynamoDB `usage` table (key `userId` + `sk`): `videos#<period>` counts videos (`lifetime` for free, `YYYY-MM` for paid), `session#<job id>` counts a free user's turns and expires by TTL (`expiresAt`). The API Lambda has `GetItem` / `PutItem` / `UpdateItem` on it. No content is stored |
+| Users | DynamoDB `users` table (key: lowercase `email`; attributes `userId`, `plan`). The API creates a row on the first login (conditional `PutItem`); the billing Lambda updates `plan` |
+| Usage | DynamoDB `usage` table (key `userId` + `sk`): `videos#<period>` counts videos (`lifetime` for free, `YYYY-MM` for paid), `session#<job id>` counts a free user's turns and debriefs and expires by TTL (`expiresAt`). The API Lambda has `GetItem` / `PutItem` / `UpdateItem` on it. No content is stored |
 | Uploads | S3 bucket for transcripts: public access blocked, SSE-S3, TLS only, `uploads/` expires in 1 day, CORS allows POST from the extension origins only |
 | IAM | One role per Lambda, scoped to its own log group, tables, topic/queue and `uploads/*` |
 
@@ -27,7 +27,7 @@ When enabled the settings are: per-IP rate limit (600 requests per 5 minutes, bl
 ## Prerequisites
 
 1. SSM parameters `/<prefix>/cognito/google-client-id` and `/<prefix>/cognito/google-client-secret` exist ([002](002-prerequisites.md), section 3b).
-2. SSM parameters (String): `/<prefix>/recapcoach/ai-gateway-api-key` and `/<prefix>/recapcoach/ai-gateway-model`.
+2. SSM parameters (String): `/<prefix>/recapcoach/ai-gateway-api-key` and `/<prefix>/recapcoach/ai-gateway-model`. The key is read with a `{{resolve:ssm:...}}` dynamic reference, like the Stripe key, so its value stays out of the stack parameters (`describe-stacks` shows the resolved value of `AWS::SSM::Parameter::Value` parameters). The model ID is a parameter of that type.
 3. Build the Lambda bundles in ts-recapcoach: `pnpm --filter @recapcoach/api build` (`apps/api/dist/lambda/index.mjs` and `worker.mjs`).
 
 ## Deploy
