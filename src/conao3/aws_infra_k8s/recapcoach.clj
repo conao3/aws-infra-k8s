@@ -3,7 +3,7 @@
   ユーザープール (cognito スタック。先にデプロイする) のオーソライザー。モノリスの API Lambda、
   重い処理を SNS → SQS → コンシューマの Lambda で非同期に処理し、結果を DynamoDB (TTL) に置く。
   字幕は API Gateway / WAF を通さず、署名付き POST で S3 に直接置かせる。ユーザーは DynamoDB の users 表。
-  LLM と読み上げの音声は Vercel AI Gateway (キーとモデル ID は SSM パラメータを参照する。音声のモデルはスタックのパラメータ)。k8s には載せない。
+  LLM と読み上げの音声は Vercel AI Gateway (キーとモデル ID は SSM パラメータを参照する。役割ごとの LLM のモデルと音声のモデルはスタックのパラメータ)。k8s には載せない。
   コードは ts-recapcoach の `pnpm --filter @recapcoach/api build` の成果物 (apps/api/dist/lambda の index.mjs と worker.mjs)。"
   (:require
    [babashka.fs :as fs]
@@ -23,6 +23,32 @@
 (def stage-name "prod")
 ;; 面接の読み上げ (POST /v1/speech) に使う AI Gateway の音声モデル。RECAPCOACH_SPEECH_MODEL / RECAPCOACH_SPEECH_VOICE で上書きできる
 (def default-speech-model "microsoft/mai-voice-2.1-flash")
+;; 役割ごとの LLM のモデル ID の上書き (パラメータ名、環境変数名、用途)。空なら AiGatewayModel を使う。
+;; deploy では RECAPCOACH_TURN_MODEL / RECAPCOACH_SESSION_MODEL / RECAPCOACH_DEBRIEF_MODEL で指定する
+(def role-models
+  [[:TurnModel "TURN_MODEL" "面接のターン (POST /v1/turns、API)"]
+   [:SessionModel "SESSION_MODEL" "論点の抽出と最初の質問 (sessions のジョブ、ワーカー)"]
+   [:DebriefModel "DEBRIEF_MODEL" "振り返り (debrief のジョブ、ワーカー)"]])
+
+(defn- role-model-condition [param] (keyword (str "Has" (name param))))
+
+(defn- role-model-parameters []
+  (into {}
+        (for [[param _ purpose] role-models]
+          [param {:Type "String"
+                  :Default ""
+                  :Description (str purpose " に使う AI Gateway のモデル ID。空なら AiGatewayModel")}])))
+
+(defn- role-model-conditions []
+  (into {}
+        (for [[param] role-models]
+          [(role-model-condition param) {"Fn::Not" [{"Fn::Equals" [{:Ref param} ""]}]}])))
+
+(defn- role-model-env [& params]
+  (into {}
+        (for [[param env-name] role-models
+              :when (some #{param} params)]
+          [(keyword env-name) {"Fn::If" [(name (role-model-condition param)) {:Ref param} {:Ref "AWS::NoValue"}]}])))
 
 (defn- sub [s] {"Fn::Sub" s})
 (defn- get-att [resource attr] {"Fn::GetAtt" [resource attr]})
@@ -392,6 +418,7 @@
       :JOBS_TABLE {:Ref :JobsTable}
       :JOBS_TOPIC_ARN {:Ref :JobsTopic}
       :UPLOADS_BUCKET {:Ref :UploadsBucket}}
+      (role-model-env :TurnModel)
       (when stripe? (stripe-api-env)))}
     :Events
     {;; /healthz と /account (アカウントページの HTML) だけ認証なし。それ以外のパスは既定のオーソライザー (Cognito) で守る
@@ -424,10 +451,12 @@
     :Role (get-att :WorkerFunctionRole :Arn)
     :Environment
     {:Variables
-     {:AI_GATEWAY_MODEL {:Ref :AiGatewayModel}
-      :AI_GATEWAY_API_KEY (ai-gateway-api-key-ref)
-      :JOBS_TABLE {:Ref :JobsTable}
-      :UPLOADS_BUCKET {:Ref :UploadsBucket}}}
+     (merge
+      {:AI_GATEWAY_MODEL {:Ref :AiGatewayModel}
+       :AI_GATEWAY_API_KEY (ai-gateway-api-key-ref)
+       :JOBS_TABLE {:Ref :JobsTable}
+       :UPLOADS_BUCKET {:Ref :UploadsBucket}}
+      (role-model-env :SessionModel :DebriefModel))}
     :Events
     {:Jobs {:Type "SQS"
             :Properties {:Queue (get-att :JobsQueue :Arn)
@@ -594,15 +623,18 @@
                               :Description "Stripe のパートナーイベントソース名。stripe? のときだけ使う"}
       :ApiCertificateArn {:Type "String"
                           :Default ""
-                          :Description "カスタムドメインの ACM 証明書 (API と同じリージョン) の ARN。空なら作らない"}})
+                          :Description "カスタムドメインの ACM 証明書 (API と同じリージョン) の ARN。空なら作らない"}}
+     (role-model-parameters))
 
     :Conditions
-    {:UseWaf {"Fn::Equals" [{:Ref :EnableWaf} "true"]}
-     :HasSpeechModel {"Fn::Not" [{"Fn::Equals" [{:Ref :SpeechModel} ""]}]}
-     :HasSpeechVoice {"Fn::Not" [{"Fn::Equals" [{:Ref :SpeechVoice} ""]}]}
-     :DisableExecuteApi {"Fn::Equals" [{:Ref :DisableExecuteApiEndpoint} "true"]}
-     :UseApiDomain {"Fn::And" [{"Fn::Not" [{"Fn::Equals" [{:Ref :ApiDomainName} ""]}]}
-                               {"Fn::Not" [{"Fn::Equals" [{:Ref :ApiCertificateArn} ""]}]}]}}
+    (merge
+     {:UseWaf {"Fn::Equals" [{:Ref :EnableWaf} "true"]}
+      :HasSpeechModel {"Fn::Not" [{"Fn::Equals" [{:Ref :SpeechModel} ""]}]}
+      :HasSpeechVoice {"Fn::Not" [{"Fn::Equals" [{:Ref :SpeechVoice} ""]}]}
+      :DisableExecuteApi {"Fn::Equals" [{:Ref :DisableExecuteApiEndpoint} "true"]}
+      :UseApiDomain {"Fn::And" [{"Fn::Not" [{"Fn::Equals" [{:Ref :ApiDomainName} ""]}]}
+                                {"Fn::Not" [{"Fn::Equals" [{:Ref :ApiCertificateArn} ""]}]}]}}
+     (role-model-conditions))
 
     :Resources
     (merge
@@ -725,6 +757,9 @@
                                  :AiGatewayModel (format "/%s/recapcoach/ai-gateway-model" prefix)
                                  :SpeechModel (or (System/getenv "RECAPCOACH_SPEECH_MODEL") default-speech-model)
                                  :SpeechVoice (or (System/getenv "RECAPCOACH_SPEECH_VOICE") "")
+                                 :TurnModel (or (System/getenv "RECAPCOACH_TURN_MODEL") "")
+                                 :SessionModel (or (System/getenv "RECAPCOACH_SESSION_MODEL") "")
+                                 :DebriefModel (or (System/getenv "RECAPCOACH_DEBRIEF_MODEL") "")
                                  ;; WAF は固定費がかかるので、RECAPCOACH_ENABLE_WAF=true のときだけ付ける
                                  :EnableWaf (if (= "true" (System/getenv "RECAPCOACH_ENABLE_WAF")) "true" "false")}
                           ;; カスタムドメインは、証明書のスタック (`deploy recapcoach-certificate`) があれば自動で作る。
