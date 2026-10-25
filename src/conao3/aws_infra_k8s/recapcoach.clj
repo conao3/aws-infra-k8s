@@ -213,8 +213,9 @@
    [{:Effect "Allow"
      :Action ["dynamodb:PutItem" "dynamodb:GetItem" "dynamodb:DeleteItem"]
      :Resource (get-att :JobsTable :Arn)}
+    ;; PutItem は初回のログインでの自動登録 (条件式で既存の行を上書きしない)
     {:Effect "Allow"
-     :Action "dynamodb:GetItem"
+     :Action ["dynamodb:GetItem" "dynamodb:PutItem"]
      :Resource (get-att :UsersTable :Arn)}
     {:Effect "Allow"
      :Action ["dynamodb:GetItem" "dynamodb:PutItem" "dynamodb:UpdateItem"]
