@@ -13,13 +13,3 @@
 
 (defn origins []
   (mapv #(str "chrome-extension://" %) extension-ids))
-
-;; sancode.dev のアカウントページ。dev は手元で配信して確かめる (localhost)。
-;; どちらも CloudFormation の条件式 `IsPrd` (パラメータ Env) が要る
-(def web-origin
-  {"Fn::If" ["IsPrd" "https://sancode.dev" "http://localhost:8788"]})
-
-(def web-callback-url
-  {"Fn::If" ["IsPrd"
-             "https://sancode.dev/services/recapcoach/account"
-             "http://localhost:8788/services/recapcoach/account"]})

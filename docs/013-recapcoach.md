@@ -16,7 +16,7 @@ The `recapcoach` module builds the backend of [ts-recapcoach](https://github.com
 
 Transcripts do not pass through API Gateway (or WAF, when enabled). The extension gets a presigned POST from `POST /v1/uploads` (key pinned to `uploads/<userId>/<uploadId>.json`, 1 byte to 2 MB, `application/json`, 5 minutes) and posts the file to S3 directly.
 
-Cognito is shared and lives in the `cognito` stack. The `cognito` stack adds an app client for the extension (authorization code + PKCE, no secret, callback `https://<extension id>.chromiumapp.org/`, providers Google and COGNITO) and exports `UserPoolArn` and `RecapcoachUserPoolClient`. The `recapcoach` stack imports them (authorizer, and the client ID that the API compares with the token `aud`). The extension IDs live in `src/conao3/aws_infra_k8s/recapcoach_extension.clj`. The same client also serves the account page of the site (`https://sancode.dev/services/recapcoach/account` in prd, `http://localhost:8788/services/recapcoach/account` in dev): that URL is a callback and logout URL of the client, and its origin is in the API's `ALLOWED_ORIGINS` (CORS and the Stripe return URL).
+Cognito is shared and lives in the `cognito` stack. The `cognito` stack adds an app client for the extension (authorization code + PKCE, no secret, callback `https://<extension id>.chromiumapp.org/`, providers Google and COGNITO) and exports `UserPoolArn` and `RecapcoachUserPoolClient`. The `recapcoach` stack imports them (authorizer, and the client ID that the API compares with the token `aud`). The extension IDs live in `src/conao3/aws_infra_k8s/recapcoach_extension.clj`.
 
 ## AWS WAF is optional (off by default)
 
