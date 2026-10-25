@@ -243,11 +243,11 @@
     (uploads-list-statement)]))
 
 ;; --- Stripe の契約イベント (Stripe → EventBridge のパートナーイベントソース → SQS → billing Lambda → users 表) ---
-;; SSM パラメータ `/<prefix>/recapcoach/stripe-{secret-key,price-starter,price-pro,price-max,event-source}` が
-;; 全部あるときだけ作る (`deploy` が確かめる)。イベントソース名は Stripe の「イベント送信先」(Amazon EventBridge) が作る
+;; SSM パラメータ `/<prefix>/recapcoach/stripe-{secret-key,price-starter,price-pro,price-max,portal-config,event-source}` が
+;; 全部あるときだけ作る (`deploy` が確かめる)。portal-config は契約の管理画面の設定 ID (`bpc_...`)。イベントソース名は Stripe の「イベント送信先」(Amazon EventBridge) が作る
 
 (def stripe-ssm-names
-  ["stripe-secret-key" "stripe-price-starter" "stripe-price-pro" "stripe-price-max" "stripe-event-source"])
+  ["stripe-secret-key" "stripe-price-starter" "stripe-price-pro" "stripe-price-max" "stripe-portal-config" "stripe-event-source"])
 
 (defn- stripe-ref [name]
   (sub (str "{{resolve:ssm:/${Prefix}/recapcoach/" name "}}")))
@@ -350,7 +350,9 @@
   {:STRIPE_SECRET_KEY (stripe-ref "stripe-secret-key")
    :STRIPE_PRICE_STARTER (stripe-ref "stripe-price-starter")
    :STRIPE_PRICE_PRO (stripe-ref "stripe-price-pro")
-   :STRIPE_PRICE_MAX (stripe-ref "stripe-price-max")})
+   :STRIPE_PRICE_MAX (stripe-ref "stripe-price-max")
+   ;; 契約の管理画面の設定 (Stripe のアカウントは sanplan と共用なので、recapcoach 用の設定を明示する)
+   :STRIPE_PORTAL_CONFIG (stripe-ref "stripe-portal-config")})
 
 (defn resource-api-function [code-uri stripe?]
   {:Type "AWS::Serverless::Function"
@@ -568,8 +570,9 @@
                       :Default ""
                       :Description "リージョナルのカスタムドメイン (例 dev-recapcoach-api.sancode.dev)。空なら作らない"}
       ;; Stripe の「イベント送信先」(Amazon EventBridge) が作るパートナーイベントソースの名前 (aws.partner/stripe.com/ed_...)
+      ;; 既定は使われない値 (Stripe の経路を作らないとき、リソースごと無い)。空だと cfn-lint が EventBus の名前の長さで落ちる
       :StripeEventSourceName {:Type "String"
-                              :Default ""
+                              :Default "aws.partner/stripe.com/not-configured"
                               :Description "Stripe のパートナーイベントソース名。stripe? のときだけ使う"}
       :ApiCertificateArn {:Type "String"
                           :Default ""
@@ -659,9 +662,10 @@
    (Stripe の経路を作らない)。"
   [prefix]
   (let [names (map #(format "/%s/recapcoach/%s" prefix %) stripe-ssm-names)
-        out (:out (c.util/eshell {:out :string} "aws" "ssm" "get-parameters" "--names" (str/join " " names)
-                                 "--query" "{valid:Parameters[*].Name,source:Parameters[?ends_with(Name,'stripe-event-source')].Value|[0]}"
-                                 "--output" "json"))
+        out (:out (apply c.util/eshell {:out :string} "aws" "ssm" "get-parameters" "--names"
+                         (concat names
+                                 ["--query" "{valid:Parameters[*].Name,source:Parameters[?ends_with(Name,'stripe-event-source')].Value|[0]}"
+                                  "--output" "json"])))
         {:keys [valid source]} (json/parse-string out keyword)]
     (when (= (count valid) (count names)) source)))
 
