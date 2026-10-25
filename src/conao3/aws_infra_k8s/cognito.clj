@@ -87,7 +87,7 @@
     :SupportedIdentityProviders ["COGNITO" "Google"]}})
 
 (defn resource-user-pool-client-recapcoach
-  "recapcoach の Chrome 拡張用。認可コード + PKCE (シークレットなし)。"
+  "recapcoach の Chrome 拡張とサイトのアカウントページ用。認可コード + PKCE (シークレットなし)。"
   []
   {:Type "AWS::Cognito::UserPoolClient"
    :DependsOn ["UserPoolIdentityProviderGoogle"]
@@ -99,9 +99,9 @@
                         "ALLOW_REFRESH_TOKEN_AUTH"]
     :PreventUserExistenceErrors "ENABLED"
     :EnableTokenRevocation true
-    ;; chrome.identity.launchWebAuthFlow のリダイレクト先 (拡張機能 ID ごと)
-    :CallbackURLs (c.recapcoach-extension/callback-urls)
-    :LogoutURLs (c.recapcoach-extension/callback-urls)
+    ;; chrome.identity.launchWebAuthFlow のリダイレクト先 (拡張機能 ID ごと) と、サイトのアカウントページ
+    :CallbackURLs (conj (c.recapcoach-extension/callback-urls) c.recapcoach-extension/web-callback-url)
+    :LogoutURLs (conj (c.recapcoach-extension/callback-urls) c.recapcoach-extension/web-callback-url)
     :AllowedOAuthFlows ["code"]
     :AllowedOAuthScopes ["email" "openid" "profile"]
     :AllowedOAuthFlowsUserPoolClient true

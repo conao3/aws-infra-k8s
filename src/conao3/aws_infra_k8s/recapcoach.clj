@@ -377,7 +377,7 @@
      (merge
       {:AI_GATEWAY_MODEL {:Ref :AiGatewayModel}
       :AI_GATEWAY_API_KEY (ai-gateway-api-key-ref)
-      :ALLOWED_ORIGINS (str/join "," (c.recapcoach-extension/origins))
+      :ALLOWED_ORIGINS {"Fn::Join" ["," (conj (c.recapcoach-extension/origins) c.recapcoach-extension/web-origin)]}
       ;; ID トークンの aud がこのクライアントのものか、API で確かめる
       :COGNITO_CLIENT_ID (import-value "RecapcoachUserPoolClient")
       :USERS_TABLE {:Ref :UsersTable}
@@ -581,7 +581,8 @@
                           :Description "カスタムドメインの ACM 証明書 (API と同じリージョン) の ARN。空なら作らない"}})
 
     :Conditions
-    {:UseWaf {"Fn::Equals" [{:Ref :EnableWaf} "true"]}
+    {:IsPrd {"Fn::Equals" [{:Ref :Env} "prd"]}
+     :UseWaf {"Fn::Equals" [{:Ref :EnableWaf} "true"]}
      :DisableExecuteApi {"Fn::Equals" [{:Ref :DisableExecuteApiEndpoint} "true"]}
      :UseApiDomain {"Fn::And" [{"Fn::Not" [{"Fn::Equals" [{:Ref :ApiDomainName} ""]}]}
                                {"Fn::Not" [{"Fn::Equals" [{:Ref :ApiCertificateArn} ""]}]}]}}
