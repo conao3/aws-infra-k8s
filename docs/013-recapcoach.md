@@ -10,6 +10,7 @@ The `recapcoach` module builds the backend of [ts-recapcoach](https://github.com
 | Compute | API Lambda (Hono monolith, 29 s) and worker Lambda (120 s, SQS event source, max concurrency 5) |
 | Async jobs | SNS topic, SQS queue (visibility timeout 720 s = 6 x the worker timeout) and DLQ, DynamoDB `jobs` table (TTL `expiresAt`, key `userId` + `jobId`) |
 | Users | DynamoDB `users` table (key: lowercase `email`; attributes `userId`, `plan`). Only the administrator writes it |
+| Usage | DynamoDB `usage` table (key `userId` + `sk`): `videos#<period>` counts videos (`lifetime` for free, `YYYY-MM` for paid), `session#<job id>` counts a free user's turns and expires by TTL (`expiresAt`). The API Lambda has `GetItem` / `PutItem` / `UpdateItem` on it. No content is stored |
 | Uploads | S3 bucket for transcripts: public access blocked, SSE-S3, TLS only, `uploads/` expires in 1 day, CORS allows POST from the extension origins only |
 | IAM | One role per Lambda, scoped to its own log group, tables, topic/queue and `uploads/*` |
 

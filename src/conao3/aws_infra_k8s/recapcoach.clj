@@ -56,6 +56,19 @@
     :AttributeDefinitions [{:AttributeName "email" :AttributeType "S"}]
     :KeySchema [{:AttributeName "email" :KeyType "HASH"}]}})
 
+;; 利用量。キーは (userId, sk)。sk は `videos#<期間>` (動画の本数) と `session#<ジョブ ID>` (面接ごとのターン数)。
+;; 面接の項目だけ expiresAt (epoch 秒) で TTL 削除する。本文は持たない
+(defn resource-usage-table []
+  {:Type "AWS::DynamoDB::Table"
+   :Properties
+   {:TableName (prefix-name "usage")
+    :BillingMode "PAY_PER_REQUEST"
+    :AttributeDefinitions [{:AttributeName "userId" :AttributeType "S"}
+                           {:AttributeName "sk" :AttributeType "S"}]
+    :KeySchema [{:AttributeName "userId" :KeyType "HASH"}
+                {:AttributeName "sk" :KeyType "RANGE"}]
+    :TimeToLiveSpecification {:AttributeName "expiresAt" :Enabled true}}})
+
 ;; --- 字幕の置き場 (署名付き POST で直接置かせ、API とワーカーが読んで消す) ---
 
 (defn resource-uploads-bucket []
@@ -204,6 +217,9 @@
      :Action "dynamodb:GetItem"
      :Resource (get-att :UsersTable :Arn)}
     {:Effect "Allow"
+     :Action ["dynamodb:GetItem" "dynamodb:PutItem" "dynamodb:UpdateItem"]
+     :Resource (get-att :UsageTable :Arn)}
+    {:Effect "Allow"
      :Action "sns:Publish"
      :Resource {:Ref :JobsTopic}}
     ;; PutObject は署名付き POST の署名者として要る
@@ -250,6 +266,7 @@
       ;; ID トークンの aud がこのクライアントのものか、API で確かめる
       :COGNITO_CLIENT_ID (import-value "RecapcoachUserPoolClient")
       :USERS_TABLE {:Ref :UsersTable}
+      :USAGE_TABLE {:Ref :UsageTable}
       :JOBS_TABLE {:Ref :JobsTable}
       :JOBS_TOPIC_ARN {:Ref :JobsTopic}
       :UPLOADS_BUCKET {:Ref :UploadsBucket}}}
@@ -456,6 +473,7 @@
      :ApiAccessLogGroup (resource-log-group (sub "/aws/apigateway/${Prefix}-recapcoach-api-access"))
 
      :UsersTable (resource-users-table)
+     :UsageTable (resource-usage-table)
      :UploadsBucket (resource-uploads-bucket)
      :UploadsBucketPolicy (resource-uploads-bucket-policy)
 
@@ -489,6 +507,7 @@
       :RecapcoachApiFunction {:Ref :ApiFunction}
       :RecapcoachWorkerFunction {:Ref :WorkerFunction}
       :RecapcoachUsersTable {:Ref :UsersTable}
+      :RecapcoachUsageTable {:Ref :UsageTable}
       :RecapcoachUploadsBucket {:Ref :UploadsBucket}
       :RecapcoachJobsTable {:Ref :JobsTable}
       :RecapcoachJobsDlqUrl {:Ref :JobsDlq}})
