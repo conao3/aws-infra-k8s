@@ -13,3 +13,10 @@
 
 (defn origins []
   (mapv #(str "chrome-extension://" %) extension-ids))
+
+;; API 自身が配信するアカウントページ (GET /account)。ログインのコールバック URL になる。
+;; 条件式 `IsPrd` (パラメータ Env) が要る。ドメインは aws_infra_k8s.clj の recapcoach-domain と同じ
+(def account-url
+  {"Fn::If" ["IsPrd"
+             "https://recapcoach.sancode.dev/account"
+             "https://dev-recapcoach.sancode.dev/account"]})

@@ -378,6 +378,9 @@
       {:AI_GATEWAY_MODEL {:Ref :AiGatewayModel}
       :AI_GATEWAY_API_KEY (ai-gateway-api-key-ref)
       :ALLOWED_ORIGINS (str/join "," (c.recapcoach-extension/origins))
+      ;; アカウントページ (GET /account)。ログインの戻り先と課金の戻り先を兼ねる
+      :ACCOUNT_URL {"Fn::If" ["UseApiDomain" {"Fn::Sub" "https://${ApiDomainName}/account"} {:Ref "AWS::NoValue"}]}
+      :AUTH_DOMAIN (import-value "UserPoolDomain")
       ;; ID トークンの aud がこのクライアントのものか、API で確かめる
       :COGNITO_CLIENT_ID (import-value "RecapcoachUserPoolClient")
       :USERS_TABLE {:Ref :UsersTable}
@@ -387,10 +390,13 @@
       :UPLOADS_BUCKET {:Ref :UploadsBucket}}
       (when stripe? (stripe-api-env)))}
     :Events
-    {;; /healthz だけ認証なし。それ以外のパスは既定のオーソライザー (Cognito) で守る
+    {;; /healthz と /account (アカウントページの HTML) だけ認証なし。それ以外のパスは既定のオーソライザー (Cognito) で守る
      :Health {:Type "Api"
               :Properties {:RestApiId {:Ref :Api} :Path "/healthz" :Method "GET"
                            :Auth {:Authorizer "NONE"}}}
+     :Account {:Type "Api"
+               :Properties {:RestApiId {:Ref :Api} :Path "/account" :Method "GET"
+                            :Auth {:Authorizer "NONE"}}}
      ;; CORS のプリフライトはトークンを持たないので、認証なしで Hono (cors) に通す
      :Preflight {:Type "Api"
                  :Properties {:RestApiId {:Ref :Api} :Path "/{proxy+}" :Method "OPTIONS"
