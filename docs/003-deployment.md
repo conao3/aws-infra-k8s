@@ -43,8 +43,8 @@ This deploys:
 - `efs` - EFS One Zone for persistent storage
 - `sanplan-resources` - Sanplan CodeBuild and Step Functions
 - `cli-proxy-api-resources` - CLIProxyAPI CodeBuild and Step Functions
-- `certificate` - ACM certificate (us-east-1) for the Cognito custom domain; `recapcoach-certificate` - ACM certificate (ap-northeast-1) for the recapcoach API custom domain. Both are DNS-validated: add the validation CNAME in Cloudflare (DNS only) while the stack is creating
-- `recapcoach` - recapcoach backend (API Gateway + Lambda + SNS/SQS + DynamoDB + S3; AWS WAF only with `RECAPCOACH_ENABLE_WAF=true`). Requires `cognito` first; not included in `deploy all`. See [013-recapcoach.md](013-recapcoach.md)
+- `certificate` - ACM certificate (us-east-1) for the Cognito custom domain; `sanrecap-certificate` - ACM certificate (ap-northeast-1) for the sanrecap API custom domain. Both are DNS-validated: add the validation CNAME in Cloudflare (DNS only) while the stack is creating
+- `sanrecap` - sanrecap backend (API Gateway + Lambda + SNS/SQS + DynamoDB + S3; AWS WAF only with `SANRECAP_ENABLE_WAF=true`). Requires `cognito` first; not included in `deploy all`. See [013-sanrecap.md](013-sanrecap.md)
 - `ssh-tunnel` - SSH tunnel instance (not included in `deploy all`)
 - `ami-builder` - AMI builder instance (not included in `deploy all`)
 

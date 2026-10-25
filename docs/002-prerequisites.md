@@ -74,9 +74,9 @@ The cognito stack reads the Google OAuth client from two plain-text (`String`) S
 
 ```bash
 aws ssm put-parameter --type String --name /dev-k8s/cognito/google-client-id \
-  --value "$(cat ~/.config/recapcoach/google-client-id)" --profile conao3.dev.k8s
+  --value "$(cat ~/.config/sanrecap/google-client-id)" --profile conao3.dev.k8s
 aws ssm put-parameter --type String --name /dev-k8s/cognito/google-client-secret \
-  --value "$(cat ~/.config/recapcoach/google-client-secret)" --profile conao3.dev.k8s
+  --value "$(cat ~/.config/sanrecap/google-client-secret)" --profile conao3.dev.k8s
 ```
 
 Anyone with `ssm:GetParameter` can read the secret, so keep it to the dev account's administrators.

@@ -21,7 +21,7 @@
    [conao3.aws-infra-k8s.sancode-resources :as c.sancode-resources]
    [conao3.aws-infra-k8s.electrobunmacs-resources :as c.electrobunmacs-resources]
    [conao3.aws-infra-k8s.certificate :as c.certificate]
-   [conao3.aws-infra-k8s.recapcoach :as c.recapcoach])
+   [conao3.aws-infra-k8s.sanrecap :as c.sanrecap])
   (:gen-class))
 
 (defn parse-args [args]
@@ -67,10 +67,10 @@
                    "sancode-resources" (c.sancode-resources/deploy param)
                    "electrobunmacs-resources" (c.electrobunmacs-resources/deploy param)
                    "certificate" (c.certificate/deploy param)
-                   "recapcoach-certificate" (c.certificate/deploy-recapcoach param)
+                   "sanrecap-certificate" (c.certificate/deploy-sanrecap param)
 
                    ;; k8s に載せない (API Gateway + Cognito + WAF + Lambda + SNS/SQS/DynamoDB)。`all` には含めない
-                   "recapcoach" (c.recapcoach/deploy param)
+                   "sanrecap" (c.sanrecap/deploy param)
                    "all" (do
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
@@ -96,7 +96,7 @@
   (let [env (or (System/getenv "DEPLOY_ENV") "dev")
         prefix (format "%s-%s" env "k8s")
         cognito-domain (if (= env "prd") "auth-k8s.sancode.dev" (format "%s-auth-k8s.sancode.dev" env))
-        recapcoach-domain (if (= env "prd") "recapcoach.sancode.dev" (format "%s-recapcoach.sancode.dev" env))
+        sanrecap-domain (if (= env "prd") "sanrecap.sancode.dev" (format "%s-sanrecap.sancode.dev" env))
         stripe-event-source (System/getenv "STRIPE_EVENT_SOURCE_NAME")
         app-domains (if (= env "prd")
                       ["admin" "n8n"]
@@ -104,7 +104,7 @@
         param {:env env
                :prefix prefix
                :domain-name cognito-domain
-               :recapcoach-domain-name recapcoach-domain
+               :sanrecap-domain-name sanrecap-domain
                :alb-certificate-domain-name "*.sancode.dev"
                :StripeEventSourceName stripe-event-source
                :domain-aliases (str/join "," (map #(format "%s.sancode.dev" %) app-domains))}]

@@ -4,7 +4,7 @@
    [cheshire.core :as json]
    [clojure.string :as str]
    [clojure.java.io :as io]
-   [conao3.aws-infra-k8s.recapcoach-extension :as c.recapcoach-extension]
+   [conao3.aws-infra-k8s.sanrecap-extension :as c.sanrecap-extension]
    [conao3.aws-infra-k8s.util :as c.util]
    [conao3.aws-infra.cfn :as a.cfn]))
 
@@ -86,13 +86,13 @@
     :AllowedOAuthFlowsUserPoolClient true
     :SupportedIdentityProviders ["COGNITO" "Google"]}})
 
-(defn resource-user-pool-client-recapcoach
-  "recapcoach の Chrome 拡張とアカウントページ用。認可コード + PKCE (シークレットなし)。"
+(defn resource-user-pool-client-sanrecap
+  "sanrecap の Chrome 拡張とアカウントページ用。認可コード + PKCE (シークレットなし)。"
   []
   {:Type "AWS::Cognito::UserPoolClient"
    :DependsOn ["UserPoolIdentityProviderGoogle"]
    :Properties
-   {:ClientName (a.cfn/prefix "user-pool-client-recapcoach")
+   {:ClientName (a.cfn/prefix "user-pool-client-sanrecap")
     :UserPoolId {:Ref :UserPool}
     :GenerateSecret false
     :ExplicitAuthFlows ["ALLOW_ADMIN_USER_PASSWORD_AUTH"
@@ -100,8 +100,8 @@
     :PreventUserExistenceErrors "ENABLED"
     :EnableTokenRevocation true
     ;; chrome.identity.launchWebAuthFlow のリダイレクト先 (拡張機能 ID ごと) と、API が配信するアカウントページ
-    :CallbackURLs (conj (c.recapcoach-extension/callback-urls) c.recapcoach-extension/account-url)
-    :LogoutURLs (conj (c.recapcoach-extension/callback-urls) c.recapcoach-extension/account-url)
+    :CallbackURLs (conj (c.sanrecap-extension/callback-urls) c.sanrecap-extension/account-url)
+    :LogoutURLs (conj (c.sanrecap-extension/callback-urls) c.sanrecap-extension/account-url)
     :AllowedOAuthFlows ["code"]
     :AllowedOAuthScopes ["email" "openid" "profile"]
     :AllowedOAuthFlowsUserPoolClient true
@@ -174,7 +174,7 @@
      :UserPoolDomain (resource-user-pool-domain)
      :UserPoolIdentityProviderGoogle (resource-user-pool-identity-provider-google)
      :UserPoolClient (resource-user-pool-client)
-     :UserPoolClientRecapcoach (resource-user-pool-client-recapcoach)
+     :UserPoolClientSanrecap (resource-user-pool-client-sanrecap)
      :IdentityPool (resource-identity-pool)
      :IdentityPoolRoleAuthenticated (resource-identity-pool-role-authenticated)
      :IdentityPoolRoleUnauthenticated (resource-identity-pool-role-unauthenticated)
@@ -187,7 +187,7 @@
       ;; ホスト UI のドメイン (カスタムドメイン)
       :UserPoolDomain {:Ref :DomainName}
       :UserPoolClient {:Ref :UserPoolClient}
-      :RecapcoachUserPoolClient {:Ref :UserPoolClientRecapcoach}
+      :SanrecapUserPoolClient {:Ref :UserPoolClientSanrecap}
       :IdentityPool {:Ref :IdentityPool}})}))
 
 (defn- certificate-arn [param]

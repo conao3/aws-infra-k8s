@@ -207,7 +207,7 @@ bin/k8s-local down
 | `github-oidc` | GitHub Actions OIDC (optional) |
 | `sanplan-resources` | Sanplan CodeBuild + Step Functions (optional) |
 | `cli-proxy-api-resources` | CLIProxyAPI CodeBuild + Step Functions (optional) |
-| `recapcoach` | recapcoach backend: API Gateway + Lambda + SNS/SQS + DynamoDB + S3, optional AWS WAF (off by default, ~$7/month) (optional, needs `cognito`, not in `all`) |
+| `sanrecap` | sanrecap backend: API Gateway + Lambda + SNS/SQS + DynamoDB + S3, optional AWS WAF (off by default, ~$7/month) (optional, needs `cognito`, not in `all`) |
 
 ### Global Modules (us-east-1)
 

@@ -66,10 +66,10 @@
                        :domain-name (-> param :domain-name)
                        :output-key :CertificateArn}))
 
-(defn deploy-recapcoach
-  "recapcoach の API Gateway (リージョナル) のカスタムドメイン用 (ap-northeast-1)。"
+(defn deploy-sanrecap
+  "sanrecap の API Gateway (リージョナル) のカスタムドメイン用 (ap-northeast-1)。"
   [param]
-  (deploy-stack param {:stack-name (str (-> param :prefix) "-" "recapcoach-certificate")
+  (deploy-stack param {:stack-name (str (-> param :prefix) "-" "sanrecap-certificate")
                        :region "ap-northeast-1"
-                       :domain-name (-> param :recapcoach-domain-name)
-                       :output-key :RecapcoachCertificateArn}))
+                       :domain-name (-> param :sanrecap-domain-name)
+                       :output-key :SanrecapCertificateArn}))

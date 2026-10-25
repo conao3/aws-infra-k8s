@@ -1,17 +1,17 @@
-(ns conao3.aws-infra-k8s.recapcoach
-  "recapcoach (conao3/ts-recapcoach) のバックエンド。API Gateway (REST API) + WAF の入口。認証は共有の Cognito
+(ns conao3.aws-infra-k8s.sanrecap
+  "sanrecap (conao3/sanrecap) のバックエンド。API Gateway (REST API) + WAF の入口。認証は共有の Cognito
   ユーザープール (cognito スタック。先にデプロイする) のオーソライザー。モノリスの API Lambda、
   重い処理を SNS → SQS → コンシューマの Lambda で非同期に処理し、結果を DynamoDB (TTL) に置く。
   字幕は API Gateway / WAF を通さず、署名付き POST で S3 に直接置かせる。ユーザーは DynamoDB の users 表。
   LLM と読み上げの音声は Vercel AI Gateway (キーとモデル ID は SSM パラメータを参照する。役割ごとの LLM のモデルと音声のモデルはスタックのパラメータ)。k8s には載せない。
-  コードは ts-recapcoach の `pnpm --filter @recapcoach/api build` の成果物 (apps/api/dist/lambda の index.mjs と worker.mjs)。"
+  コードは sanrecap の `pnpm --filter @sanrecap/api build` の成果物 (apps/api/dist/lambda の index.mjs と worker.mjs)。"
   (:require
    [babashka.fs :as fs]
    [cheshire.core :as json]
    [clojure.edn :as edn]
    [clojure.java.io :as io]
    [clojure.string :as str]
-   [conao3.aws-infra-k8s.recapcoach-extension :as c.recapcoach-extension]
+   [conao3.aws-infra-k8s.sanrecap-extension :as c.sanrecap-extension]
    [conao3.aws-infra-k8s.util :as c.util]
    [conao3.aws-infra.cfn :as a.cfn]))
 
@@ -21,10 +21,10 @@
 (def worker-timeout-sec 120)
 (def worker-visibility-timeout-sec (* 6 worker-timeout-sec))
 (def stage-name "prod")
-;; 面接の読み上げ (POST /v1/speech) に使う AI Gateway の音声モデル。RECAPCOACH_SPEECH_MODEL / RECAPCOACH_SPEECH_VOICE で上書きできる
+;; 面接の読み上げ (POST /v1/speech) に使う AI Gateway の音声モデル。SANRECAP_SPEECH_MODEL / SANRECAP_SPEECH_VOICE で上書きできる
 (def default-speech-model "microsoft/mai-voice-2.1-flash")
 ;; 役割ごとの LLM のモデル ID の上書き (パラメータ名、環境変数名、用途)。空なら AiGatewayModel を使う。
-;; deploy では RECAPCOACH_TURN_MODEL / RECAPCOACH_SESSION_MODEL / RECAPCOACH_DEBRIEF_MODEL で指定する
+;; deploy では SANRECAP_TURN_MODEL / SANRECAP_SESSION_MODEL / SANRECAP_DEBRIEF_MODEL で指定する
 (def role-models
   [[:TurnModel "TURN_MODEL" "面接のターン (POST /v1/turns、API)"]
    [:SessionModel "SESSION_MODEL" "論点の抽出と最初の質問 (sessions のジョブ、ワーカー)"]
@@ -52,7 +52,7 @@
 
 (defn- sub [s] {"Fn::Sub" s})
 (defn- get-att [resource attr] {"Fn::GetAtt" [resource attr]})
-(defn- prefix-name [suffix] (sub (str "${Prefix}-recapcoach-" suffix)))
+(defn- prefix-name [suffix] (sub (str "${Prefix}-sanrecap-" suffix)))
 
 (defn- secure-transport-deny [resource-arn]
   {:Sid "DenyInsecureTransport"
@@ -68,7 +68,7 @@
                 :RetentionInDays 30}})
 
 ;; --- 共有の Cognito ユーザープール (cognito スタックの Export) ---
-;; recapcoach → cognito の順に消す (Export を使っている間は cognito を消せない)
+;; sanrecap → cognito の順に消す (Export を使っている間は cognito を消せない)
 
 (defn- import-value [export-suffix]
   {"Fn::ImportValue" (sub (str "${Prefix}-" export-suffix))})
@@ -116,7 +116,7 @@
               :ExpirationInDays 1
               :AbortIncompleteMultipartUpload {:DaysAfterInitiation 1}}]}
     ;; 拡張機能のオリジンからの POST だけ
-    :CorsConfiguration {:CorsRules [{:AllowedOrigins (c.recapcoach-extension/origins)
+    :CorsConfiguration {:CorsRules [{:AllowedOrigins (c.sanrecap-extension/origins)
                                      :AllowedMethods ["POST"]
                                      :AllowedHeaders ["*"]
                                      :MaxAge 3000}]}}})
@@ -216,7 +216,7 @@
                   :Principal {:Service "lambda.amazonaws.com"}
                   :Action "sts:AssumeRole"}]}
     :Policies
-    [{:PolicyName "recapcoach"
+    [{:PolicyName "sanrecap"
       :PolicyDocument
       {:Version "2012-10-17"
        :Statement
@@ -272,17 +272,17 @@
     (uploads-list-statement)]))
 
 ;; --- Stripe の契約イベント (Stripe → EventBridge のパートナーイベントソース → SQS → billing Lambda → users 表) ---
-;; SSM パラメータ `/<prefix>/recapcoach/stripe-{secret-key,price-starter,price-pro,price-max,portal-config,event-source}` が
+;; SSM パラメータ `/<prefix>/sanrecap/stripe-{secret-key,price-starter,price-pro,price-max,portal-config,event-source}` が
 ;; 全部あるときだけ作る (`deploy` が確かめる)。portal-config は契約の管理画面の設定 ID (`bpc_...`)。イベントソース名は Stripe の「イベント送信先」(Amazon EventBridge) が作る
 
 (def stripe-ssm-names
   ["stripe-secret-key" "stripe-price-starter" "stripe-price-pro" "stripe-price-max" "stripe-portal-config" "stripe-event-source"])
 
 (defn- stripe-ref [name]
-  (sub (str "{{resolve:ssm:/${Prefix}/recapcoach/" name "}}")))
+  (sub (str "{{resolve:ssm:/${Prefix}/sanrecap/" name "}}")))
 
 (defn- ai-gateway-api-key-ref []
-  (sub "{{resolve:ssm:/${Prefix}/recapcoach/ai-gateway-api-key}}"))
+  (sub "{{resolve:ssm:/${Prefix}/sanrecap/ai-gateway-api-key}}"))
 
 (defn resource-stripe-dlq []
   {:Type "AWS::SQS::Queue"
@@ -383,7 +383,7 @@
    :STRIPE_PRICE_STARTER (stripe-ref "stripe-price-starter")
    :STRIPE_PRICE_PRO (stripe-ref "stripe-price-pro")
    :STRIPE_PRICE_MAX (stripe-ref "stripe-price-max")
-   ;; 契約の管理画面の設定 (Stripe のアカウントは sanplan と共用なので、recapcoach 用の設定を明示する)
+   ;; 契約の管理画面の設定 (Stripe のアカウントは sanplan と共用なので、sanrecap 用の設定を明示する)
    :STRIPE_PORTAL_CONFIG (stripe-ref "stripe-portal-config")})
 
 (defn resource-api-function [code-uri stripe?]
@@ -407,12 +407,12 @@
       :AI_GATEWAY_API_KEY (ai-gateway-api-key-ref)
       :SPEECH_MODEL {"Fn::If" ["HasSpeechModel" {:Ref :SpeechModel} {:Ref "AWS::NoValue"}]}
       :SPEECH_VOICE {"Fn::If" ["HasSpeechVoice" {:Ref :SpeechVoice} {:Ref "AWS::NoValue"}]}
-      :ALLOWED_ORIGINS (str/join "," (c.recapcoach-extension/origins))
+      :ALLOWED_ORIGINS (str/join "," (c.sanrecap-extension/origins))
       ;; アカウントページ (GET /account)。ログインの戻り先と課金の戻り先を兼ねる
       :ACCOUNT_URL {"Fn::If" ["UseApiDomain" {"Fn::Sub" "https://${ApiDomainName}/account"} {:Ref "AWS::NoValue"}]}
       :AUTH_DOMAIN (import-value "UserPoolDomain")
       ;; ID トークンの aud がこのクライアントのものか、API で確かめる
-      :COGNITO_CLIENT_ID (import-value "RecapcoachUserPoolClient")
+      :COGNITO_CLIENT_ID (import-value "SanrecapUserPoolClient")
       :USERS_TABLE {:Ref :UsersTable}
       :USAGE_TABLE {:Ref :UsageTable}
       :JOBS_TABLE {:Ref :JobsTable}
@@ -543,7 +543,7 @@
    {:Name (prefix-name "api")
     :Scope "REGIONAL"
     :DefaultAction {:Allow {}}
-    :VisibilityConfig (visibility "recapcoach-api")
+    :VisibilityConfig (visibility "sanrecap-api")
     :Rules
     [{:Name "RateLimitPerIp"
       :Priority 0
@@ -551,7 +551,7 @@
       :Statement {:RateBasedStatement {:Limit 600
                                        :EvaluationWindowSec 300
                                        :AggregateKeyType "IP"}}
-      :VisibilityConfig (visibility "recapcoach-rate-limit")}
+      :VisibilityConfig (visibility "sanrecap-rate-limit")}
      {:Name "AWSManagedRulesCommonRuleSet"
       :Priority 1
       :OverrideAction {:None {}}
@@ -563,7 +563,7 @@
         ;; 本文の大きさは Hono の bodyLimit で見る
         :RuleActionOverrides [{:Name "SizeRestrictions_BODY"
                                :ActionToUse {:Count {}}}]}}
-      :VisibilityConfig (visibility "recapcoach-common-rules")}]}})
+      :VisibilityConfig (visibility "sanrecap-common-rules")}]}})
 
 (defn resource-web-acl-association []
   {:Type "AWS::WAFv2::WebACLAssociation"
@@ -615,7 +615,7 @@
                                   :Description "true で既定の execute-api のエンドポイントを無効にする (カスタムドメインを作ってから)"}
       :ApiDomainName {:Type "String"
                       :Default ""
-                      :Description "リージョナルのカスタムドメイン (例 dev-recapcoach-api.sancode.dev)。空なら作らない"}
+                      :Description "リージョナルのカスタムドメイン (例 dev-sanrecap-api.sancode.dev)。空なら作らない"}
       ;; Stripe の「イベント送信先」(Amazon EventBridge) が作るパートナーイベントソースの名前 (aws.partner/stripe.com/ed_...)
       ;; 既定は使われない値 (Stripe の経路を作らないとき、リソースごと無い)。空だと cfn-lint が EventBus の名前の長さで落ちる
       :StripeEventSourceName {:Type "String"
@@ -638,9 +638,9 @@
 
     :Resources
     (merge
-     {:ApiLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-recapcoach-api"))
-     :WorkerLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-recapcoach-worker"))
-     :ApiAccessLogGroup (resource-log-group (sub "/aws/apigateway/${Prefix}-recapcoach-api-access"))
+     {:ApiLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-sanrecap-api"))
+     :WorkerLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-sanrecap-worker"))
+     :ApiAccessLogGroup (resource-log-group (sub "/aws/apigateway/${Prefix}-sanrecap-api-access"))
 
      :UsersTable (resource-users-table)
      :UsageTable (resource-usage-table)
@@ -671,7 +671,7 @@
      :WebAclAssociation (resource-web-acl-association)}
     ;; Stripe の設定 (SSM) が揃っているときだけ、契約イベントの経路を作る
     (when (:stripe? param)
-      {:BillingLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-recapcoach-billing"))
+      {:BillingLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-sanrecap-billing"))
        :StripeDlq (resource-stripe-dlq)
        :StripeQueue (resource-stripe-queue)
        :StripeEventBus (resource-stripe-event-bus)
@@ -684,36 +684,36 @@
     :Outputs
     (merge
      (a.cfn/list-outputs
-     {:RecapcoachApiUrl (sub (str "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/${Api.Stage}"))
-      :RecapcoachApiFunction {:Ref :ApiFunction}
-      :RecapcoachWorkerFunction {:Ref :WorkerFunction}
-      :RecapcoachUsersTable {:Ref :UsersTable}
-      :RecapcoachUsageTable {:Ref :UsageTable}
-      :RecapcoachUploadsBucket {:Ref :UploadsBucket}
-      :RecapcoachJobsTable {:Ref :JobsTable}
-      :RecapcoachJobsDlqUrl {:Ref :JobsDlq}})
+     {:SanrecapApiUrl (sub (str "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/${Api.Stage}"))
+      :SanrecapApiFunction {:Ref :ApiFunction}
+      :SanrecapWorkerFunction {:Ref :WorkerFunction}
+      :SanrecapUsersTable {:Ref :UsersTable}
+      :SanrecapUsageTable {:Ref :UsageTable}
+      :SanrecapUploadsBucket {:Ref :UploadsBucket}
+      :SanrecapJobsTable {:Ref :JobsTable}
+      :SanrecapJobsDlqUrl {:Ref :JobsDlq}})
      ;; Stripe の契約イベントの DLQ (stripe? のときだけ)
      (when (:stripe? param)
-       {:RecapcoachBillingDlqUrl {:Value {:Ref :StripeDlq}}
-        :RecapcoachBillingFunction {:Value {:Ref :BillingFunction}}})
+       {:SanrecapBillingDlqUrl {:Value {:Ref :StripeDlq}}
+        :SanrecapBillingFunction {:Value {:Ref :BillingFunction}}})
      ;; Cloudflare の CNAME の向け先 (カスタムドメインを作ったときだけ)
-     {:RecapcoachApiDomainTarget {:Condition "UseApiDomain"
+     {:SanrecapApiDomainTarget {:Condition "UseApiDomain"
                                   :Value (get-att :ApiDomain :RegionalDomainName)}})}))
 
 (defn- api-certificate-arn
-  "`deploy recapcoach-certificate` が ap-northeast-1 に作った証明書の ARN。まだ無ければ nil (カスタムドメインを作らない)。"
+  "`deploy sanrecap-certificate` が ap-northeast-1 に作った証明書の ARN。まだ無ければ nil (カスタムドメインを作らない)。"
   [prefix]
   (let [out (:out (c.util/eshell {:out :string} "aws" "cloudformation" "list-exports" "--region" "ap-northeast-1"
-                                 "--query" (format "Exports[?Name=='%s-RecapcoachCertificateArn'].Value | [0]" prefix)
+                                 "--query" (format "Exports[?Name=='%s-SanrecapCertificateArn'].Value | [0]" prefix)
                                  "--output" "text"))
         arn (str/trim out)]
     (when (str/starts-with? arn "arn:") arn)))
 
 (defn- stripe-event-source
-  "SSM `/<prefix>/recapcoach/stripe-*` が全部あれば、パートナーイベントソース名を返す。1 つでも無ければ nil
+  "SSM `/<prefix>/sanrecap/stripe-*` が全部あれば、パートナーイベントソース名を返す。1 つでも無ければ nil
    (Stripe の経路を作らない)。"
   [prefix]
-  (let [names (map #(format "/%s/recapcoach/%s" prefix %) stripe-ssm-names)
+  (let [names (map #(format "/%s/sanrecap/%s" prefix %) stripe-ssm-names)
         out (:out (apply c.util/eshell {:out :string} "aws" "ssm" "get-parameters" "--names"
                          (concat names
                                  ["--query" "{valid:Parameters[*].Name,source:Parameters[?ends_with(Name,'stripe-event-source')].Value|[0]}"
@@ -722,17 +722,17 @@
     (when (= (count valid) (count names)) source)))
 
 (defn deploy [param]
-  (let [file (fs/file "target/cfn/recapcoach.json")
+  (let [file (fs/file "target/cfn/sanrecap.json")
         prefix (-> param :prefix)
-        stack-name (str prefix "-" "recapcoach")
-        api-cert (or (System/getenv "RECAPCOACH_API_CERTIFICATE_ARN") (api-certificate-arn prefix))
+        stack-name (str prefix "-" "sanrecap")
+        api-cert (or (System/getenv "SANRECAP_API_CERTIFICATE_ARN") (api-certificate-arn prefix))
         stripe-source (stripe-event-source prefix)
         code-uri (str (fs/absolutize
-                       (or (System/getenv "RECAPCOACH_DIST")
-                           (fs/expand-home "~/ghq/github.com/conao3/ts-recapcoach/apps/api/dist/lambda"))))]
+                       (or (System/getenv "SANRECAP_DIST")
+                           (fs/expand-home "~/ghq/github.com/conao3/sanrecap/apps/api/dist/lambda"))))]
     (doseq [entry ["index.mjs" "worker.mjs" "billing.mjs"]]
       (when-not (fs/exists? (fs/path code-uri entry))
-        (throw (ex-info (format "build first: pnpm --filter @recapcoach/api build (%s/%s)" code-uri entry)
+        (throw (ex-info (format "build first: pnpm --filter @sanrecap/api build (%s/%s)" code-uri entry)
                         {:code-uri code-uri :entry entry}))))
     (fs/create-dirs (fs/parent file))
 
@@ -754,22 +754,22 @@
                    "--parameter-overrides"
                    (->> (cond-> {:Env (-> param :env)
                                  :Prefix prefix
-                                 :AiGatewayModel (format "/%s/recapcoach/ai-gateway-model" prefix)
-                                 :SpeechModel (or (System/getenv "RECAPCOACH_SPEECH_MODEL") default-speech-model)
-                                 :SpeechVoice (or (System/getenv "RECAPCOACH_SPEECH_VOICE") "")
-                                 :TurnModel (or (System/getenv "RECAPCOACH_TURN_MODEL") "")
-                                 :SessionModel (or (System/getenv "RECAPCOACH_SESSION_MODEL") "")
-                                 :DebriefModel (or (System/getenv "RECAPCOACH_DEBRIEF_MODEL") "")
-                                 ;; WAF は固定費がかかるので、RECAPCOACH_ENABLE_WAF=true のときだけ付ける
-                                 :EnableWaf (if (= "true" (System/getenv "RECAPCOACH_ENABLE_WAF")) "true" "false")}
-                          ;; カスタムドメインは、証明書のスタック (`deploy recapcoach-certificate`) があれば自動で作る。
-                          ;; RECAPCOACH_API_DOMAIN_NAME / RECAPCOACH_API_CERTIFICATE_ARN で上書きできる
+                                 :AiGatewayModel (format "/%s/sanrecap/ai-gateway-model" prefix)
+                                 :SpeechModel (or (System/getenv "SANRECAP_SPEECH_MODEL") default-speech-model)
+                                 :SpeechVoice (or (System/getenv "SANRECAP_SPEECH_VOICE") "")
+                                 :TurnModel (or (System/getenv "SANRECAP_TURN_MODEL") "")
+                                 :SessionModel (or (System/getenv "SANRECAP_SESSION_MODEL") "")
+                                 :DebriefModel (or (System/getenv "SANRECAP_DEBRIEF_MODEL") "")
+                                 ;; WAF は固定費がかかるので、SANRECAP_ENABLE_WAF=true のときだけ付ける
+                                 :EnableWaf (if (= "true" (System/getenv "SANRECAP_ENABLE_WAF")) "true" "false")}
+                          ;; カスタムドメインは、証明書のスタック (`deploy sanrecap-certificate`) があれば自動で作る。
+                          ;; SANRECAP_API_DOMAIN_NAME / SANRECAP_API_CERTIFICATE_ARN で上書きできる
                           api-cert
-                          (assoc :ApiDomainName (or (System/getenv "RECAPCOACH_API_DOMAIN_NAME")
-                                                    (:recapcoach-domain-name param))
+                          (assoc :ApiDomainName (or (System/getenv "SANRECAP_API_DOMAIN_NAME")
+                                                    (:sanrecap-domain-name param))
                                  :ApiCertificateArn api-cert)
-                          ;; カスタムドメインがあれば既定の execute-api のエンドポイントは塞ぐ (RECAPCOACH_DISABLE_EXECUTE_API_ENDPOINT=false で残す)
-                          (and api-cert (not= "false" (System/getenv "RECAPCOACH_DISABLE_EXECUTE_API_ENDPOINT")))
+                          ;; カスタムドメインがあれば既定の execute-api のエンドポイントは塞ぐ (SANRECAP_DISABLE_EXECUTE_API_ENDPOINT=false で残す)
+                          (and api-cert (not= "false" (System/getenv "SANRECAP_DISABLE_EXECUTE_API_ENDPOINT")))
                           (assoc :DisableExecuteApiEndpoint "true")
                           ;; Stripe の SSM パラメータが揃っているときだけ、契約イベントの経路を作る
                           stripe-source
