@@ -10,7 +10,7 @@ The `recapcoach` module builds the backend of [ts-recapcoach](https://github.com
 | Compute | API Lambda (Hono monolith, 29 s) and worker Lambda (120 s, SQS event source, max concurrency 5) |
 | Async jobs | SNS topic, SQS queue (visibility timeout 720 s = 6 x the worker timeout) and DLQ, DynamoDB `jobs` table (TTL `expiresAt`, key `userId` + `jobId`) |
 | Users | DynamoDB `users` table (key: lowercase `email`; attributes `userId`, `plan`). The API creates a row on the first login (conditional `PutItem`); the billing Lambda updates `plan` |
-| Usage | DynamoDB `usage` table (key `userId` + `sk`): `videos#<period>` counts videos (`lifetime` for free, `YYYY-MM` for paid), `session#<job id>` counts a free user's turns and debriefs and expires by TTL (`expiresAt`). The API Lambda has `GetItem` / `PutItem` / `UpdateItem` on it. No content is stored |
+| Usage | DynamoDB `usage` table (key `userId` + `sk`): `videos#<period>` counts videos (`lifetime` for free, `YYYY-MM` for paid), `session#<job id>` counts the turns, debriefs and speech clips of one interview and expires by TTL (`expiresAt`). The API Lambda has `GetItem` / `PutItem` / `UpdateItem` on it. No content is stored |
 | Uploads | S3 bucket for transcripts: public access blocked, SSE-S3, TLS only, `uploads/` expires in 1 day, CORS allows POST from the extension origins only |
 | IAM | One role per Lambda, scoped to its own log group, tables, topic/queue and `uploads/*` |
 
@@ -28,6 +28,7 @@ When enabled the settings are: per-IP rate limit (600 requests per 5 minutes, bl
 
 1. SSM parameters `/<prefix>/cognito/google-client-id` and `/<prefix>/cognito/google-client-secret` exist ([002](002-prerequisites.md), section 3b).
 2. SSM parameters (String): `/<prefix>/recapcoach/ai-gateway-api-key` and `/<prefix>/recapcoach/ai-gateway-model`. The key is read with a `{{resolve:ssm:...}}` dynamic reference, like the Stripe key, so its value stays out of the stack parameters (`describe-stacks` shows the resolved value of `AWS::SSM::Parameter::Value` parameters). The model ID is a parameter of that type.
+   The speech model for `POST /v1/speech` is the plain String parameter `SpeechModel` (default `microsoft/mai-voice-2.1-flash`, passed to the API as `SPEECH_MODEL`) with the optional `SpeechVoice` (`SPEECH_VOICE`, left out when empty). It uses the same AI Gateway key. `deploy recapcoach` passes the default unless `RECAPCOACH_SPEECH_MODEL` / `RECAPCOACH_SPEECH_VOICE` are set; an empty `RECAPCOACH_SPEECH_MODEL` turns server speech off (the API answers 501 and the extension uses the browser voice).
 3. Build the Lambda bundles in ts-recapcoach: `pnpm --filter @recapcoach/api build` (`apps/api/dist/lambda/index.mjs` and `worker.mjs`).
 
 ## Deploy

@@ -3,7 +3,7 @@
   ユーザープール (cognito スタック。先にデプロイする) のオーソライザー。モノリスの API Lambda、
   重い処理を SNS → SQS → コンシューマの Lambda で非同期に処理し、結果を DynamoDB (TTL) に置く。
   字幕は API Gateway / WAF を通さず、署名付き POST で S3 に直接置かせる。ユーザーは DynamoDB の users 表。
-  LLM は Vercel AI Gateway (キーとモデル ID は SSM パラメータを参照する)。k8s には載せない。
+  LLM と読み上げの音声は Vercel AI Gateway (キーとモデル ID は SSM パラメータを参照する。音声のモデルはスタックのパラメータ)。k8s には載せない。
   コードは ts-recapcoach の `pnpm --filter @recapcoach/api build` の成果物 (apps/api/dist/lambda の index.mjs と worker.mjs)。"
   (:require
    [babashka.fs :as fs]
@@ -21,6 +21,8 @@
 (def worker-timeout-sec 120)
 (def worker-visibility-timeout-sec (* 6 worker-timeout-sec))
 (def stage-name "prod")
+;; 面接の読み上げ (POST /v1/speech) に使う AI Gateway の音声モデル。RECAPCOACH_SPEECH_MODEL / RECAPCOACH_SPEECH_VOICE で上書きできる
+(def default-speech-model "microsoft/mai-voice-2.1-flash")
 
 (defn- sub [s] {"Fn::Sub" s})
 (defn- get-att [resource attr] {"Fn::GetAtt" [resource attr]})
@@ -377,6 +379,8 @@
      (merge
       {:AI_GATEWAY_MODEL {:Ref :AiGatewayModel}
       :AI_GATEWAY_API_KEY (ai-gateway-api-key-ref)
+      :SPEECH_MODEL {"Fn::If" ["HasSpeechModel" {:Ref :SpeechModel} {:Ref "AWS::NoValue"}]}
+      :SPEECH_VOICE {"Fn::If" ["HasSpeechVoice" {:Ref :SpeechVoice} {:Ref "AWS::NoValue"}]}
       :ALLOWED_ORIGINS (str/join "," (c.recapcoach-extension/origins))
       ;; アカウントページ (GET /account)。ログインの戻り先と課金の戻り先を兼ねる
       :ACCOUNT_URL {"Fn::If" ["UseApiDomain" {"Fn::Sub" "https://${ApiDomainName}/account"} {:Ref "AWS::NoValue"}]}
@@ -563,6 +567,12 @@
      (a.cfn/list-string-parameters [:Env :Prefix])
      {:AiGatewayModel {:Type "AWS::SSM::Parameter::Value<String>"
                        :Description "AI Gateway のモデル ID (anthropic/claude-sonnet-4.6 など) を置いた SSM パラメータ (String) の名前"}
+      :SpeechModel {:Type "String"
+                    :Default default-speech-model
+                    :Description "読み上げに使う AI Gateway の音声モデル ID。空なら API は 501 を返し、拡張機能はブラウザの音声で読む"}
+      :SpeechVoice {:Type "String"
+                    :Default ""
+                    :Description "音声モデルの声。空ならモデルの既定の声"}
 
       :EnableWaf {:Type "String"
                   :AllowedValues ["true" "false"]
@@ -588,6 +598,8 @@
 
     :Conditions
     {:UseWaf {"Fn::Equals" [{:Ref :EnableWaf} "true"]}
+     :HasSpeechModel {"Fn::Not" [{"Fn::Equals" [{:Ref :SpeechModel} ""]}]}
+     :HasSpeechVoice {"Fn::Not" [{"Fn::Equals" [{:Ref :SpeechVoice} ""]}]}
      :DisableExecuteApi {"Fn::Equals" [{:Ref :DisableExecuteApiEndpoint} "true"]}
      :UseApiDomain {"Fn::And" [{"Fn::Not" [{"Fn::Equals" [{:Ref :ApiDomainName} ""]}]}
                                {"Fn::Not" [{"Fn::Equals" [{:Ref :ApiCertificateArn} ""]}]}]}}
@@ -711,6 +723,8 @@
                    (->> (cond-> {:Env (-> param :env)
                                  :Prefix prefix
                                  :AiGatewayModel (format "/%s/recapcoach/ai-gateway-model" prefix)
+                                 :SpeechModel (or (System/getenv "RECAPCOACH_SPEECH_MODEL") default-speech-model)
+                                 :SpeechVoice (or (System/getenv "RECAPCOACH_SPEECH_VOICE") "")
                                  ;; WAF は固定費がかかるので、RECAPCOACH_ENABLE_WAF=true のときだけ付ける
                                  :EnableWaf (if (= "true" (System/getenv "RECAPCOACH_ENABLE_WAF")) "true" "false")}
                           ;; カスタムドメインは、証明書のスタック (`deploy recapcoach-certificate`) があれば自動で作る。
