@@ -39,10 +39,11 @@ This deploys:
 - `eice` - EC2 Instance Connect Endpoint
 - `github-oidc` - GitHub Actions OIDC provider and IAM role
 - `rds` - RDS PostgreSQL database
-- `cognito` - Shared Cognito User Pool (Google IdP, one app client per app; admin-create-user only). Dev uses the Cognito prefix domain `<prefix>-auth-<account id>`; prd uses the custom domain `auth-k8s.sancode.dev`
+- `cognito` - Shared Cognito User Pool (Google IdP, one app client per app; admin-create-user only). Every env uses a custom domain (`<env>-auth-k8s.sancode.dev`, prd `auth-k8s.sancode.dev`) with an ACM certificate in us-east-1 (`certificate` first)
 - `efs` - EFS One Zone for persistent storage
 - `sanplan-resources` - Sanplan CodeBuild and Step Functions
 - `cli-proxy-api-resources` - CLIProxyAPI CodeBuild and Step Functions
+- `certificate` - ACM certificate (us-east-1) for the Cognito custom domain; `recapcoach-certificate` - ACM certificate (ap-northeast-1) for the recapcoach API custom domain. Both are DNS-validated: add the validation CNAME in Cloudflare (DNS only) while the stack is creating
 - `recapcoach` - recapcoach backend (API Gateway + Lambda + SNS/SQS + DynamoDB + S3; AWS WAF only with `RECAPCOACH_ENABLE_WAF=true`). Requires `cognito` first; not included in `deploy all`. See [013-recapcoach.md](013-recapcoach.md)
 - `ssh-tunnel` - SSH tunnel instance (not included in `deploy all`)
 - `ami-builder` - AMI builder instance (not included in `deploy all`)

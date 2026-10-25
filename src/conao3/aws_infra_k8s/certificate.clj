@@ -14,7 +14,9 @@
     :ValidationMethod "DNS"
     :Tags [{:Key "Name" :Value (a.cfn/prefix "certificate")}]}})
 
-(defn cfn [param]
+(defn cfn
+  "output-key は Export 名の一部。同じリージョンの ALB の証明書 (`CertificateArn`) と名前を分ける。"
+  [_param output-key]
   (a.cfn/template
    {:Parameters
     (a.cfn/list-string-parameters
@@ -25,16 +27,18 @@
 
     :Outputs
     (a.cfn/list-outputs
-     {:CertificateArn {:Ref :Certificate}})}))
+     {output-key {:Ref :Certificate}})}))
 
-(defn deploy [param]
-  (let [file (fs/file "target/cfn/certificate.json")
-        stack-name (str (-> param :prefix) "-" "certificate")]
+(defn- deploy-stack
+  "ACM 証明書のスタックを region に作る。証明書は DNS 検証なので、検証用 CNAME を Cloudflare に置くまで
+   スタックの作成が終わらない (検証レコードは `aws acm describe-certificate` で読む)。"
+  [param {:keys [stack-name region domain-name output-key]}]
+  (let [file (fs/file (format "target/cfn/%s.json" stack-name))]
     (fs/create-dirs (fs/parent file))
 
     (c.util/eprintln (format "Write: %s" (fs/path file)))
     (with-open [writer (io/writer file)]
-      (-> (cfn param)
+      (-> (cfn param output-key)
           (json/generate-stream writer)))
 
     (c.util/eshell "sam" "validate" "--template-file" (str (fs/path file)))
@@ -45,11 +49,27 @@
                    "--resolve-s3"
                    "--no-fail-on-empty-changeset"
                    "--on-failure" "DELETE"
-                   "--region" "us-east-1"
+                   "--region" region
                    "--parameter-overrides"
                    (->> {:Env (-> param :env)
                          :Prefix (-> param :prefix)
-                         :DomainName (-> param :domain-name)}
+                         :DomainName domain-name}
                         (map (fn [[k v]]
                                (format "%s=\"%s\"" (name k) v)))
                         (str/join " ")))))
+
+(defn deploy
+  "Cognito のカスタムドメイン用 (CloudFront 経由なので us-east-1)。"
+  [param]
+  (deploy-stack param {:stack-name (str (-> param :prefix) "-" "certificate")
+                       :region "us-east-1"
+                       :domain-name (-> param :domain-name)
+                       :output-key :CertificateArn}))
+
+(defn deploy-recapcoach
+  "recapcoach の API Gateway (リージョナル) のカスタムドメイン用 (ap-northeast-1)。"
+  [param]
+  (deploy-stack param {:stack-name (str (-> param :prefix) "-" "recapcoach-certificate")
+                       :region "ap-northeast-1"
+                       :domain-name (-> param :recapcoach-domain-name)
+                       :output-key :RecapcoachCertificateArn}))

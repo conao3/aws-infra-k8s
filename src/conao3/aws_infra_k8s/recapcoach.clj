@@ -481,10 +481,20 @@
      {:RecapcoachApiDomainTarget {:Condition "UseApiDomain"
                                   :Value (get-att :ApiDomain :RegionalDomainName)}})}))
 
+(defn- api-certificate-arn
+  "`deploy recapcoach-certificate` が ap-northeast-1 に作った証明書の ARN。まだ無ければ nil (カスタムドメインを作らない)。"
+  [prefix]
+  (let [out (:out (c.util/eshell {:out :string} "aws" "cloudformation" "list-exports" "--region" "ap-northeast-1"
+                                 "--query" (format "Exports[?Name=='%s-RecapcoachCertificateArn'].Value | [0]" prefix)
+                                 "--output" "text"))
+        arn (str/trim out)]
+    (when (str/starts-with? arn "arn:") arn)))
+
 (defn deploy [param]
   (let [file (fs/file "target/cfn/recapcoach.json")
         prefix (-> param :prefix)
         stack-name (str prefix "-" "recapcoach")
+        api-cert (or (System/getenv "RECAPCOACH_API_CERTIFICATE_ARN") (api-certificate-arn prefix))
         code-uri (str (fs/absolutize
                        (or (System/getenv "RECAPCOACH_DIST")
                            (fs/expand-home "~/ghq/github.com/conao3/ts-recapcoach/apps/api/dist/lambda"))))]
@@ -516,12 +526,14 @@
                                  :AiGatewayModel (format "/%s/recapcoach/ai-gateway-model" prefix)
                                  ;; WAF は固定費がかかるので、RECAPCOACH_ENABLE_WAF=true のときだけ付ける
                                  :EnableWaf (if (= "true" (System/getenv "RECAPCOACH_ENABLE_WAF")) "true" "false")}
-                          ;; Cloudflare の背後に置くときだけ設定する (未設定なら何も作らない)
-                          (System/getenv "RECAPCOACH_API_DOMAIN_NAME")
-                          (assoc :ApiDomainName (System/getenv "RECAPCOACH_API_DOMAIN_NAME"))
-                          (System/getenv "RECAPCOACH_API_CERTIFICATE_ARN")
-                          (assoc :ApiCertificateArn (System/getenv "RECAPCOACH_API_CERTIFICATE_ARN"))
-                          (= "true" (System/getenv "RECAPCOACH_DISABLE_EXECUTE_API_ENDPOINT"))
+                          ;; カスタムドメインは、証明書のスタック (`deploy recapcoach-certificate`) があれば自動で作る。
+                          ;; RECAPCOACH_API_DOMAIN_NAME / RECAPCOACH_API_CERTIFICATE_ARN で上書きできる
+                          api-cert
+                          (assoc :ApiDomainName (or (System/getenv "RECAPCOACH_API_DOMAIN_NAME")
+                                                    (:recapcoach-domain-name param))
+                                 :ApiCertificateArn api-cert)
+                          ;; カスタムドメインがあれば既定の execute-api のエンドポイントは塞ぐ (RECAPCOACH_DISABLE_EXECUTE_API_ENDPOINT=false で残す)
+                          (and api-cert (not= "false" (System/getenv "RECAPCOACH_DISABLE_EXECUTE_API_ENDPOINT")))
                           (assoc :DisableExecuteApiEndpoint "true"))
                         (map (fn [[k v]]
                                (format "%s=\"%s\"" (name k) v)))

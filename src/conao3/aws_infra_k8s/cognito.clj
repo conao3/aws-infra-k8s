@@ -34,23 +34,14 @@
     :AdminCreateUserConfig {:AllowAdminCreateUserOnly true}}})
 
 (defn resource-user-pool-domain
-  "prd はカスタムドメイン (ACM が要る)。"
+  "ホスト UI のカスタムドメイン (<env>-auth-k8s.sancode.dev、prd は auth-k8s.sancode.dev)。
+   us-east-1 の ACM 証明書 (`deploy certificate`) が要る。"
   []
-  {:Condition "IsPrd"
-   :Type "AWS::Cognito::UserPoolDomain"
+  {:Type "AWS::Cognito::UserPoolDomain"
    :Properties
-   {:Domain "auth-k8s.sancode.dev"
+   {:Domain {:Ref :DomainName}
     :CustomDomainConfig
-    {:CertificateArn {"Ref" "CertificateArn"}}
-    :UserPoolId {:Ref :UserPool}}})
-
-(defn resource-user-pool-domain-prefix
-  "prd 以外は Cognito のプレフィックスドメイン (<prefix>-auth-<アカウント ID>.auth.<region>.amazoncognito.com)。"
-  []
-  {:Condition "IsNotPrd"
-   :Type "AWS::Cognito::UserPoolDomain"
-   :Properties
-   {:Domain (sub "${Prefix}-auth-${AWS::AccountId}")
+    {:CertificateArn {:Ref :CertificateArn}}
     :UserPoolId {:Ref :UserPool}}})
 
 (defn resource-user-pool-identity-provider-google []
@@ -173,18 +164,14 @@
   (a.cfn/template
    {:Parameters
     (merge
-     (a.cfn/list-string-parameters [:Env :Prefix])
-     ;; prd のカスタムドメインの証明書。prd 以外は使わない
-     {:CertificateArn {:Type "String" :Default ""}})
+     (a.cfn/list-string-parameters [:Env :Prefix :DomainName :CertificateArn]))
 
     :Conditions
-    {:IsPrd {"Fn::Equals" [{"Ref" "Env"} "prd"]}
-     :IsNotPrd {"Fn::Not" [{:Condition "IsPrd"}]}}
+    {:IsPrd {"Fn::Equals" [{"Ref" "Env"} "prd"]}}
 
     :Resources
     {:UserPool (resource-user-pool)
      :UserPoolDomain (resource-user-pool-domain)
-     :UserPoolDomainPrefix (resource-user-pool-domain-prefix)
      :UserPoolIdentityProviderGoogle (resource-user-pool-identity-provider-google)
      :UserPoolClient (resource-user-pool-client)
      :UserPoolClientRecapcoach (resource-user-pool-client-recapcoach)
@@ -197,15 +184,13 @@
     (a.cfn/list-outputs
      {:UserPool {:Ref :UserPool}
       :UserPoolArn (get-att :UserPool :Arn)
-      ;; ホスト UI のドメイン。prd はカスタムドメイン、それ以外はプレフィックスドメイン
-      :UserPoolDomain {"Fn::If" ["IsPrd"
-                                 "auth-k8s.sancode.dev"
-                                 (sub "${Prefix}-auth-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com")]}
+      ;; ホスト UI のドメイン (カスタムドメイン)
+      :UserPoolDomain {:Ref :DomainName}
       :UserPoolClient {:Ref :UserPoolClient}
       :RecapcoachUserPoolClient {:Ref :UserPoolClientRecapcoach}
       :IdentityPool {:Ref :IdentityPool}})}))
 
-(defn- prd-certificate-arn [param]
+(defn- certificate-arn [param]
   (let [exports (->> (-> (c.util/eshell {:out :string} "aws" "cloudformation" "list-exports" "--region" "us-east-1")
                          :out
                          (json/parse-string keyword))
@@ -218,8 +203,7 @@
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/cognito.json")
-        stack-name (str (-> param :prefix) "-" "cognito")
-        prd? (= "prd" (:env param))]
+        stack-name (str (-> param :prefix) "-" "cognito")]
     (fs/create-dirs (fs/parent file))
 
     (c.util/eprintln (format "Write: %s" (fs/path file)))
@@ -231,9 +215,10 @@
     (c.util/ensure-stack-deployable stack-name)
     ;; Google の client_id / client_secret は、テンプレートが SSM パラメータ
     ;; `/{prefix}/cognito/google-client-{id,secret}` の動的参照で受けるので、ここでは取得しない
-    (let [overrides (cond-> {:Env (-> param :env)
-                             :Prefix (-> param :prefix)}
-                      prd? (assoc :CertificateArn (prd-certificate-arn param)))]
+    (let [overrides {:Env (-> param :env)
+                     :Prefix (-> param :prefix)
+                     :DomainName (-> param :domain-name)
+                     :CertificateArn (certificate-arn param)}]
       (c.util/eshell "sam" "deploy"
                      "--template-file" (str (fs/path file))
                      "--stack-name" stack-name

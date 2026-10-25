@@ -67,6 +67,7 @@
                    "sancode-resources" (c.sancode-resources/deploy param)
                    "electrobunmacs-resources" (c.electrobunmacs-resources/deploy param)
                    "certificate" (c.certificate/deploy param)
+                   "recapcoach-certificate" (c.certificate/deploy-recapcoach param)
 
                    ;; k8s に載せない (API Gateway + Cognito + WAF + Lambda + SNS/SQS/DynamoDB)。`all` には含めない
                    "recapcoach" (c.recapcoach/deploy param)
@@ -95,6 +96,7 @@
   (let [env (or (System/getenv "DEPLOY_ENV") "dev")
         prefix (format "%s-%s" env "k8s")
         cognito-domain (if (= env "prd") "auth-k8s.sancode.dev" (format "%s-auth-k8s.sancode.dev" env))
+        recapcoach-domain (if (= env "prd") "recapcoach.sancode.dev" (format "%s-recapcoach.sancode.dev" env))
         stripe-event-source (System/getenv "STRIPE_EVENT_SOURCE_NAME")
         app-domains (if (= env "prd")
                       ["admin" "n8n"]
@@ -102,6 +104,7 @@
         param {:env env
                :prefix prefix
                :domain-name cognito-domain
+               :recapcoach-domain-name recapcoach-domain
                :alb-certificate-domain-name "*.sancode.dev"
                :StripeEventSourceName stripe-event-source
                :domain-aliases (str/join "," (map #(format "%s.sancode.dev" %) app-domains))}]

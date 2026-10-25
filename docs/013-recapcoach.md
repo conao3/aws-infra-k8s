@@ -43,41 +43,25 @@ Both commands run `sam validate --lint` first. Delete in the reverse order (reca
 
 Users are registered by the administrator with `pnpm admin:add-user` in ts-recapcoach, which calls `aws dynamodb put-item` on the `users` table (`RecapcoachUsersTable` output).
 
-## Put it behind Cloudflare (prepared, not enabled)
+## Custom domain behind Cloudflare
 
-The template has optional parameters for this. All default to empty / `false` and create nothing.
+dev runs at `https://dev-recapcoach.sancode.dev` (prd `recapcoach.sancode.dev`); the Cognito hosted UI is `dev-auth-k8s.sancode.dev` (prd `auth-k8s.sancode.dev`). Pick domains one label under the zone, because Cloudflare Universal SSL covers `*.sancode.dev` only (one level).
 
-| Parameter | Deploy env var | Effect |
-|-----------|----------------|--------|
-| `ApiDomainName` | `RECAPCOACH_API_DOMAIN_NAME` | Regional custom domain (`AWS::ApiGateway::DomainName`) plus a base path mapping to the `prod` stage. Created only when both this and the certificate are set |
-| `ApiCertificateArn` | `RECAPCOACH_API_CERTIFICATE_ARN` | ACM certificate for the domain, in the same region as the API (ap-northeast-1) |
-| `DisableExecuteApiEndpoint` | `RECAPCOACH_DISABLE_EXECUTE_API_ENDPOINT=true` | Disables the default `execute-api` endpoint, so the API can only be reached through the custom domain |
+| Parameter | Source | Effect |
+|-----------|--------|--------|
+| `ApiDomainName` | `<env>-recapcoach.sancode.dev`, or `RECAPCOACH_API_DOMAIN_NAME` | Regional custom domain (`AWS::ApiGateway::DomainName`) plus a base path mapping to the `prod` stage |
+| `ApiCertificateArn` | export `<prefix>-RecapcoachCertificateArn` of the `recapcoach-certificate` stack (ap-northeast-1), or `RECAPCOACH_API_CERTIFICATE_ARN` | ACM certificate in the API's region. The domain is created only when the certificate exists |
+| `DisableExecuteApiEndpoint` | `true` automatically when the certificate exists (`RECAPCOACH_DISABLE_EXECUTE_API_ENDPOINT=false` keeps it) | The default `execute-api` endpoint is closed, so the API is only reachable through the custom domain |
 
-The output `RecapcoachApiDomainTarget` is the regional domain name to point the Cloudflare CNAME at. With the custom domain the URL has no stage in the path (`https://<domain>/v1/...`).
+With the custom domain the URL has no stage in the path (`https://<domain>/v1/...`). The output `RecapcoachApiDomainTarget` is the regional domain name that the Cloudflare CNAME points at.
 
-Steps:
+Steps for a new environment:
 
-1. Pick a domain one label under the zone, such as `dev-recapcoach-api.sancode.dev`. Cloudflare Universal SSL covers `*.sancode.dev` only (one level), so `a.b.sancode.dev` would not be covered.
-2. Request an ACM certificate for it in ap-northeast-1 and add the DNS validation CNAME in Cloudflare (DNS only, see `notes/aws.md`).
-3. Deploy with `RECAPCOACH_API_DOMAIN_NAME` and `RECAPCOACH_API_CERTIFICATE_ARN`.
-4. In Cloudflare add a proxied CNAME from the domain to `RecapcoachApiDomainTarget`, with SSL/TLS mode Full (strict). Put rate limiting and other rules on the Cloudflare side.
-5. Check the API through the domain, then redeploy with `RECAPCOACH_DISABLE_EXECUTE_API_ENDPOINT=true`.
-6. Restrict the source IPs with a resource policy (not parameterized yet; add it as a fixed setting when Cloudflare goes in front). It allows `execute-api:Invoke` only from the public Cloudflare ranges, both IPv4 and IPv6 (https://www.cloudflare.com/ips/):
+1. `deploy certificate` (us-east-1, Cognito) and `deploy recapcoach-certificate` (ap-northeast-1, API). Each blocks until the DNS validation record exists. Read it with `aws acm describe-certificate --region <r> --certificate-arn <arn> --query 'Certificate.DomainValidationOptions[].ResourceRecord'` and add it to the `sancode.dev` zone in Cloudflare as a CNAME, DNS only. The record name is fixed per account and domain, so a record from a previous certificate for the same domain is reused.
+2. `deploy cognito`. A user pool has one domain: delete the old prefix domain first (`aws cognito-idp delete-user-pool-domain`) when switching an existing pool. Point `<env>-auth-k8s.sancode.dev` at the new CloudFront distribution (`aws cognito-idp describe-user-pool-domain --domain <domain>`, `CloudFrontDistribution`) with a **DNS only** CNAME.
+3. `deploy recapcoach`. Add a CNAME `<env>-recapcoach` to `RecapcoachApiDomainTarget`. It is **proxied** (Cloudflare in front) and needs SSL/TLS mode Full (strict) or Full. No Cloudflare Access application covers these two host names: Access applications are per host name (`Dev App1 Access` and so on), so the extension and the browser flow are not challenged.
+4. When `DisableExecuteApiEndpoint` changes, API Gateway needs a new deployment of the stage before it takes effect: `aws apigateway create-deployment --rest-api-id <id> --stage-name prod`.
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    { "Effect": "Allow", "Principal": "*", "Action": "execute-api:Invoke", "Resource": "execute-api:/*" },
-    {
-      "Effect": "Deny",
-      "Principal": "*",
-      "Action": "execute-api:Invoke",
-      "Resource": "execute-api:/*",
-      "Condition": { "NotIpAddress": { "aws:SourceIp": ["<Cloudflare IPv4 ranges>", "<Cloudflare IPv6 ranges>"] } }
-    }
-  ]
-}
-```
+The Google OAuth client ("Sancode Auth") must list `https://<cognito domain>/oauth2/idpresponse` as an authorized redirect URI. `dev-auth-k8s.sancode.dev` is registered.
 
-In SAM this is `Auth.ResourcePolicy.IpRangeWhitelist` on the `Api` resource with the ranges from `https://www.cloudflare.com/ips-v4` and `https://www.cloudflare.com/ips-v6`; `bin/update-cloudflare-ips` already fetches these ranges for the CloudFront WAF. Cloudflare changes the ranges rarely, so refresh them when they change.
+Not done yet: restricting the API to Cloudflare source IPs. The proxied record hides the origin, but the regional endpoint still answers to anyone who sends the right `Host` and SNI. Add a resource policy (`Auth.ResourcePolicy.IpRangeWhitelist` in SAM, ranges from `https://www.cloudflare.com/ips-v4` and `ips-v6`; `bin/update-cloudflare-ips` already fetches them for the CloudFront WAF) when you want that.
