@@ -242,9 +242,117 @@
      :Resource (uploads-objects-arn)}
     (uploads-list-statement)]))
 
+;; --- Stripe の契約イベント (Stripe → EventBridge のパートナーイベントソース → SQS → billing Lambda → users 表) ---
+;; SSM パラメータ `/<prefix>/recapcoach/stripe-{secret-key,price-starter,price-pro,price-max,event-source}` が
+;; 全部あるときだけ作る (`deploy` が確かめる)。イベントソース名は Stripe の「イベント送信先」(Amazon EventBridge) が作る
+
+(def stripe-ssm-names
+  ["stripe-secret-key" "stripe-price-starter" "stripe-price-pro" "stripe-price-max" "stripe-event-source"])
+
+(defn- stripe-ref [name]
+  (sub (str "{{resolve:ssm:/${Prefix}/recapcoach/" name "}}")))
+
+(defn resource-stripe-dlq []
+  {:Type "AWS::SQS::Queue"
+   :Properties
+   {:QueueName (prefix-name "billing-dlq")
+    :MessageRetentionPeriod 1209600
+    :SqsManagedSseEnabled true}})
+
+(defn resource-stripe-queue []
+  {:Type "AWS::SQS::Queue"
+   :Properties
+   {:QueueName (prefix-name "billing")
+    :VisibilityTimeout 180
+    :MessageRetentionPeriod 345600
+    :SqsManagedSseEnabled true
+    :RedrivePolicy {:deadLetterTargetArn (get-att :StripeDlq :Arn)
+                    :maxReceiveCount 5}}})
+
+(defn resource-stripe-event-bus []
+  {:Type "AWS::Events::EventBus"
+   :Properties
+   {:Name {:Ref :StripeEventSourceName}
+    :EventSourceName {:Ref :StripeEventSourceName}}})
+
+(defn resource-stripe-rule []
+  {:Type "AWS::Events::Rule"
+   :Properties
+   {:Name (prefix-name "stripe")
+    :EventBusName {:Ref :StripeEventBus}
+    :EventPattern {:source [{:prefix "aws.partner/stripe.com"}]}
+    :Targets [{:Id "StripeBillingQueue" :Arn (get-att :StripeQueue :Arn)}]}})
+
+(defn resource-stripe-queue-policy []
+  {:Type "AWS::SQS::QueuePolicy"
+   :Properties
+   {:Queues [{:Ref :StripeQueue}]
+    :PolicyDocument
+    {:Version "2012-10-17"
+     :Statement
+     [{:Sid "AllowStripeRule"
+       :Effect "Allow"
+       :Principal {:Service "events.amazonaws.com"}
+       :Action "sqs:SendMessage"
+       :Resource (get-att :StripeQueue :Arn)
+       :Condition {:ArnEquals {"aws:SourceArn" (get-att :StripeRule :Arn)}}}
+      (secure-transport-deny (get-att :StripeQueue :Arn))]}}})
+
+(defn resource-stripe-dlq-policy []
+  {:Type "AWS::SQS::QueuePolicy"
+   :Properties
+   {:Queues [{:Ref :StripeDlq}]
+    :PolicyDocument
+    {:Version "2012-10-17"
+     :Statement [(secure-transport-deny (get-att :StripeDlq :Arn))]}}})
+
+(defn resource-billing-function-role []
+  (lambda-role
+   :BillingLogGroup
+   [{:Effect "Allow"
+     ;; 契約の変化を users 表に反映する。行は作らない (条件式で attribute_exists)
+     :Action "dynamodb:UpdateItem"
+     :Resource (get-att :UsersTable :Arn)}
+    {:Effect "Allow"
+     :Action ["sqs:ReceiveMessage" "sqs:DeleteMessage" "sqs:GetQueueAttributes"]
+     :Resource (get-att :StripeQueue :Arn)}]))
+
+(defn resource-billing-function [code-uri]
+  {:Type "AWS::Serverless::Function"
+   :DependsOn ["BillingLogGroup"]
+   :Properties
+   {:FunctionName (prefix-name "billing")
+    :LoggingConfig {:LogFormat "JSON"}
+    :Runtime "nodejs22.x"
+    :Architectures ["arm64"]
+    :Handler "billing.handler"
+    :CodeUri code-uri
+    :Timeout 30
+    :MemorySize 256
+    :Role (get-att :BillingFunctionRole :Arn)
+    :Environment
+    {:Variables
+     {:USERS_TABLE {:Ref :UsersTable}
+      :STRIPE_PRICE_STARTER (stripe-ref "stripe-price-starter")
+      :STRIPE_PRICE_PRO (stripe-ref "stripe-price-pro")
+      :STRIPE_PRICE_MAX (stripe-ref "stripe-price-max")}}
+    :Events
+    {:Stripe {:Type "SQS"
+              :Properties {:Queue (get-att :StripeQueue :Arn)
+                           :BatchSize 1
+                           :FunctionResponseTypes ["ReportBatchItemFailures"]}}}}})
+
 ;; --- Lambda ---
 
-(defn resource-api-function [code-uri]
+(defn- stripe-api-env
+  "Checkout と契約の管理に使う Stripe のキーと価格 ID (SSM の動的参照)。"
+  []
+  {:STRIPE_SECRET_KEY (stripe-ref "stripe-secret-key")
+   :STRIPE_PRICE_STARTER (stripe-ref "stripe-price-starter")
+   :STRIPE_PRICE_PRO (stripe-ref "stripe-price-pro")
+   :STRIPE_PRICE_MAX (stripe-ref "stripe-price-max")})
+
+(defn resource-api-function [code-uri stripe?]
   {:Type "AWS::Serverless::Function"
    :DependsOn ["ApiLogGroup"]
    :Properties
@@ -260,7 +368,8 @@
     :Role (get-att :ApiFunctionRole :Arn)
     :Environment
     {:Variables
-     {:AI_GATEWAY_MODEL {:Ref :AiGatewayModel}
+     (merge
+      {:AI_GATEWAY_MODEL {:Ref :AiGatewayModel}
       :AI_GATEWAY_API_KEY {:Ref :AiGatewayApiKey}
       :ALLOWED_ORIGINS (str/join "," (c.recapcoach-extension/origins))
       ;; ID トークンの aud がこのクライアントのものか、API で確かめる
@@ -269,7 +378,8 @@
       :USAGE_TABLE {:Ref :UsageTable}
       :JOBS_TABLE {:Ref :JobsTable}
       :JOBS_TOPIC_ARN {:Ref :JobsTopic}
-      :UPLOADS_BUCKET {:Ref :UploadsBucket}}}
+      :UPLOADS_BUCKET {:Ref :UploadsBucket}}
+      (when stripe? (stripe-api-env)))}
     :Events
     {;; /healthz だけ認証なし。それ以外のパスは既定のオーソライザー (Cognito) で守る
      :Health {:Type "Api"
@@ -457,6 +567,10 @@
       :ApiDomainName {:Type "String"
                       :Default ""
                       :Description "リージョナルのカスタムドメイン (例 dev-recapcoach-api.sancode.dev)。空なら作らない"}
+      ;; Stripe の「イベント送信先」(Amazon EventBridge) が作るパートナーイベントソースの名前 (aws.partner/stripe.com/ed_...)
+      :StripeEventSourceName {:Type "String"
+                              :Default ""
+                              :Description "Stripe のパートナーイベントソース名。stripe? のときだけ使う"}
       :ApiCertificateArn {:Type "String"
                           :Default ""
                           :Description "カスタムドメインの ACM 証明書 (API と同じリージョン) の ARN。空なら作らない"}})
@@ -468,7 +582,8 @@
                                {"Fn::Not" [{"Fn::Equals" [{:Ref :ApiCertificateArn} ""]}]}]}}
 
     :Resources
-    {:ApiLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-recapcoach-api"))
+    (merge
+     {:ApiLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-recapcoach-api"))
      :WorkerLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-recapcoach-worker"))
      :ApiAccessLogGroup (resource-log-group (sub "/aws/apigateway/${Prefix}-recapcoach-api-access"))
 
@@ -487,7 +602,7 @@
 
      :ApiFunctionRole (resource-api-function-role)
      :WorkerFunctionRole (resource-worker-function-role)
-     :ApiFunction (resource-api-function (:code-uri param))
+     :ApiFunction (resource-api-function (:code-uri param) (:stripe? param))
      :WorkerFunction (resource-worker-function (:code-uri param))
 
      :ApiGatewayAccountRole (resource-api-gateway-account-role)
@@ -499,6 +614,17 @@
 
      :WebAcl (resource-web-acl)
      :WebAclAssociation (resource-web-acl-association)}
+    ;; Stripe の設定 (SSM) が揃っているときだけ、契約イベントの経路を作る
+    (when (:stripe? param)
+      {:BillingLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-recapcoach-billing"))
+       :StripeDlq (resource-stripe-dlq)
+       :StripeQueue (resource-stripe-queue)
+       :StripeEventBus (resource-stripe-event-bus)
+       :StripeRule (resource-stripe-rule)
+       :StripeQueuePolicy (resource-stripe-queue-policy)
+       :StripeDlqPolicy (resource-stripe-dlq-policy)
+       :BillingFunctionRole (resource-billing-function-role)
+       :BillingFunction (resource-billing-function (:code-uri param))}))
 
     :Outputs
     (merge
@@ -511,6 +637,10 @@
       :RecapcoachUploadsBucket {:Ref :UploadsBucket}
       :RecapcoachJobsTable {:Ref :JobsTable}
       :RecapcoachJobsDlqUrl {:Ref :JobsDlq}})
+     ;; Stripe の契約イベントの DLQ (stripe? のときだけ)
+     (when (:stripe? param)
+       {:RecapcoachBillingDlqUrl {:Value {:Ref :StripeDlq}}
+        :RecapcoachBillingFunction {:Value {:Ref :BillingFunction}}})
      ;; Cloudflare の CNAME の向け先 (カスタムドメインを作ったときだけ)
      {:RecapcoachApiDomainTarget {:Condition "UseApiDomain"
                                   :Value (get-att :ApiDomain :RegionalDomainName)}})}))
@@ -524,15 +654,27 @@
         arn (str/trim out)]
     (when (str/starts-with? arn "arn:") arn)))
 
+(defn- stripe-event-source
+  "SSM `/<prefix>/recapcoach/stripe-*` が全部あれば、パートナーイベントソース名を返す。1 つでも無ければ nil
+   (Stripe の経路を作らない)。"
+  [prefix]
+  (let [names (map #(format "/%s/recapcoach/%s" prefix %) stripe-ssm-names)
+        out (:out (c.util/eshell {:out :string} "aws" "ssm" "get-parameters" "--names" (str/join " " names)
+                                 "--query" "{valid:Parameters[*].Name,source:Parameters[?ends_with(Name,'stripe-event-source')].Value|[0]}"
+                                 "--output" "json"))
+        {:keys [valid source]} (json/parse-string out keyword)]
+    (when (= (count valid) (count names)) source)))
+
 (defn deploy [param]
   (let [file (fs/file "target/cfn/recapcoach.json")
         prefix (-> param :prefix)
         stack-name (str prefix "-" "recapcoach")
         api-cert (or (System/getenv "RECAPCOACH_API_CERTIFICATE_ARN") (api-certificate-arn prefix))
+        stripe-source (stripe-event-source prefix)
         code-uri (str (fs/absolutize
                        (or (System/getenv "RECAPCOACH_DIST")
                            (fs/expand-home "~/ghq/github.com/conao3/ts-recapcoach/apps/api/dist/lambda"))))]
-    (doseq [entry ["index.mjs" "worker.mjs"]]
+    (doseq [entry ["index.mjs" "worker.mjs" "billing.mjs"]]
       (when-not (fs/exists? (fs/path code-uri entry))
         (throw (ex-info (format "build first: pnpm --filter @recapcoach/api build (%s/%s)" code-uri entry)
                         {:code-uri code-uri :entry entry}))))
@@ -540,7 +682,7 @@
 
     (c.util/eprintln (format "Write: %s" (fs/path file)))
     (with-open [writer (io/writer file)]
-      (-> (cfn (assoc param :code-uri code-uri :cloudflare-only? (boolean api-cert)))
+      (-> (cfn (assoc param :code-uri code-uri :cloudflare-only? (boolean api-cert) :stripe? (boolean stripe-source)))
           (json/generate-stream writer)))
 
     (c.util/eshell "sam" "validate" "--lint" "--template-file" (str (fs/path file)))
@@ -568,7 +710,10 @@
                                  :ApiCertificateArn api-cert)
                           ;; カスタムドメインがあれば既定の execute-api のエンドポイントは塞ぐ (RECAPCOACH_DISABLE_EXECUTE_API_ENDPOINT=false で残す)
                           (and api-cert (not= "false" (System/getenv "RECAPCOACH_DISABLE_EXECUTE_API_ENDPOINT")))
-                          (assoc :DisableExecuteApiEndpoint "true"))
+                          (assoc :DisableExecuteApiEndpoint "true")
+                          ;; Stripe の SSM パラメータが揃っているときだけ、契約イベントの経路を作る
+                          stripe-source
+                          (assoc :StripeEventSourceName stripe-source))
                         (map (fn [[k v]]
                                (format "%s=\"%s\"" (name k) v)))
                         (str/join " ")))))
