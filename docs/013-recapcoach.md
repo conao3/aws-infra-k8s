@@ -68,3 +68,21 @@ The Google OAuth client ("Sancode Auth") must list `https://<cognito domain>/oau
 The API accepts only Cloudflare source IPs. When the custom domain exists, the REST API gets a resource policy (`Auth.ResourcePolicy.IpRangeWhitelist` in SAM: Allow all, then an explicit Deny for sources not in the Cloudflare ranges) built from `resources/cloudflare-ips.edn`. Refresh that file with `bin/update-cloudflare-ips` when Cloudflare changes the ranges (https://www.cloudflare.com/ips/), then redeploy. Without the custom domain no policy is added, so the default endpoint stays testable. Checked on dev: a request sent straight to the regional endpoint with the right `Host` gets `403 ... explicit deny in a resource-based policy`, and the same request through Cloudflare gets 200.
 
 Both Lambdas log in JSON (`LoggingConfig.LogFormat: JSON`), so the application's structured logs can be queried in CloudWatch Logs Insights by `message.event` (event list in ts-recapcoach `README.md`, section "ログ").
+
+## Stripe subscription events (optional)
+
+Billing is built from the Stripe settings in SSM. The six String parameters `/<prefix>/recapcoach/stripe-{secret-key,price-starter,price-pro,price-max,portal-config,event-source}` must all exist; `deploy recapcoach` checks this (`aws ssm get-parameters`) and, only then, adds:
+
+| Resource | Purpose |
+|----------|---------|
+| `AWS::Events::EventBus` named after `stripe-event-source` (`aws.partner/stripe.com/ed_...`) | Associates the partner event source that Stripe's "event destination" (Amazon EventBridge) created in this AWS account. The source shows as `PENDING` until this bus exists, then `ACTIVE` |
+| `AWS::Events::Rule` (`source` prefix `aws.partner/stripe.com`) | Sends every event of the bus to the billing queue |
+| SQS `<prefix>-recapcoach-billing` + DLQ `-billing-dlq` | `maxReceiveCount` 5; the queue policy allows only this rule (and TLS) |
+| Lambda `<prefix>-recapcoach-billing` (`billing.handler`) | Reads the EventBridge envelope, updates the `users` row (`UpdateItem` only, conditional: never creates a row, never touches `admin` / `local`, never applies an older event over a newer one). An unknown price ID throws so the event ends up in the DLQ |
+| API Lambda env `STRIPE_SECRET_KEY`, `STRIPE_PRICE_*`, `STRIPE_PORTAL_CONFIG` | `{{resolve:ssm:...}}` dynamic references, read at deploy time. Without them the billing endpoints answer 501 |
+
+The Stripe side is created by `scripts/stripe-setup.py` in ts-recapcoach (products, monthly prices, portal configuration; idempotent) and by two dashboard steps that have no API: the event destination (Developers → Workbench → Webhooks → Add destination → Amazon EventBridge; events `customer.subscription.created` / `updated` / `deleted`, snapshot payload; name `<prefix>-recapcoach-billing`, your AWS account ID and `ap-northeast-1`) and the restricted API key (Customers read, Products read, Prices read, Checkout Sessions write, Customer Portal write). The destination's source name is also readable from the AWS side with `aws events list-event-sources`.
+
+The Stripe account is shared with sanplan, which has its own destination (`dev-k8s-sanplan-billing`) and its own default portal configuration. A partner event source can be associated with only one bus, so recapcoach has its own destination, and the API passes recapcoach's portal configuration ID explicitly.
+
+Because the Stripe key is a plain `String` in SSM (decided with the Google client secret: no Secrets Manager cost) and ends up in a Lambda environment variable, use only a restricted key.
