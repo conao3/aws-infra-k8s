@@ -4,7 +4,7 @@
   重い処理を SNS → SQS → コンシューマの Lambda で非同期に処理し、結果を DynamoDB (TTL) に置く。
   字幕は API Gateway / WAF を通さず、署名付き POST で S3 に直接置かせる。ユーザーは DynamoDB の users 表。
   LLM と読み上げの音声は Vercel AI Gateway (キーとモデル ID は SSM パラメータを参照する。役割ごとの LLM のモデルと音声のモデルはスタックのパラメータ)。k8s には載せない。
-  コードは sanrecap の `pnpm --filter @sanrecap/api build` の成果物 (apps/api/dist/lambda の index.mjs と worker.mjs)。"
+  コードは sanrecap の `vp run build-api` の成果物 (apps/api/dist/lambda の index.mjs と worker.mjs)。"
   (:require
    [babashka.fs :as fs]
    [cheshire.core :as json]
@@ -732,7 +732,7 @@
                            (fs/expand-home "~/ghq/github.com/conao3/sanrecap/apps/api/dist/lambda"))))]
     (doseq [entry ["index.mjs" "worker.mjs" "billing.mjs"]]
       (when-not (fs/exists? (fs/path code-uri entry))
-        (throw (ex-info (format "build first: pnpm --filter @sanrecap/api build (%s/%s)" code-uri entry)
+        (throw (ex-info (format "build first: vp run build-api (%s/%s)" code-uri entry)
                         {:code-uri code-uri :entry entry}))))
     (fs/create-dirs (fs/parent file))
 

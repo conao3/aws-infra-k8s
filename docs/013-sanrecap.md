@@ -30,7 +30,7 @@ When enabled the settings are: per-IP rate limit (600 requests per 5 minutes, bl
 2. SSM parameters (String): `/<prefix>/sanrecap/ai-gateway-api-key` and `/<prefix>/sanrecap/ai-gateway-model`. The key is read with a `{{resolve:ssm:...}}` dynamic reference, like the Stripe key, so its value stays out of the stack parameters (`describe-stacks` shows the resolved value of `AWS::SSM::Parameter::Value` parameters). The model ID is a parameter of that type.
    The speech model for `POST /v1/speech` is the plain String parameter `SpeechModel` (default `microsoft/mai-voice-2.1-flash`, passed to the API as `SPEECH_MODEL`) with the optional `SpeechVoice` (`SPEECH_VOICE`, left out when empty). It uses the same AI Gateway key. `deploy sanrecap` passes the default unless `SANRECAP_SPEECH_MODEL` / `SANRECAP_SPEECH_VOICE` are set; an empty `SANRECAP_SPEECH_MODEL` turns server speech off (the API answers 501 and the extension uses the browser voice).
    Each LLM role can use its own AI Gateway model through the plain String parameters `TurnModel` (API, `TURN_MODEL`: interview turns), `SessionModel` (worker, `SESSION_MODEL`: key points and the opening question) and `DebriefModel` (worker, `DEBRIEF_MODEL`: the debrief). They default to empty, which leaves the variable out so the role uses the model of `ai-gateway-model`. `deploy sanrecap` passes `SANRECAP_TURN_MODEL` / `SANRECAP_SESSION_MODEL` / `SANRECAP_DEBRIEF_MODEL` (empty when unset).
-3. Build the Lambda bundles in sanrecap: `pnpm --filter @sanrecap/api build` (`apps/api/dist/lambda/index.mjs` and `worker.mjs`).
+3. Build the Lambda bundles in sanrecap: `vp run build-api` (`apps/api/dist/lambda/index.mjs` and `worker.mjs`).
 
 ## Deploy
 
