@@ -48,7 +48,7 @@ The relay is not in this stack. It goes in the public subnet with the relay secu
 
 ## Prerequisites
 
-1. `deploy cognito` with the sanchoris app client (export `<prefix>-SanchorisUserPoolClient`): authorization code, no secret, Google only, callback `<origin>/auth/callback` and logout `<origin>/login` for `http://sanchoris.localhost:1355` and `https://dev-sanchoris.sancode.dev` (prd: `https://sanchoris.sancode.dev`). The stack imports `<prefix>-UserPool` and this client.
+1. `deploy cognito` with the sanchoris app client (export `<prefix>-SanchorisUserPoolClient`): authorization code, no secret, Google only, callback `<origin>/auth/callback` and logout `<origin>/login` for `https://sanchoris.localhost` (portless on 443) and `https://dev-sanchoris.sancode.dev` (prd: `https://sanchoris.sancode.dev`). The stack imports `<prefix>-UserPool` and this client.
 2. SSM parameters (String or SecureString) under `/<prefix>/sanchoris/`. `deploy sanchoris` checks them with `aws ssm get-parameters` and stops with the list of missing names. The template holds only the path (`SANCHORIS_SECRETS_PATH`); each function reads its parameters with `ssm:GetParameters` at cold start, so the values stay out of the template, the stack, and the Lambda configuration, and the `api` function stays under Lambda's 4 KB limit on environment variables with the GitHub App key.
 
    | Name | Variable |

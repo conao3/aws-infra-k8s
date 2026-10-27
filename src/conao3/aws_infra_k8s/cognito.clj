@@ -112,12 +112,12 @@
     :RefreshTokenValidity 30}})
 
 (defn- sanchoris-urls
-  "sanchoris の画面のオリジン (開発は portless の sanchoris.localhost:1355、デプロイ先は <env>-sanchoris.sancode.dev、
+  "sanchoris の画面のオリジン (開発は portless の https://sanchoris.localhost、デプロイ先は <env>-sanchoris.sancode.dev、
    prd は sanchoris.sancode.dev) に path を付けた URL。ドメインは aws_infra_k8s.clj の sanchoris-domain と同じ。"
   [path]
   {"Fn::If" ["IsPrd"
              [(str "https://sanchoris.sancode.dev" path)]
-             [(str "http://sanchoris.localhost:1355" path)
+             [(str "https://sanchoris.localhost" path)
               {"Fn::Sub" (str "https://${Env}-sanchoris.sancode.dev" path)}]]})
 
 (defn resource-user-pool-client-sanchoris
