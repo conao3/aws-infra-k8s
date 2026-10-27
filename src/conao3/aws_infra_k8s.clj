@@ -21,7 +21,8 @@
    [conao3.aws-infra-k8s.sancode-resources :as c.sancode-resources]
    [conao3.aws-infra-k8s.electrobunmacs-resources :as c.electrobunmacs-resources]
    [conao3.aws-infra-k8s.certificate :as c.certificate]
-   [conao3.aws-infra-k8s.sanrecap :as c.sanrecap])
+   [conao3.aws-infra-k8s.sanrecap :as c.sanrecap]
+   [conao3.aws-infra-k8s.sanchoris :as c.sanchoris])
   (:gen-class))
 
 (defn parse-args [args]
@@ -68,9 +69,12 @@
                    "electrobunmacs-resources" (c.electrobunmacs-resources/deploy param)
                    "certificate" (c.certificate/deploy param)
                    "sanrecap-certificate" (c.certificate/deploy-sanrecap param)
+                   "sanchoris-certificate" (c.certificate/deploy-sanchoris param)
 
                    ;; k8s に載せない (API Gateway + Cognito + WAF + Lambda + SNS/SQS/DynamoDB)。`all` には含めない
                    "sanrecap" (c.sanrecap/deploy param)
+                   ;; k8s に載せない (API Gateway + Lambda + DynamoDB + S3 + SQS + EventBridge Scheduler + ECS Fargate)。`all` には含めない
+                   "sanchoris" (c.sanchoris/deploy param)
                    "all" (do
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
@@ -97,6 +101,8 @@
         prefix (format "%s-%s" env "k8s")
         cognito-domain (if (= env "prd") "auth-k8s.sancode.dev" (format "%s-auth-k8s.sancode.dev" env))
         sanrecap-domain (if (= env "prd") "sanrecap.sancode.dev" (format "%s-sanrecap.sancode.dev" env))
+        sanchoris-domain (if (= env "prd") "sanchoris.sancode.dev" (format "%s-sanchoris.sancode.dev" env))
+        sanchoris-channel-domain (if (= env "prd") "sanchoris-channel.sancode.dev" (format "%s-sanchoris-channel.sancode.dev" env))
         stripe-event-source (System/getenv "STRIPE_EVENT_SOURCE_NAME")
         app-domains (if (= env "prd")
                       ["admin" "n8n"]
@@ -105,6 +111,8 @@
                :prefix prefix
                :domain-name cognito-domain
                :sanrecap-domain-name sanrecap-domain
+               :sanchoris-domain-name sanchoris-domain
+               :sanchoris-channel-domain-name sanchoris-channel-domain
                :alb-certificate-domain-name "*.sancode.dev"
                :StripeEventSourceName stripe-event-source
                :domain-aliases (str/join "," (map #(format "%s.sancode.dev" %) app-domains))}]

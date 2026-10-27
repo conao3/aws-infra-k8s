@@ -7,23 +7,25 @@
    [conao3.aws-infra-k8s.util :as c.util]
    [conao3.aws-infra.cfn :as a.cfn]))
 
-(defn resource-certificate [domain-name]
+(defn resource-certificate [domain-name alternative-names]
   {:Type "AWS::CertificateManager::Certificate"
    :Properties
-   {:DomainName domain-name
-    :ValidationMethod "DNS"
-    :Tags [{:Key "Name" :Value (a.cfn/prefix "certificate")}]}})
+   (cond-> {:DomainName domain-name
+            :ValidationMethod "DNS"
+            :Tags [{:Key "Name" :Value (a.cfn/prefix "certificate")}]}
+     (seq alternative-names) (assoc :SubjectAlternativeNames alternative-names))})
 
 (defn cfn
-  "output-key は Export 名の一部。同じリージョンの ALB の証明書 (`CertificateArn`) と名前を分ける。"
-  [_param output-key]
+  "output-key は Export 名の一部。同じリージョンの ALB の証明書 (`CertificateArn`) と名前を分ける。
+   alternative-names は証明書に足す別名 (SAN) の一覧。"
+  [_param output-key alternative-names]
   (a.cfn/template
    {:Parameters
     (a.cfn/list-string-parameters
      [:Env :Prefix :DomainName])
 
     :Resources
-    {:Certificate (resource-certificate {:Ref :DomainName})}
+    {:Certificate (resource-certificate {:Ref :DomainName} alternative-names)}
 
     :Outputs
     (a.cfn/list-outputs
@@ -32,13 +34,13 @@
 (defn- deploy-stack
   "ACM 証明書のスタックを region に作る。証明書は DNS 検証なので、検証用 CNAME を Cloudflare に置くまで
    スタックの作成が終わらない (検証レコードは `aws acm describe-certificate` で読む)。"
-  [param {:keys [stack-name region domain-name output-key]}]
+  [param {:keys [stack-name region domain-name alternative-names output-key]}]
   (let [file (fs/file (format "target/cfn/%s.json" stack-name))]
     (fs/create-dirs (fs/parent file))
 
     (c.util/eprintln (format "Write: %s" (fs/path file)))
     (with-open [writer (io/writer file)]
-      (-> (cfn param output-key)
+      (-> (cfn param output-key alternative-names)
           (json/generate-stream writer)))
 
     (c.util/eshell "sam" "validate" "--template-file" (str (fs/path file)))
@@ -73,3 +75,13 @@
                        :region "ap-northeast-1"
                        :domain-name (-> param :sanrecap-domain-name)
                        :output-key :SanrecapCertificateArn}))
+
+(defn deploy-sanchoris
+  "sanchoris の API Gateway (リージョナル) のカスタムドメイン用 (ap-northeast-1)。
+   HTTP API のドメインを主に、WebSocket API (Run channel) のドメインを別名に持つ。"
+  [param]
+  (deploy-stack param {:stack-name (str (-> param :prefix) "-" "sanchoris-certificate")
+                       :region "ap-northeast-1"
+                       :domain-name (-> param :sanchoris-domain-name)
+                       :alternative-names [(-> param :sanchoris-channel-domain-name)]
+                       :output-key :SanchorisCertificateArn}))
