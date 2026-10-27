@@ -1,6 +1,6 @@
 (ns conao3.aws-infra-k8s.sanchoris
   "sanchoris (conao3/sanchoris) の基盤。制御側はサーバーレス: API Gateway の HTTP API (画面、webhook、OAuth) と
-  WebSocket API (Run channel) の Lambda、DynamoDB (main は stream 付き、audit は追記だけ)、S3 (docs / records / logs、SSE-KMS)、
+  WebSocket API (Run channel) の Lambda、DynamoDB (main は stream 付き、audit は追記だけ)、S3 (docs / records、SSE-KMS)、
   SQS FIFO の作業キューとそれを消費する worker の Lambda、main の stream を作業キューと EventBridge Scheduler に渡す relay の Lambda。
   Workspace だけが ECS Fargate で動き、外向きの通信は中継 (relay のプロキシ。このスタックには含めない) だけに出られる。
   認証は共有の Cognito ユーザープール (cognito スタック。先にデプロイする) の JWT オーソライザー。k8s には載せない。
@@ -14,6 +14,7 @@
    [conao3.aws-infra.cfn :as a.cfn]))
 
 (def http-timeout-sec 29)
+(def authorizer-timeout-sec 10)
 (def worker-timeout-sec 300)
 (def work-visibility-timeout-sec (* 6 worker-timeout-sec))
 (def relay-timeout-sec 60)
@@ -24,6 +25,7 @@
 (def public-subnet-cidr "10.1.0.0/24")
 (def workspace-subnet-cidr "10.1.16.0/20")
 (def relay-port 3128)
+(def workspace-container "workspace")
 
 ;; --- Lambda 関数 ---
 ;; :env は環境変数のまとまり (env-vars)、:grants は IAM の許可のまとまり (grant-statements)。
@@ -31,36 +33,42 @@
 
 (def functions
   [{:id "Api" :name "api" :timeout http-timeout-sec :memory 512
-    :env [:tables :docs :cognito :urls :github-app :github-oauth :stripe :run-token :web-signing :credential :records :git]
-    :grants [:tables :docs :records :logs-read]}
+    :env [:store :secrets-path :public-url :cognito :github-web :github-api :stripe :records]
+    :secrets ["GITHUB_APP_ID" "GITHUB_APP_PRIVATE_KEY" "GITHUB_APP_CLIENT_ID" "GITHUB_APP_CLIENT_SECRET"
+              "GITHUB_APP_SLUG" "GITHUB_WEBHOOK_SECRET" "STRIPE_SECRET_KEY" "STRIPE_WEBHOOK_SECRET"
+              "TASK_TOKEN_SIGNING_KEY" "OAUTH_STATE_SIGNING_KEY" "SANCHORIS_CREDENTIAL_KEY"]
+    :grants [:tables :docs :records]}
+   {:id "ChannelAuthorizer" :name "channel-authorizer" :timeout authorizer-timeout-sec :memory 256
+    :env [:store :secrets-path]
+    :secrets ["RUN_TOKEN_SIGNING_KEY"]
+    :grants [:main-read :docs-read]}
    {:id "Channel" :name "channel" :timeout http-timeout-sec :memory 256
-    :env [:tables :docs :run-token :records]
-    :grants [:tables :docs :records :logs-write :connections]}
+    :env [:store :secrets-path :records :channel-endpoint]
+    :secrets ["RUN_TOKEN_SIGNING_KEY"]
+    :grants [:tables :docs :records :connections]}
    {:id "Worker" :name "worker" :timeout worker-timeout-sec :memory 512
-    :env [:tables :docs :urls :github-app :run-token :credential :records :git :ecs]
-    :grants [:tables :docs :records :logs-write :work-consume :ecs :connections]}
+    :env [:store :secrets-path :records :channel-endpoint :github-api :ecs :control-url :git]
+    :secrets ["GITHUB_APP_ID" "GITHUB_APP_PRIVATE_KEY" "RUN_TOKEN_SIGNING_KEY"]
+    :grants [:tables :docs :records :connections :work-consume :ecs]}
    {:id "Relay" :name "relay" :timeout relay-timeout-sec :memory 256
-    :env [:tables :docs :work-queue]
-    :grants [:docs-read :stream :work-send :schedules]}])
+    :env [:work-queue]
+    :secrets []
+    :grants [:stream :work-send :schedules]}])
 
 (def http-function "Api")
 (def channel-function "Channel")
+(def channel-authorizer-function "ChannelAuthorizer")
 (def work-function "Worker")
 (def stream-function "Relay")
 
-;; HTTP API のルート。:jwt は Cognito の JWT オーソライザーを付ける。webhook と OAuth は署名と state をアプリが検証する
+;; HTTP API のルート。:jwt は Cognito の JWT オーソライザーを付ける。$default (webhook、OAuth、/health、画面の SPA) は署名と state をアプリが検証する
 (def http-routes
   [["ANY /api/{proxy+}" :jwt]
-   ["GET /health" nil]
-   ["POST /webhooks/github" nil]
-   ["POST /webhooks/stripe" nil]
-   ["POST /auth/github" nil]
-   ["GET /auth/github/setup" nil]
-   ["GET /auth/github/callback" nil]])
+   ["$default" nil]])
 
 (def channel-routes ["$connect" "$disconnect" "$default"])
 
-;; --- SSM パラメータ (String、`/<prefix>/sanchoris/<名前>`)。値は手で作り、テンプレートは動的参照で読む ---
+;; --- SSM パラメータ (String か SecureString、`/<prefix>/sanchoris/<名前>`)。値は手で作り、Lambda がコールドスタートで読む ---
 
 (def secrets
   [["GITHUB_APP_ID" "github-app-id"]
@@ -89,14 +97,12 @@
 (defn- import-value [export-suffix]
   {"Fn::ImportValue" (sub (str "${Prefix}-" export-suffix))})
 
-(defn- secret-ref [ssm-name]
-  (sub (str "{{resolve:ssm:/${Prefix}/sanchoris/" ssm-name "}}")))
+(defn- secret-parameter [env-name]
+  (or (some (fn [[name ssm-name]] (when (= name env-name) ssm-name)) secrets)
+      (throw (ex-info (str "no SSM parameter for " env-name) {:env env-name}))))
 
-(defn- secret-env [& env-names]
-  (into {}
-        (for [[env-name ssm-name] secrets
-              :when (some #{env-name} env-names)]
-          [(keyword env-name) (secret-ref ssm-name)])))
+(defn- secret-parameter-arn [env-name]
+  (sub (str "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}/sanchoris/" (secret-parameter env-name))))
 
 ;; --- 表 (sanchoris の infra/tables.json) ---
 
@@ -148,7 +154,7 @@
 (defn resource-key []
   {:Type "AWS::KMS::Key"
    :Properties
-   {:Description (sub "${Prefix}-sanchoris: S3 buckets (docs, records, logs)")
+   {:Description (sub "${Prefix}-sanchoris: S3 buckets (docs, records; records carry the tenant id in the encryption context)")
     :EnableKeyRotation true
     :KeyPolicy
     {:Version "2012-10-17"
@@ -164,9 +170,7 @@
    {:AliasName (sub "alias/${Prefix}-sanchoris")
     :TargetKeyId {:Ref :Key}}})
 
-(defn- tenant-key-alias-prefix [] (sub "alias/${Prefix}-sanchoris-tenant-"))
-
-(defn resource-bucket [expiration-days]
+(defn resource-bucket [expiration-days bucket-key?]
   {:Type "AWS::S3::Bucket"
    :Properties
    {:PublicAccessBlockConfiguration {:BlockPublicAcls true
@@ -177,7 +181,7 @@
     :BucketEncryption {:ServerSideEncryptionConfiguration
                        [{:ServerSideEncryptionByDefault {:SSEAlgorithm "aws:kms"
                                                          :KMSMasterKeyID (get-att :Key :Arn)}
-                         :BucketKeyEnabled true}]}
+                         :BucketKeyEnabled bucket-key?}]}
     :LifecycleConfiguration
     {:Rules [(cond-> {:Id "cleanup"
                       :Status "Enabled"
@@ -212,13 +216,6 @@
     :Action ["kms:GenerateDataKey" "kms:Decrypt"]
     :Resource (get-att :Key :Arn)}])
 
-(defn- tenant-key-statement
-  "Tenant ごとの KMS の鍵 (`<KMS_KEY_PREFIX><tenant id>` の別名) で記録を暗号化・復号する。"
-  []
-  {:Effect "Allow"
-   :Action ["kms:GenerateDataKey" "kms:Decrypt" "kms:Encrypt" "kms:DescribeKey"]
-   :Resource (sub "arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*")
-   :Condition {"ForAnyValue:StringLike" {"kms:ResourceAliases" (sub "alias/${Prefix}-sanchoris-tenant-*")}}})
 
 ;; --- 作業キュー (SQS FIFO) と EventBridge Scheduler ---
 
@@ -462,7 +459,7 @@
     :RuntimePlatform {:CpuArchitecture "ARM64" :OperatingSystemFamily "LINUX"}
     :ExecutionRoleArn (get-att :WorkspaceExecutionRole :Arn)
     :ContainerDefinitions
-    [{:Name "workspace"
+    [{:Name workspace-container
       :Image (sub "${WorkspaceRepository.RepositoryUri}:${WorkspaceImageTag}")
       :Essential true
       :User "1000:1000"
@@ -495,38 +492,41 @@
              (sub "https://${ApiDomainName}")
              (get-att :HttpApi :ApiEndpoint)]})
 
+(defn- channel-endpoint []
+  (sub "https://${ChannelApi}.execute-api.${AWS::Region}.amazonaws.com/${ChannelStage}"))
+
 (defn env-vars
-  "環境変数のまとまり。名前と意味は sanchoris の README.md「Environment」と docs/architecture.md「Environment」。"
+  "環境変数のまとまり。名前と意味は sanchoris の docs/architecture.md「Lambda functions」「Environment」。"
   [group table-spec]
   (case group
-    :tables (into {} (for [table (:tables table-spec)]
-                       [(keyword (:tableNameEnv table)) {:Ref (table-id table)}]))
-    :docs {:SANCHORIS_DOCS_BUCKET {:Ref :DocsBucket}}
+    :store (into {:SANCHORIS_DOCS_BUCKET {:Ref :DocsBucket}}
+                 (for [table (:tables table-spec)]
+                   [(keyword (:tableNameEnv table)) {:Ref (table-id table)}]))
+    :secrets-path {:SANCHORIS_SECRETS_PATH (sub "/${Prefix}/sanchoris/")}
+    :public-url {:SANCHORIS_PUBLIC_URL (public-url)}
     :cognito {:COGNITO_USER_POOL_ID (import-value "UserPool")
               :COGNITO_CLIENT_ID (import-value "SanchorisUserPoolClient")}
-    :urls {:SANCHORIS_PUBLIC_URL (public-url)
-           :SANCHORIS_CONTROL_URL (control-url)}
-    :github-app (merge {:GITHUB_URL "https://github.com"
-                        :GITHUB_API_URL "https://api.github.com"}
-                       (secret-env "GITHUB_APP_ID" "GITHUB_APP_PRIVATE_KEY"))
-    :github-oauth (secret-env "GITHUB_APP_CLIENT_ID" "GITHUB_APP_CLIENT_SECRET" "GITHUB_APP_SLUG" "GITHUB_WEBHOOK_SECRET")
-    :stripe (merge {:STRIPE_API_URL "https://api.stripe.com"}
-                   (secret-env "STRIPE_SECRET_KEY" "STRIPE_WEBHOOK_SECRET"))
-    :run-token (secret-env "RUN_TOKEN_SIGNING_KEY")
-    :web-signing (secret-env "TASK_TOKEN_SIGNING_KEY" "OAUTH_STATE_SIGNING_KEY")
-    :credential (secret-env "SANCHORIS_CREDENTIAL_KEY")
+    :github-web {:GITHUB_URL "https://github.com"}
+    :github-api {:GITHUB_API_URL "https://api.github.com"}
+    :stripe {:STRIPE_API_URL "https://api.stripe.com"}
     :records {:SANCHORIS_RECORDS_STORE "s3"
-              :S3_RECORDS_BUCKET {:Ref :RecordsBucket}
-              :KMS_KEY_PREFIX (tenant-key-alias-prefix)}
+              :SANCHORIS_RECORDS_BUCKET {:Ref :RecordsBucket}
+              :SANCHORIS_RECORDS_KMS_KEY (get-att :Key :Arn)}
+    :channel-endpoint {:SANCHORIS_CHANNEL_ENDPOINT (channel-endpoint)}
+    :control-url {:SANCHORIS_CONTROL_URL (control-url)}
     :git {:SANCHORIS_GIT_URL "https://github.com"}
     :work-queue {:SANCHORIS_WORK_QUEUE_URL {:Ref :WorkQueue}
                  :SANCHORIS_WORK_QUEUE_ARN (get-att :WorkQueue :Arn)
                  :SANCHORIS_SCHEDULE_GROUP {:Ref :ScheduleGroup}
                  :SANCHORIS_SCHEDULER_ROLE_ARN (get-att :SchedulerRole :Arn)}
-    :ecs {:ECS_CLUSTER {:Ref :Cluster}
-          :ECS_TASK_DEFINITION (prefix-name "workspace")
-          :ECS_SUBNETS {:Ref :WorkspaceSubnet}
-          :ECS_SECURITY_GROUPS {:Ref :WorkspaceSecurityGroup}}))
+    :ecs {:SANCHORIS_ECS_CLUSTER {:Ref :Cluster}
+          :SANCHORIS_ECS_TASK_DEFINITION (prefix-name "workspace")
+          :SANCHORIS_ECS_CONTAINER workspace-container
+          :SANCHORIS_ECS_SUBNETS {:Ref :WorkspaceSubnet}
+          :SANCHORIS_ECS_SECURITY_GROUPS {:Ref :WorkspaceSecurityGroup}}))
+
+(defn- main-table-arns [table-spec]
+  (mapcat table-arns (filter #(= "main" (:role %)) (:tables table-spec))))
 
 (defn grant-statements
   "IAM の許可のまとまり。"
@@ -535,13 +535,14 @@
     :tables (table-statements table-spec)
     :docs (bucket-statements :DocsBucket ["s3:GetObject" "s3:PutObject"])
     :docs-read (bucket-statements :DocsBucket ["s3:GetObject"])
-    :records (conj (bucket-statements :RecordsBucket ["s3:GetObject" "s3:PutObject" "s3:DeleteObject"])
-                   (tenant-key-statement))
-    :logs-read (bucket-statements :LogsBucket ["s3:GetObject"])
-    :logs-write (bucket-statements :LogsBucket ["s3:GetObject" "s3:PutObject" "s3:DeleteObject"])
+    :main-read [{:Effect "Allow"
+                 :Action "dynamodb:GetItem"
+                 :Resource (vec (main-table-arns table-spec))}]
+    :records (bucket-statements :RecordsBucket ["s3:GetObject" "s3:PutObject"])
     :connections [{:Effect "Allow"
                    :Action "execute-api:ManageConnections"
-                   :Resource (sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ChannelApi}/*/*/@connections/*")}]
+                   :Resource [(sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ChannelApi}/${ChannelStage}/POST/@connections/*")
+                              (sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ChannelApi}/${ChannelStage}/DELETE/@connections/*")]}]
     :work-consume [{:Effect "Allow"
                     :Action ["sqs:ReceiveMessage" "sqs:DeleteMessage" "sqs:GetQueueAttributes" "sqs:ChangeMessageVisibility"]
                     :Resource (get-att :WorkQueue :Arn)}]
@@ -587,10 +588,13 @@
       :PolicyDocument
       {:Version "2012-10-17"
        :Statement
-       (into [{:Effect "Allow"
-               :Action ["logs:CreateLogStream" "logs:PutLogEvents"]
-               :Resource (get-att (function-log-group-id f) :Arn)}]
-             (mapcat #(grant-statements % table-spec) (:grants f)))}}]}})
+       (cond-> (into [{:Effect "Allow"
+                       :Action ["logs:CreateLogStream" "logs:PutLogEvents"]
+                       :Resource (get-att (function-log-group-id f) :Arn)}]
+                     (mapcat #(grant-statements % table-spec) (:grants f)))
+         (seq (:secrets f)) (conj {:Effect "Allow"
+                                   :Action "ssm:GetParameters"
+                                   :Resource (mapv secret-parameter-arn (:secrets f))}))}}]}})
 
 (defn resource-function [f table-spec code-dir]
   {:Type "AWS::Serverless::Function"
@@ -707,7 +711,11 @@
     :SourceArn (sub (str "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${" (name api) "}/" source-path))}})
 
 ;; --- API Gateway: WebSocket API (Run channel) ---
-;; $connect は channel の Lambda が Run のトークンを検証し、拒否するときは 2xx 以外を返す
+;; $connect は channel-authorizer の Lambda (REQUEST オーソライザー) が Authorization ヘッダーの Run のトークンを検証する
+
+(defn- lambda-invocation-uri [function-id]
+  (sub (str "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${"
+            function-id "Function.Arn}/invocations")))
 
 (defn resource-channel-api []
   {:Type "AWS::ApiGatewayV2::Api"
@@ -721,16 +729,26 @@
    :Properties
    {:ApiId {:Ref :ChannelApi}
     :IntegrationType "AWS_PROXY"
-    :IntegrationUri (sub (str "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${"
-                              channel-function "Function.Arn}/invocations"))}})
+    :IntegrationUri (lambda-invocation-uri channel-function)}})
+
+(defn resource-channel-authorizer []
+  {:Type "AWS::ApiGatewayV2::Authorizer"
+   :Properties
+   {:ApiId {:Ref :ChannelApi}
+    :Name "run-token"
+    :AuthorizerType "REQUEST"
+    :AuthorizerUri (lambda-invocation-uri channel-authorizer-function)
+    :IdentitySource ["route.request.header.Authorization"]}})
 
 (defn resource-channel-route [route-key]
   {:Type "AWS::ApiGatewayV2::Route"
    :Properties
-   {:ApiId {:Ref :ChannelApi}
-    :RouteKey route-key
-    :AuthorizationType "NONE"
-    :Target (sub "integrations/${ChannelIntegration}")}})
+   (cond-> {:ApiId {:Ref :ChannelApi}
+            :RouteKey route-key
+            :AuthorizationType "NONE"
+            :Target (sub "integrations/${ChannelIntegration}")}
+     (= route-key "$connect") (assoc :AuthorizationType "CUSTOM"
+                                     :AuthorizerId {:Ref :ChannelAuthorizer}))})
 
 (defn resource-channel-stage
   "アクセスログは API Gateway のアカウント設定のロール (sanrecap スタックが設定する) で書く。"
@@ -833,12 +851,10 @@
 
      {:Key (resource-key)
       :KeyAlias (resource-key-alias)
-      :DocsBucket (resource-bucket nil)
+      :DocsBucket (resource-bucket nil true)
       :DocsBucketPolicy (resource-bucket-policy :DocsBucket)
-      :RecordsBucket (resource-bucket record-retention-days)
+      :RecordsBucket (resource-bucket record-retention-days false)
       :RecordsBucketPolicy (resource-bucket-policy :RecordsBucket)
-      :LogsBucket (resource-bucket record-retention-days)
-      :LogsBucketPolicy (resource-bucket-policy :LogsBucket)
 
       :WorkDlq (resource-work-dlq)
       :WorkQueue (resource-work-queue)
@@ -904,7 +920,9 @@
       :ChannelApi (resource-channel-api)
       :ChannelIntegration (resource-channel-integration)
       :ChannelStage (resource-channel-stage)
-      :ChannelInvokePermission (resource-invoke-permission channel-function :ChannelApi "*")}
+      :ChannelInvokePermission (resource-invoke-permission channel-function :ChannelApi "*")
+      :ChannelAuthorizer (resource-channel-authorizer)
+      :ChannelAuthorizerInvokePermission (resource-invoke-permission channel-authorizer-function :ChannelApi "authorizers/*")}
      (into {} (for [route-key channel-routes]
                 [(route-id "Channel" route-key) (resource-channel-route route-key)]))
 
@@ -923,7 +941,7 @@
         :SanchorisControlUrl (control-url)
         :SanchorisDocsBucket {:Ref :DocsBucket}
         :SanchorisRecordsBucket {:Ref :RecordsBucket}
-        :SanchorisLogsBucket {:Ref :LogsBucket}
+        :SanchorisChannelEndpoint (channel-endpoint)
         :SanchorisWorkQueueUrl {:Ref :WorkQueue}
         :SanchorisWorkDlqUrl {:Ref :WorkDlq}
         :SanchorisRelayDlqUrl {:Ref :RelayDlq}
@@ -953,17 +971,22 @@
                                  "--query" "PrefixLists[0].PrefixListId" "--output" "text"))))
 
 (defn- ensure-secrets
-  "SSM パラメータ `/<prefix>/sanchoris/*` (secrets) が全部あることを確かめる。無ければ名前を挙げて止める。"
+  "Lambda が読む SSM パラメータ `/<prefix>/sanchoris/*` が全部あることを確かめる。無ければ名前を挙げて止める。"
   [prefix]
-  (let [names (mapv (fn [[_ ssm-name]] (format "/%s/sanchoris/%s" prefix ssm-name)) secrets)
-        found (-> (apply c.util/eshell {:out :string} "aws" "ssm" "get-parameters" "--region" "ap-northeast-1" "--names"
-                         (concat names ["--query" "Parameters[*].Name" "--output" "json"]))
-                  :out
-                  json/parse-string
-                  set)
+  (let [names (->> functions
+                   (mapcat :secrets)
+                   distinct
+                   (mapv #(format "/%s/sanchoris/%s" prefix (secret-parameter %))))
+        found (->> (partition-all 10 names)
+                   (mapcat (fn [batch]
+                             (-> (apply c.util/eshell {:out :string} "aws" "ssm" "get-parameters" "--region" "ap-northeast-1" "--names"
+                                        (concat batch ["--query" "Parameters[*].Name" "--output" "json"]))
+                                 :out
+                                 json/parse-string)))
+                   set)
         missing (remove found names)]
     (when (seq missing)
-      (throw (ex-info (str "create the SSM parameters (String) first: " (str/join " " missing))
+      (throw (ex-info (str "create the SSM parameters (String or SecureString) first: " (str/join " " missing))
                       {:missing missing})))))
 
 (defn template-input
