@@ -2,7 +2,7 @@
   "sanchoris (conao3/sanchoris) の基盤。制御側はサーバーレス: API Gateway の HTTP API (画面、webhook、OAuth) と
   WebSocket API (Run channel) の Lambda、DynamoDB (main は stream 付き、audit は追記だけ)、S3 (docs / records、SSE-KMS)、
   SQS FIFO の作業キューとそれを消費する worker の Lambda、main の stream を作業キューと EventBridge Scheduler に渡す relay の Lambda。
-  Workspace だけが ECS Fargate で動き、外向きの通信は中継 (relay のプロキシ。このスタックには含めない) だけに出られる。
+  Workspace だけが ECS Fargate で動き、外向きの通信は公開サブネットの中継 (egress relay の CONNECT プロキシ) だけに出られる。
   認証は共有の Cognito ユーザープール (cognito スタック。先にデプロイする) の JWT オーソライザー。k8s には載せない。
   表の定義は sanchoris の `infra/tables.json`、Lambda のコードは sanchoris の `target/lambda/<関数>/bootstrap.zip`。"
   (:require
@@ -26,6 +26,11 @@
 (def workspace-subnet-cidr "10.1.16.0/20")
 (def relay-port 3128)
 (def workspace-container "workspace")
+(def relay-container "relay")
+
+;; 運営者の拒否リスト。Session の Network.Allow より先に中継が当てる
+(def relay-deny-hosts
+  ["*.nanopool.org" "*.supportxmr.com" "*.minexmr.com" "*.2miners.com" "*.f2pool.com" "*.moneroocean.stream"])
 
 ;; --- Lambda 関数 ---
 ;; :env は環境変数のまとまり (env-vars)、:grants は IAM の許可のまとまり (grant-statements)。
@@ -43,12 +48,12 @@
     :secrets ["RUN_TOKEN_SIGNING_KEY"]
     :grants [:main-read :docs-read]}
    {:id "Channel" :name "channel" :timeout http-timeout-sec :memory 256
-    :env [:store :secrets-path :records :channel-endpoint]
-    :secrets ["RUN_TOKEN_SIGNING_KEY"]
+    :env [:store :secrets-path :records :channel-endpoint :github-api]
+    :secrets ["RUN_TOKEN_SIGNING_KEY" "GITHUB_APP_ID" "GITHUB_APP_PRIVATE_KEY" "SANCHORIS_CREDENTIAL_KEY"]
     :grants [:tables :docs :records :connections]}
    {:id "Worker" :name "worker" :timeout worker-timeout-sec :memory 512
-    :env [:store :secrets-path :records :channel-endpoint :github-api :ecs :control-url :git]
-    :secrets ["GITHUB_APP_ID" "GITHUB_APP_PRIVATE_KEY" "RUN_TOKEN_SIGNING_KEY"]
+    :env [:store :secrets-path :records :channel-endpoint :github-api :ecs :control-url :git :relay]
+    :secrets ["GITHUB_APP_ID" "GITHUB_APP_PRIVATE_KEY" "RUN_TOKEN_SIGNING_KEY" "RELAY_TOKEN_SIGNING_KEY"]
     :grants [:tables :docs :records :connections :work-consume :ecs]}
    {:id "Relay" :name "relay" :timeout relay-timeout-sec :memory 256
     :env [:work-queue]
@@ -82,7 +87,8 @@
    ["RUN_TOKEN_SIGNING_KEY" "run-token-signing-key"]
    ["TASK_TOKEN_SIGNING_KEY" "task-token-signing-key"]
    ["OAUTH_STATE_SIGNING_KEY" "oauth-state-signing-key"]
-   ["SANCHORIS_CREDENTIAL_KEY" "credential-key"]])
+   ["SANCHORIS_CREDENTIAL_KEY" "credential-key"]
+   ["RELAY_TOKEN_SIGNING_KEY" "relay-token-signing-key"]])
 
 ;; 秘密ではない String のパラメータ。stripe-portal-config はスタックが api の STRIPE_PORTAL_CONFIGURATION に解決し、
 ;; stripe-price-<plan> はデプロイ後の PLANS の投入 (sanchoris-dynamo-create) が読む
@@ -261,13 +267,15 @@
     :MessageRetentionPeriod 1209600
     :SqsManagedSseEnabled true}})
 
-(defn resource-queue-policy [queues]
+(defn resource-queue-policy
+  "SQS のキューのポリシーは 1 つの Statement に 1 つの Resource しか持てないので、キューごとに作る。"
+  [queue]
   {:Type "AWS::SQS::QueuePolicy"
    :Properties
-   {:Queues (mapv (fn [q] {:Ref q}) queues)
+   {:Queues [{:Ref queue}]
     :PolicyDocument
     {:Version "2012-10-17"
-     :Statement [(secure-transport-deny (mapv #(get-att % :Arn) queues))]}}})
+     :Statement [(secure-transport-deny (get-att queue :Arn))]}}})
 
 (defn resource-schedule-group []
   {:Type "AWS::Scheduler::ScheduleGroup"
@@ -308,7 +316,7 @@
 
 ;; --- ネットワークと ECS (Workspace) ---
 ;; Workspace のサブネットはインターネットへの経路を持たない。外向きは中継 (relay のプロキシ) と、
-;; イメージの取得とログのための VPC エンドポイントだけ。中継は公開サブネットに置く (このスタックには含めない)
+;; イメージの取得とログのための VPC エンドポイントだけ。中継は公開サブネットに置く (下の「中継」)
 
 (defn resource-vpc []
   {:Type "AWS::EC2::VPC"
@@ -461,7 +469,7 @@
     :NetworkMode "awsvpc"
     :Cpu {:Ref :WorkspaceCpu}
     :Memory {:Ref :WorkspaceMemory}
-    :RuntimePlatform {:CpuArchitecture "ARM64" :OperatingSystemFamily "LINUX"}
+    :RuntimePlatform {:CpuArchitecture "X86_64" :OperatingSystemFamily "LINUX"}
     :ExecutionRoleArn (get-att :WorkspaceExecutionRole :Arn)
     :ContainerDefinitions
     [{:Name workspace-container
@@ -474,6 +482,127 @@
                          :Options {"awslogs-group" {:Ref :WorkspaceLogGroup}
                                    "awslogs-region" {:Ref "AWS::Region"}
                                    "awslogs-stream-prefix" "workspace"}}}]}})
+
+
+;; --- 中継 (egress relay) ---
+;; Workspace の HTTPS_PROXY。公開サブネットの Fargate サービスで、CONNECT を 443 番だけ通す。
+;; 運営者の拒否リスト、プラットフォームの通信先、Run ごとの Network.Allow (worker が署名した relay のトークン) の順に当てる
+
+(defn- relay-platform-hosts
+  "Session の Network.Allow に書かなくても Workspace が出られる通信先 (Worker の provider、GitHub、Run channel、セッションの記録)。"
+  []
+  {"Fn::Join" [","
+               ["api.anthropic.com" "console.anthropic.com" "platform.claude.com" "claude.ai"
+                "github.com" "api.github.com" "*.githubusercontent.com"
+                {"Fn::If" ["UseApiDomains"
+                           {:Ref :ChannelDomainName}
+                           (sub "${ChannelApi}.execute-api.${AWS::Region}.amazonaws.com")]}
+                (sub "${RecordsBucket}.s3.${AWS::Region}.amazonaws.com")]]})
+
+(defn resource-relay-repository []
+  {:Type "AWS::ECR::Repository"
+   :Properties
+   {:RepositoryName (prefix-name "relay")
+    :ImageScanningConfiguration {:ScanOnPush true}
+    :LifecyclePolicy
+    {:LifecyclePolicyText
+     (json/generate-string
+      {:rules [{:rulePriority 1
+                :description "keep the last 5 images"
+                :selection {:tagStatus "any" :countType "imageCountMoreThan" :countNumber 5}
+                :action {:type "expire"}}]})}}})
+
+(defn resource-relay-execution-role
+  "中継のイメージを取り、ログを書き、署名鍵を SSM から読んでコンテナに渡すためのロール。"
+  []
+  {:Type "AWS::IAM::Role"
+   :Properties
+   {:AssumeRolePolicyDocument
+    {:Version "2012-10-17"
+     :Statement [{:Effect "Allow"
+                  :Principal {:Service "ecs-tasks.amazonaws.com"}
+                  :Action "sts:AssumeRole"
+                  :Condition {:StringEquals {"aws:SourceAccount" {:Ref "AWS::AccountId"}}}}]}
+    :Policies
+    [{:PolicyName "sanchoris-relay-execution"
+      :PolicyDocument
+      {:Version "2012-10-17"
+       :Statement [{:Effect "Allow"
+                    :Action "ecr:GetAuthorizationToken"
+                    :Resource "*"}
+                   {:Effect "Allow"
+                    :Action ["ecr:BatchGetImage" "ecr:GetDownloadUrlForLayer" "ecr:BatchCheckLayerAvailability"]
+                    :Resource (get-att :RelayRepository :Arn)}
+                   {:Effect "Allow"
+                    :Action ["logs:CreateLogStream" "logs:PutLogEvents"]
+                    :Resource (get-att :EgressRelayLogGroup :Arn)}
+                   {:Effect "Allow"
+                    :Action "ssm:GetParameters"
+                    :Resource (secret-parameter-arn "RELAY_TOKEN_SIGNING_KEY")}]}}]}})
+
+(defn resource-relay-task-definition
+  "中継のタスク定義。タスクロールは持たない。"
+  []
+  {:Type "AWS::ECS::TaskDefinition"
+   :Properties
+   {:Family (prefix-name "relay")
+    :RequiresCompatibilities ["FARGATE"]
+    :NetworkMode "awsvpc"
+    :Cpu "256"
+    :Memory "512"
+    :RuntimePlatform {:CpuArchitecture "X86_64" :OperatingSystemFamily "LINUX"}
+    :ExecutionRoleArn (get-att :RelayExecutionRole :Arn)
+    :ContainerDefinitions
+    [{:Name relay-container
+      :Image (sub "${RelayRepository.RepositoryUri}:${RelayImageTag}")
+      :Essential true
+      :User "1000:1000"
+      :PortMappings [{:ContainerPort relay-port :Protocol "tcp"}]
+      :Environment [{:Name "SANCHORIS_RELAY_PORT" :Value (str relay-port)}
+                    {:Name "SANCHORIS_RELAY_PLATFORM_HOSTS" :Value (relay-platform-hosts)}
+                    {:Name "SANCHORIS_RELAY_DENY_HOSTS" :Value (str/join "," relay-deny-hosts)}]
+      :Secrets [{:Name "RELAY_TOKEN_SIGNING_KEY"
+                 :ValueFrom (secret-parameter-arn "RELAY_TOKEN_SIGNING_KEY")}]
+      :LogConfiguration {:LogDriver "awslogs"
+                         :Options {"awslogs-group" {:Ref :EgressRelayLogGroup}
+                                   "awslogs-region" {:Ref "AWS::Region"}
+                                   "awslogs-stream-prefix" "relay"}}}]}})
+
+(defn resource-relay-namespace
+  "Workspace が中継を relay.<prefix>-sanchoris.internal で引くための Cloud Map の名前空間 (VPC のプライベートなホストゾーン)。"
+  []
+  {:Type "AWS::ServiceDiscovery::PrivateDnsNamespace"
+   :Condition "UseWorkspaceEndpoints"
+   :Properties
+   {:Name (sub "${Prefix}-sanchoris.internal")
+    :Vpc {:Ref :Vpc}}})
+
+(defn resource-relay-discovery []
+  {:Type "AWS::ServiceDiscovery::Service"
+   :Condition "UseWorkspaceEndpoints"
+   :Properties
+   {:Name "relay"
+    :NamespaceId {:Ref :RelayNamespace}
+    :DnsConfig {:RoutingPolicy "MULTIVALUE"
+                :DnsRecords [{:Type "A" :TTL 10}]}
+    :HealthCheckCustomConfig {:FailureThreshold 1}}})
+
+(defn resource-relay-service
+  "公開サブネットで公開 IP を持つ 1 タスク。Workspace のセキュリティグループからの 3128 番だけを受ける。"
+  []
+  {:Type "AWS::ECS::Service"
+   :Condition "UseWorkspaceEndpoints"
+   :Properties
+   {:ServiceName (prefix-name "relay")
+    :Cluster {:Ref :Cluster}
+    :LaunchType "FARGATE"
+    :TaskDefinition {:Ref :RelayTaskDefinition}
+    :DesiredCount 1
+    :DeploymentConfiguration {:MinimumHealthyPercent 100 :MaximumPercent 200}
+    :NetworkConfiguration {:AwsvpcConfiguration {:Subnets [{:Ref :PublicSubnet}]
+                                                  :SecurityGroups [{:Ref :RelaySecurityGroup}]
+                                                  :AssignPublicIp "ENABLED"}}
+    :ServiceRegistries [{:RegistryArn (get-att :RelayDiscovery :Arn)}]}})
 
 ;; --- Lambda (IAM、環境変数、関数) ---
 
@@ -521,6 +650,7 @@
     :channel-endpoint {:SANCHORIS_CHANNEL_ENDPOINT (channel-endpoint)}
     :control-url {:SANCHORIS_CONTROL_URL (control-url)}
     :git {:SANCHORIS_GIT_URL "https://github.com"}
+    :relay {:SANCHORIS_RELAY_URL (sub (str "http://relay.${Prefix}-sanchoris.internal:" relay-port))}
     :work-queue {:SANCHORIS_WORK_QUEUE_URL {:Ref :WorkQueue}
                  :SANCHORIS_WORK_QUEUE_ARN (get-att :WorkQueue :Arn)
                  :SANCHORIS_SCHEDULE_GROUP {:Ref :ScheduleGroup}
@@ -835,6 +965,9 @@
       :WorkspaceImageTag {:Type "String"
                           :Default "latest"
                           :Description "Workspace のイメージのタグ"}
+      :RelayImageTag {:Type "String"
+                      :Default "latest"
+                      :Description "中継のイメージのタグ"}
       :WorkspaceCpu {:Type "String"
                      :Default "2048"
                      :Description "Workspace のタスクの CPU (1024 = 1 vCPU)"}
@@ -867,7 +1000,9 @@
       :WorkDlq (resource-work-dlq)
       :WorkQueue (resource-work-queue)
       :RelayDlq (resource-relay-dlq)
-      :QueuePolicy (resource-queue-policy [:WorkQueue :WorkDlq :RelayDlq])
+      :WorkQueuePolicy (resource-queue-policy :WorkQueue)
+      :WorkDlqPolicy (resource-queue-policy :WorkDlq)
+      :RelayDlqPolicy (resource-queue-policy :RelayDlq)
       :ScheduleGroup (resource-schedule-group)
       :SchedulerRole (resource-scheduler-role)}
      (into {} (for [[id job rate] rate-schedules]
@@ -903,12 +1038,22 @@
       :RelayHttpEgress (resource-egress :RelaySecurityGroup {:FromPort 80 :ToPort 80 :CidrIp "0.0.0.0/0"})
       :EndpointFromWorkspaceIngress (resource-ingress :EndpointSecurityGroup {:FromPort 443 :ToPort 443
                                                                               :SourceSecurityGroupId {:Ref :WorkspaceSecurityGroup}})
+      :EndpointFromRelayIngress (resource-ingress :EndpointSecurityGroup {:FromPort 443 :ToPort 443
+                                                                          :SourceSecurityGroupId {:Ref :RelaySecurityGroup}})
 
       :WorkspaceRepository (resource-workspace-repository)
       :Cluster (resource-cluster)
       :WorkspaceLogGroup (resource-log-group (sub "/aws/ecs/${Prefix}-sanchoris-workspace"))
       :WorkspaceExecutionRole (resource-workspace-execution-role)
-      :WorkspaceTaskDefinition (resource-workspace-task-definition)}
+      :WorkspaceTaskDefinition (resource-workspace-task-definition)
+
+      :RelayRepository (resource-relay-repository)
+      :EgressRelayLogGroup (resource-log-group (sub "/aws/ecs/${Prefix}-sanchoris-relay"))
+      :RelayExecutionRole (resource-relay-execution-role)
+      :RelayTaskDefinition (resource-relay-task-definition)
+      :RelayNamespace (resource-relay-namespace)
+      :RelayDiscovery (resource-relay-discovery)
+      :RelayService (resource-relay-service)}
 
      (function-resources table-spec code-dir)
      {:WorkEventSource (resource-work-event-source)}
@@ -954,6 +1099,7 @@
         :SanchorisWorkDlqUrl {:Ref :WorkDlq}
         :SanchorisRelayDlqUrl {:Ref :RelayDlq}
         :SanchorisWorkspaceRepositoryUri (get-att :WorkspaceRepository :RepositoryUri)
+        :SanchorisRelayRepositoryUri (get-att :RelayRepository :RepositoryUri)
         :SanchorisCluster {:Ref :Cluster}
         :SanchorisWorkspaceSubnet {:Ref :WorkspaceSubnet}
         :SanchorisPublicSubnet {:Ref :PublicSubnet}
@@ -1041,6 +1187,7 @@
                                  :S3PrefixListId (s3-prefix-list-id)
                                  :EnableWorkspaceEndpoints (if (= "true" (System/getenv "SANCHORIS_ENABLE_WORKSPACES")) "true" "false")
                                  :WorkspaceImageTag (or (System/getenv "SANCHORIS_WORKSPACE_IMAGE_TAG") "latest")
+                                 :RelayImageTag (or (System/getenv "SANCHORIS_RELAY_IMAGE_TAG") "latest")
                                  :WorkerMaxConcurrency (or (System/getenv "SANCHORIS_WORKER_MAX_CONCURRENCY") "5")}
                           cert
                           (assoc :ApiDomainName (:sanchoris-domain-name param)
