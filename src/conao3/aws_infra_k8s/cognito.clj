@@ -111,6 +111,38 @@
     :AccessTokenValidity 60
     :RefreshTokenValidity 30}})
 
+(defn- sanchoris-urls
+  "sanchoris の画面のオリジン (開発は portless の sanchoris.localhost:1355、デプロイ先は <env>-sanchoris.sancode.dev、
+   prd は sanchoris.sancode.dev) に path を付けた URL。ドメインは aws_infra_k8s.clj の sanchoris-domain と同じ。"
+  [path]
+  {"Fn::If" ["IsPrd"
+             [(str "https://sanchoris.sancode.dev" path)]
+             [(str "http://sanchoris.localhost:1355" path)
+              {"Fn::Sub" (str "https://${Env}-sanchoris.sancode.dev" path)}]]})
+
+(defn resource-user-pool-client-sanchoris
+  "sanchoris の画面用。認可コード (シークレットなし)。サインインは Google だけ。"
+  []
+  {:Type "AWS::Cognito::UserPoolClient"
+   :DependsOn ["UserPoolIdentityProviderGoogle"]
+   :Properties
+   {:ClientName (a.cfn/prefix "user-pool-client-sanchoris")
+    :UserPoolId {:Ref :UserPool}
+    :GenerateSecret false
+    :ExplicitAuthFlows ["ALLOW_REFRESH_TOKEN_AUTH"]
+    :PreventUserExistenceErrors "ENABLED"
+    :EnableTokenRevocation true
+    :CallbackURLs (sanchoris-urls "/auth/callback")
+    :LogoutURLs (sanchoris-urls "/login")
+    :AllowedOAuthFlows ["code"]
+    :AllowedOAuthScopes ["email" "openid" "profile"]
+    :AllowedOAuthFlowsUserPoolClient true
+    :SupportedIdentityProviders ["Google"]
+    :TokenValidityUnits {:IdToken "minutes" :AccessToken "minutes" :RefreshToken "days"}
+    :IdTokenValidity 60
+    :AccessTokenValidity 60
+    :RefreshTokenValidity 30}})
+
 (defn resource-identity-pool []
   {:Type "AWS::Cognito::IdentityPool"
    :Properties
@@ -175,6 +207,7 @@
      :UserPoolIdentityProviderGoogle (resource-user-pool-identity-provider-google)
      :UserPoolClient (resource-user-pool-client)
      :UserPoolClientSanrecap (resource-user-pool-client-sanrecap)
+     :UserPoolClientSanchoris (resource-user-pool-client-sanchoris)
      :IdentityPool (resource-identity-pool)
      :IdentityPoolRoleAuthenticated (resource-identity-pool-role-authenticated)
      :IdentityPoolRoleUnauthenticated (resource-identity-pool-role-unauthenticated)
@@ -188,6 +221,7 @@
       :UserPoolDomain {:Ref :DomainName}
       :UserPoolClient {:Ref :UserPoolClient}
       :SanrecapUserPoolClient {:Ref :UserPoolClientSanrecap}
+      :SanchorisUserPoolClient {:Ref :UserPoolClientSanchoris}
       :IdentityPool {:Ref :IdentityPool}})}))
 
 (defn- certificate-arn [param]
