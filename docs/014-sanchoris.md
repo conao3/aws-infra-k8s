@@ -22,7 +22,7 @@ The function list is data (`functions` in `src/conao3/aws_infra_k8s/sanchoris.cl
 
 | Function | Trigger | Timeout / memory | Environment | Secrets (SSM) | Permissions |
 |----------|---------|------------------|-------------|---------------|-------------|
-| `api` | HTTP API (payload 2.0): `ANY /api/{proxy+}` (JWT) and `$default` | 29 s / 512 MB | `SANCHORIS_TABLE_MAIN`, `SANCHORIS_TABLE_AUDIT`, `SANCHORIS_DOCS_BUCKET`, `SANCHORIS_SECRETS_PATH`, `SANCHORIS_PUBLIC_URL`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, `GITHUB_URL`, `GITHUB_API_URL`, `STRIPE_API_URL`, `SANCHORIS_RECORDS_STORE=s3`, `SANCHORIS_RECORDS_BUCKET`, `SANCHORIS_RECORDS_KMS_KEY` | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_SLUG`, `GITHUB_WEBHOOK_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `TASK_TOKEN_SIGNING_KEY`, `OAUTH_STATE_SIGNING_KEY`, `SANCHORIS_CREDENTIAL_KEY` | tables, docs, records + the stack key, `ssm:GetParameters` on its parameters |
+| `api` | HTTP API (payload 2.0): `ANY /api/{proxy+}` (JWT) and `$default` | 29 s / 512 MB | `SANCHORIS_TABLE_MAIN`, `SANCHORIS_TABLE_AUDIT`, `SANCHORIS_DOCS_BUCKET`, `SANCHORIS_SECRETS_PATH`, `SANCHORIS_PUBLIC_URL`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, `GITHUB_URL`, `GITHUB_API_URL`, `STRIPE_API_URL`, `STRIPE_PORTAL_CONFIGURATION`, `SANCHORIS_RECORDS_STORE=s3`, `SANCHORIS_RECORDS_BUCKET`, `SANCHORIS_RECORDS_KMS_KEY` | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_SLUG`, `GITHUB_WEBHOOK_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `TASK_TOKEN_SIGNING_KEY`, `OAUTH_STATE_SIGNING_KEY`, `SANCHORIS_CREDENTIAL_KEY` | tables, docs, records + the stack key, `ssm:GetParameters` on its parameters |
 | `channel-authorizer` | REQUEST authorizer of the WebSocket API's `$connect` | 10 s / 256 MB | `SANCHORIS_TABLE_MAIN`, `SANCHORIS_TABLE_AUDIT`, `SANCHORIS_DOCS_BUCKET`, `SANCHORIS_SECRETS_PATH` | `RUN_TOKEN_SIGNING_KEY` | `dynamodb:GetItem` on `main`, docs read, `ssm:GetParameters` on its parameter |
 | `channel` | WebSocket API `$connect`, `$default`, `$disconnect` | 29 s / 256 MB | `SANCHORIS_TABLE_MAIN`, `SANCHORIS_TABLE_AUDIT`, `SANCHORIS_DOCS_BUCKET`, `SANCHORIS_SECRETS_PATH`, `SANCHORIS_RECORDS_STORE=s3`, `SANCHORIS_RECORDS_BUCKET`, `SANCHORIS_RECORDS_KMS_KEY`, `SANCHORIS_CHANNEL_ENDPOINT` | `RUN_TOKEN_SIGNING_KEY` | tables, docs, records + the stack key, `execute-api:ManageConnections` (POST and DELETE on `@connections` of the stage), `ssm:GetParameters` on its parameter |
 | `worker` | Work queue (batch 10, `ReportBatchItemFailures`, `MaximumConcurrency` = `WorkerMaxConcurrency`, default 5) | 300 s / 512 MB | `SANCHORIS_TABLE_MAIN`, `SANCHORIS_TABLE_AUDIT`, `SANCHORIS_DOCS_BUCKET`, `SANCHORIS_SECRETS_PATH`, `SANCHORIS_RECORDS_STORE=s3`, `SANCHORIS_RECORDS_BUCKET`, `SANCHORIS_RECORDS_KMS_KEY`, `SANCHORIS_CHANNEL_ENDPOINT`, `GITHUB_API_URL`, `SANCHORIS_ECS_CLUSTER`, `SANCHORIS_ECS_TASK_DEFINITION`, `SANCHORIS_ECS_CONTAINER`, `SANCHORIS_ECS_SUBNETS`, `SANCHORIS_ECS_SECURITY_GROUPS`, `SANCHORIS_CONTROL_URL`, `SANCHORIS_GIT_URL` | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `RUN_TOKEN_SIGNING_KEY` | tables, docs, records + the stack key, `ManageConnections`, receive/delete/change visibility on the work queue, `ecs:RunTask` of the Workspace family on this cluster, stop/describe/tag its tasks, pass the execution role, `ssm:GetParameters` on its parameters |
@@ -70,6 +70,13 @@ The relay is not in this stack. It goes in the public subnet with the relay secu
    aws ssm put-parameter --type SecureString --name /dev-k8s/sanchoris/run-token-signing-key --value "$(openssl rand -hex 32)"
    ```
 
+   The same path holds four String parameters that are not secret, and `deploy sanchoris` checks them too:
+
+   | Name | Read by |
+   |------|---------|
+   | `stripe-portal-config` | The stack parameter `StripePortalConfiguration` (`AWS::SSM::Parameter::Value<String>`), resolved into the `api` function's `STRIPE_PORTAL_CONFIGURATION`. The Stripe account is shared with other products, so every customer portal session names this configuration (`bpc_...`). A new value takes effect on the next stack update |
+   | `stripe-price-starter`, `stripe-price-pro`, `stripe-price-max` | Seeding `PLANS` after a deploy (below) |
+
 3. sanchoris checked out at `~/ghq/github.com/conao3/sanchoris` (or `SANCHORIS_DIR`) with `infra/tables.json` and the built functions `target/lambda/{api,channel-authorizer,channel,worker,relay}/bootstrap.zip` (`VITE_COGNITO_DOMAIN=<Hosted UI domain> VITE_COGNITO_CLIENT_ID=<SanchorisUserPoolClient> nix develop -c pnpm build:lambda`; the api zip embeds the frontend built with those values).
 4. The API Gateway account setting has a CloudWatch Logs role (the WebSocket stage writes access logs through it). The `sanrecap` stack sets it in dev and prd.
 
@@ -91,6 +98,17 @@ nix develop --command clojure -M -m conao3.aws-infra-k8s deploy sanchoris
 | `EnableWorkspaceEndpoints` | `SANCHORIS_ENABLE_WORKSPACES=true`; default `false` |
 | `WorkspaceImageTag` | `SANCHORIS_WORKSPACE_IMAGE_TAG`; default `latest` |
 | `WorkerMaxConcurrency` | `SANCHORIS_WORKER_MAX_CONCURRENCY`; default 5 |
+
+After each `deploy sanchoris`, seed the plan catalog. The functions' role denies writes to the `PLANS` partition, so an administrator runs sanchoris's `sanchoris-dynamo-create` against the stack's tables; it writes `infra/plans.json` with the Stripe price of each paid plan and stops when one is missing:
+
+```bash
+price() { aws ssm get-parameter --name "/dev-k8s/sanchoris/stripe-price-$1" --query Parameter.Value --output text; }
+SANCHORIS_TABLE_MAIN=dev-k8s-sanchoris-main SANCHORIS_TABLE_AUDIT=dev-k8s-sanchoris-audit \
+  SANCHORIS_STRIPE_PRICE_STARTER=$(price starter) \
+  SANCHORIS_STRIPE_PRICE_PRO=$(price pro) \
+  SANCHORIS_STRIPE_PRICE_MAX=$(price max) \
+  nix develop -c cargo run -q -p sanchoris-core --bin sanchoris-dynamo-create
+```
 
 Delete in the reverse order (sanchoris, then sanchoris-certificate and cognito). The tables have deletion protection: turn it off (`aws dynamodb update-table --no-deletion-protection-enabled`) before deleting the stack, and empty the buckets and the ECR repository first.
 

@@ -84,6 +84,11 @@
    ["OAUTH_STATE_SIGNING_KEY" "oauth-state-signing-key"]
    ["SANCHORIS_CREDENTIAL_KEY" "credential-key"]])
 
+;; 秘密ではない String のパラメータ。stripe-portal-config はスタックが api の STRIPE_PORTAL_CONFIGURATION に解決し、
+;; stripe-price-<plan> はデプロイ後の PLANS の投入 (sanchoris-dynamo-create) が読む
+(def string-parameters
+  ["stripe-portal-config" "stripe-price-starter" "stripe-price-pro" "stripe-price-max"])
+
 ;; EventBridge Scheduler の定期実行 (architecture.md「Rate schedules」)
 (def rate-schedules
   [["SweepConfigs" "sweep_configs" "rate(5 minutes)"]
@@ -508,7 +513,8 @@
               :COGNITO_CLIENT_ID (import-value "SanchorisUserPoolClient")}
     :github-web {:GITHUB_URL "https://github.com"}
     :github-api {:GITHUB_API_URL "https://api.github.com"}
-    :stripe {:STRIPE_API_URL "https://api.stripe.com"}
+    :stripe {:STRIPE_API_URL "https://api.stripe.com"
+             :STRIPE_PORTAL_CONFIGURATION {:Ref :StripePortalConfiguration}}
     :records {:SANCHORIS_RECORDS_STORE "s3"
               :SANCHORIS_RECORDS_BUCKET {:Ref :RecordsBucket}
               :SANCHORIS_RECORDS_KMS_KEY (get-att :Key :Arn)}
@@ -809,7 +815,9 @@
    {:Parameters
     (merge
      (a.cfn/list-string-parameters [:Env :Prefix])
-     {:ApiDomainName {:Type "String"
+     {:StripePortalConfiguration {:Type "AWS::SSM::Parameter::Value<String>"
+                                  :Description "Stripe のカスタマーポータル設定の ID (bpc_...) を置いた SSM パラメータ (String) の名前。Stripe のアカウントを他の製品と共有するので、ポータルのセッションは必ずこの設定を指定する"}
+      :ApiDomainName {:Type "String"
                       :Default ""
                       :Description "HTTP API のカスタムドメイン (dev-sanchoris.sancode.dev など)。空なら作らない"}
       :ChannelDomainName {:Type "String"
@@ -971,12 +979,11 @@
                                  "--query" "PrefixLists[0].PrefixListId" "--output" "text"))))
 
 (defn- ensure-secrets
-  "Lambda が読む SSM パラメータ `/<prefix>/sanchoris/*` が全部あることを確かめる。無ければ名前を挙げて止める。"
+  "Lambda とスタックと PLANS の投入が読む SSM パラメータ `/<prefix>/sanchoris/*` が全部あることを確かめる。無ければ名前を挙げて止める。"
   [prefix]
-  (let [names (->> functions
-                   (mapcat :secrets)
-                   distinct
-                   (mapv #(format "/%s/sanchoris/%s" prefix (secret-parameter %))))
+  (let [names (->> (concat (map secret-parameter (distinct (mapcat :secrets functions)))
+                           string-parameters)
+                   (mapv #(format "/%s/sanchoris/%s" prefix %)))
         found (->> (partition-all 10 names)
                    (mapcat (fn [batch]
                              (-> (apply c.util/eshell {:out :string} "aws" "ssm" "get-parameters" "--region" "ap-northeast-1" "--names"
@@ -1030,6 +1037,7 @@
                    "--parameter-overrides"
                    (->> (cond-> {:Env (-> param :env)
                                  :Prefix prefix
+                                 :StripePortalConfiguration (format "/%s/sanchoris/stripe-portal-config" prefix)
                                  :S3PrefixListId (s3-prefix-list-id)
                                  :EnableWorkspaceEndpoints (if (= "true" (System/getenv "SANCHORIS_ENABLE_WORKSPACES")) "true" "false")
                                  :WorkspaceImageTag (or (System/getenv "SANCHORIS_WORKSPACE_IMAGE_TAG") "latest")
