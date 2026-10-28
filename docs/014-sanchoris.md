@@ -58,7 +58,7 @@ A Workspace that stops before its agent connects to the Run channel (image pull 
 
 The worker starts every Workspace with the capacity provider `FARGATE_SPOT` and, when the `RunTask` response says Spot has no capacity, once more with `FARGATE` (On-Demand); the Workspace item records which one started it (sanchoris `docs/architecture.md`, "Workspaces"). The Session's `Workspace.Architecture` (`arm64` or `x86_64`) picks the task definition. Fargate sends `SIGTERM` two minutes before it interrupts a Spot task, and the task definitions' `stopTimeout` (120 s) gives the agent that time to save its session record; the worker then restores the session in a new Workspace.
 
-Push the images before the first deploy with `SANCHORIS_ENABLE_WORKSPACES=true`. The Workspace image runs every `RUN` step on the build platform and only copies the target's files into the target's base image, and the relay image only copies files, so an x86_64 host builds both architectures without emulation:
+`scripts/deploy.mjs` builds and pushes the images, which must exist before the first deploy with `SANCHORIS_ENABLE_WORKSPACES=true`. The Workspace image runs every `RUN` step on the build platform and only copies the target's files into the target's base image, and the relay image only copies files, so an x86_64 host builds both architectures without emulation. By hand:
 
 ```bash
 R=<account>.dkr.ecr.ap-northeast-1.amazonaws.com
@@ -111,15 +111,23 @@ docker push $R/dev-k8s-sanchoris-relay:latest
 
 ## Deploy
 
+Deploy an environment from the sanchoris checkout with its `scripts/deploy.mjs`, which runs this repository's `deploy sanchoris`:
+
 ```bash
-export AWS_PROFILE=conao3.dev.k8s AWS_REGION=ap-northeast-1
-export SANCHORIS_ENABLE_WORKSPACES=true SANCHORIS_WORKSPACE_NETWORK=public SANCHORIS_WORKER_MAX_CONCURRENCY=2
-nix develop --command clojure -M -m conao3.aws-infra-k8s deploy cognito
-nix develop --command clojure -M -m conao3.aws-infra-k8s deploy sanchoris-certificate
-nix develop --command clojure -M -m conao3.aws-infra-k8s deploy sanchoris
+AWS_INFRA_K8S_DIR=<this checkout> node scripts/deploy.mjs dev   # or prd; --plan only reads
 ```
 
-prd uses the same commands with `DEPLOY_ENV=prd AWS_PROFILE=conao3.prd.k8s` ("Environments").
+It reads the Cognito values from the exports, builds the Lambda zips for them (kept per environment and sources in `target/lambda-cache`), pushes the Workspace and relay images whose source hash ECR does not have yet (tags `src-<hash>` next to `latest-arm64`, `latest-amd64`, and `latest`), renders the template with `template sanchoris` from an uberjar of this repository, and seeds `PLANS`. On dev, when the template hash equals the stack output `SanchorisTemplateHash`, it updates the five functions with `aws lambda update-function-code` and skips CloudFormation; otherwise, and always on prd, it runs `deploy sanchoris` with the stack settings of "Environments", waits for the stack, and then updates any function whose `CodeSha256` still differs from the local zip. The next CloudFormation deploy uploads the zips under new keys and points `CodeUri` at them, so the functions and the template agree again. It prints one JSON summary with the time of each step.
+
+The stacks it depends on are deployed with the module directly:
+
+```bash
+export AWS_PROFILE=conao3.dev.k8s AWS_REGION=ap-northeast-1
+nix develop --command clojure -M -m conao3.aws-infra-k8s deploy cognito
+nix develop --command clojure -M -m conao3.aws-infra-k8s deploy sanchoris-certificate
+```
+
+prd uses the same commands with `DEPLOY_ENV=prd AWS_PROFILE=conao3.prd.k8s` ("Environments"). `deploy sanchoris` by hand needs `SANCHORIS_ENABLE_WORKSPACES=true SANCHORIS_WORKSPACE_NETWORK=public SANCHORIS_WORKER_MAX_CONCURRENCY=2` and `SANCHORIS_DIR`.
 
 `deploy sanchoris` writes `target/cfn/sanchoris.json`, runs `sam validate --lint` when the template differs from the last one that passed (`target/cfn/sanchoris.lint-ok`), prints the time of each step as `[time] <step> <seconds>s` on stderr, and passes these parameters:
 
@@ -147,7 +155,7 @@ for f in public strict; do
 done
 ```
 
-After each `deploy sanchoris`, seed the plan catalog. The functions' role denies writes to the `PLANS` partition, so an administrator runs sanchoris's `sanchoris-dynamo-create` against the stack's tables; it writes `infra/plans.json` with the Stripe price of each paid plan and stops when one is missing:
+`scripts/deploy.mjs` seeds the plan catalog after each deploy. The functions' role denies writes to the `PLANS` partition, so an administrator runs sanchoris's `sanchoris-dynamo-create` against the stack's tables; it writes `infra/plans.json` with the Stripe price of each paid plan and stops when one is missing. By hand:
 
 ```bash
 price() { aws ssm get-parameter --name "/dev-k8s/sanchoris/stripe-price-$1" --query Parameter.Value --output text; }
@@ -186,7 +194,7 @@ Steps for a new environment, in order:
 2. Create the GitHub App under `sancode-org` with the manifest flow (public; permissions: Metadata read, Contents, Issues, and Pull requests read and write, Checks and Actions read; events: `issues`, `issue_comment`, `issue_dependencies`, `pull_request`, `push`, `check_run`, `repository`; webhook `<public URL>/webhooks/github`, callback `<public URL>/auth/github/callback`, Setup URL `<public URL>/auth/github/setup`), and put its id, slug, private key, client id, client secret, and webhook secret into SSM.
 3. In Stripe, create the Starter, Pro, and Max products and monthly USD prices (lookup keys `sanchoris_<plan>`), a customer portal configuration that switches between the three prices without proration and cancels at the period end, a webhook endpoint `<public URL>/webhooks/stripe` with `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, and `invoice.payment_failed`, and the app's restricted key (Customers, Products, Prices read; Subscriptions, Checkout Sessions, Customer Portal write). Put the key, the webhook secret, the prices, and the portal configuration into SSM. A temporary key with write access to Products, Prices, Customer Portal, and Webhook Endpoints creates the objects through the API; expire it afterwards.
 4. Generate the five signing keys (`run-token-signing-key`, `task-token-signing-key`, `oauth-state-signing-key`, `relay-token-signing-key`: 32 random bytes in hex; `credential-key`: 32 random bytes in base64).
-5. Build the functions for the environment, `deploy sanchoris`, push the Workspace and relay images, add the two proxied CNAMEs, and seed `PLANS`.
+5. Run sanchoris `scripts/deploy.mjs <env>` (after adding the environment to `scripts/lib/aws-env.mjs`), add the two proxied CNAMEs, and check that it seeded `PLANS`.
 
 ## Custom domains behind Cloudflare
 
