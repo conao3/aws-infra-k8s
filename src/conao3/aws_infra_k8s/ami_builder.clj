@@ -116,7 +116,7 @@
   {:Type "AWS::Serverless::Function"
    :Properties
    {:FunctionName (a.cfn/prefix "ami-importer")
-    :Runtime "python3.12"
+    :Runtime "python3.14"
     :Handler "lambda_function.lambda_handler"
     :CodeUri "../../lambda/ami-importer"
     :Role {"Fn::GetAtt" [:LambdaRole :Arn]}
