@@ -7,15 +7,15 @@ The `sanchoris` module builds the AWS side of [sanchoris](https://github.com/con
 | Group | Resources |
 |-------|-----------|
 | Tables | One `AWS::DynamoDB::Table` per entry of `infra/tables.json` (`properties` as is, name `<prefix>-sanchoris-<role>`). Today: `main` (stream `NEW_IMAGE`, TTL `expires_at`, two GSIs) and `audit` (append-only). Both on-demand, PITR, deletion protection |
-| Objects | KMS key (`alias/<prefix>-sanchoris`, rotation on) and two S3 buckets with SSE-KMS under it, public access blocked, TLS only, incomplete multipart uploads aborted after 1 day: `docs` (offloaded attributes, kept, S3 Bucket Key on) and `records` (session records and audit exports, expire after 90 days, the longest `retentionDays` in `infra/plans.json`; S3 Bucket Key off, because the app puts the tenant id in each object's encryption context). Run log lines live in DynamoDB |
+| Objects | Two S3 buckets with SSE-S3 (`AES256`) as the default encryption, public access blocked, TLS only, incomplete multipart uploads aborted after 1 day: `docs` (offloaded attributes, kept) and `records` (session records and audit exports, expire after 90 days, the longest `retentionDays` in `infra/plans.json`). The app sends no encryption headers. Run log lines live in DynamoDB |
 | Work queue | SQS FIFO `<prefix>-sanchoris-work.fifo` (content-based deduplication, visibility timeout 1800 s = 6 x the worker timeout, `maxReceiveCount` 5) and DLQ `-work-dlq.fifo`; standard queue `-relay-dlq` for stream records the relay gave up on |
-| Timers | EventBridge Scheduler group `<prefix>-sanchoris`, the role that lets schedules send to the work queue, and the four rate schedules of `docs/architecture.md` ("Rate schedules"). The relay creates one-time schedules in the same group |
+| Timers | EventBridge Scheduler group `<prefix>-sanchoris`, the role that lets schedules send to the work queue, and the five rate schedules of `docs/architecture.md` ("Rate schedules"). The relay creates one-time schedules in the same group |
 | HTTP API | API Gateway HTTP API (`$default` stage, 20 requests/s, burst 40, JSON access logs). Routes in `http-routes`: `ANY /api/{proxy+}` with the Cognito JWT authorizer (issuer = the shared pool, audience = the sanchoris app client) and `$default` without an authorizer for `/webhooks/*`, `/auth/github*`, `/health`, and the web app, which the api function serves from the frontend build embedded in its binary (the api checks webhook signatures, the OAuth `state`, and the bearer token itself) |
 | Run channel | API Gateway WebSocket API (stage `prod`, `$connect` / `$disconnect` / `$default` to the channel Lambda, JSON access logs). `$connect` has a REQUEST authorizer (the channel-authorizer Lambda, identity source `route.request.header.Authorization`) that verifies the Run token |
 | Compute | Five Lambda functions (`functions`, below), event source mappings for the work queue and for every table listed in `streamFilters` |
-| Workspaces | VPC `10.1.0.0/16` with a public subnet (for the network relay) and a Workspace subnet without a route to the internet, S3 gateway endpoint, optional interface endpoints, ECR repository `<prefix>-sanchoris-workspace` (scan on push, last 10 images), ECS cluster `<prefix>-sanchoris` (Fargate and Fargate Spot, Container Insights off), the Workspace task definition (X86_64, 2 vCPU / 4 GiB, user `1000:1000`, `stopTimeout` 120 s), its execution role and log group, and security groups for Workspaces, the relay, and the endpoints |
-| Egress relay | ECR repository `<prefix>-sanchoris-relay` (last 5 images), its task definition (X86_64, 0.25 vCPU / 0.5 GB, user `1000:1000`), execution role (image pull, logs, the relay signing key from SSM) and log group `/aws/ecs/<prefix>-sanchoris-relay`, the ECS service (1 task in the public subnet with a public IP), and the Cloud Map private DNS namespace `<prefix>-sanchoris.internal` with the service `relay`. Created with the interface endpoints |
-| Logs | One log group per Lambda, the Workspace log group, and the two access log groups, all with 30 days retention |
+| Workspaces | VPC `10.1.0.0/16` with a public subnet `10.1.0.0/24` (the relay, and the Workspaces in the public network), ECR repository `<prefix>-sanchoris-workspace` (scan on push, last 10 images), ECS cluster `<prefix>-sanchoris` (Fargate and Fargate Spot, Container Insights off), the Workspace task definition (X86_64, 2 vCPU / 4 GiB, user `1000:1000`, `stopTimeout` 120 s, no log driver), its execution role (image pull only), and security groups for Workspaces and the relay. The strict network adds the strict subnet `10.1.16.0/20` without a route to the internet, the S3 gateway endpoint, an endpoint security group, and (with Workspaces enabled) the `ecr.api` and `ecr.dkr` interface endpoints ("Workspace network") |
+| Egress relay | ECR repository `<prefix>-sanchoris-relay` (last 5 images), its task definition (ARM64, 0.25 vCPU / 0.5 GB, user `1000:1000`), execution role (image pull, logs, the relay signing key from SSM) and log group `/aws/ecs/<prefix>-sanchoris-relay`, and the ECS service `<prefix>-sanchoris-relay` in the public subnet with a public IP, created with desired count 0 when Workspaces are enabled. The worker scales it to 1 while Workspaces run ("Egress relay") |
+| Logs | One log group per Lambda, the relay log group, and the two access log groups, all with 30 days retention. Workspaces write no CloudWatch logs: the agent's log lines reach DynamoDB (`LOG#`) over the Run channel |
 
 ## Lambda functions
 
@@ -23,44 +23,49 @@ The function list is data (`functions` in `src/conao3/aws_infra_k8s/sanchoris.cl
 
 | Function | Trigger | Timeout / memory | Environment | Secrets (SSM) | Permissions |
 |----------|---------|------------------|-------------|---------------|-------------|
-| `api` | HTTP API (payload 2.0): `ANY /api/{proxy+}` (JWT) and `$default` | 29 s / 512 MB | `SANCHORIS_TABLE_MAIN`, `SANCHORIS_TABLE_AUDIT`, `SANCHORIS_DOCS_BUCKET`, `SANCHORIS_SECRETS_PATH`, `SANCHORIS_PUBLIC_URL`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, `GITHUB_URL`, `GITHUB_API_URL`, `STRIPE_API_URL`, `STRIPE_PORTAL_CONFIGURATION`, `SANCHORIS_RECORDS_STORE=s3`, `SANCHORIS_RECORDS_BUCKET`, `SANCHORIS_RECORDS_KMS_KEY` | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_SLUG`, `GITHUB_WEBHOOK_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `TASK_TOKEN_SIGNING_KEY`, `OAUTH_STATE_SIGNING_KEY`, `SANCHORIS_CREDENTIAL_KEY` | tables, docs, records + the stack key, `ssm:GetParameters` on its parameters |
+| `api` | HTTP API (payload 2.0): `ANY /api/{proxy+}` (JWT) and `$default` | 29 s / 512 MB | `SANCHORIS_TABLE_MAIN`, `SANCHORIS_TABLE_AUDIT`, `SANCHORIS_DOCS_BUCKET`, `SANCHORIS_SECRETS_PATH`, `SANCHORIS_PUBLIC_URL`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, `GITHUB_URL`, `GITHUB_API_URL`, `STRIPE_API_URL`, `STRIPE_PORTAL_CONFIGURATION`, `SANCHORIS_RECORDS_STORE=s3`, `SANCHORIS_RECORDS_BUCKET` | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_SLUG`, `GITHUB_WEBHOOK_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `TASK_TOKEN_SIGNING_KEY`, `OAUTH_STATE_SIGNING_KEY`, `SANCHORIS_CREDENTIAL_KEY` | tables, docs, records, `ssm:GetParameters` on its parameters |
 | `channel-authorizer` | REQUEST authorizer of the WebSocket API's `$connect` | 10 s / 256 MB | `SANCHORIS_TABLE_MAIN`, `SANCHORIS_TABLE_AUDIT`, `SANCHORIS_DOCS_BUCKET`, `SANCHORIS_SECRETS_PATH` | `RUN_TOKEN_SIGNING_KEY` | `dynamodb:GetItem` on `main`, docs read, `ssm:GetParameters` on its parameter |
-| `channel` | WebSocket API `$connect`, `$default`, `$disconnect` | 29 s / 256 MB | `SANCHORIS_TABLE_MAIN`, `SANCHORIS_TABLE_AUDIT`, `SANCHORIS_DOCS_BUCKET`, `SANCHORIS_SECRETS_PATH`, `SANCHORIS_RECORDS_STORE=s3`, `SANCHORIS_RECORDS_BUCKET`, `SANCHORIS_RECORDS_KMS_KEY`, `SANCHORIS_CHANNEL_ENDPOINT`, `GITHUB_API_URL` | `RUN_TOKEN_SIGNING_KEY`, `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `SANCHORIS_CREDENTIAL_KEY` | tables, docs, records + the stack key, `execute-api:ManageConnections` (POST and DELETE on `@connections` of the stage), `ssm:GetParameters` on its parameters |
-| `worker` | Work queue (batch 10, `ReportBatchItemFailures`, `MaximumConcurrency` = `WorkerMaxConcurrency`, default 5) | 300 s / 512 MB | `SANCHORIS_TABLE_MAIN`, `SANCHORIS_TABLE_AUDIT`, `SANCHORIS_DOCS_BUCKET`, `SANCHORIS_SECRETS_PATH`, `SANCHORIS_RECORDS_STORE=s3`, `SANCHORIS_RECORDS_BUCKET`, `SANCHORIS_RECORDS_KMS_KEY`, `SANCHORIS_CHANNEL_ENDPOINT`, `GITHUB_API_URL`, `SANCHORIS_ECS_CLUSTER`, `SANCHORIS_ECS_TASK_DEFINITION`, `SANCHORIS_ECS_CONTAINER`, `SANCHORIS_ECS_SUBNETS`, `SANCHORIS_ECS_SECURITY_GROUPS`, `SANCHORIS_CONTROL_URL`, `SANCHORIS_GIT_URL`, `SANCHORIS_RELAY_URL` (`http://relay.<prefix>-sanchoris.internal:3128`) | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `RUN_TOKEN_SIGNING_KEY`, `RELAY_TOKEN_SIGNING_KEY` | tables, docs, records + the stack key, `ManageConnections`, receive/delete/change visibility on the work queue, `ecs:RunTask` of the Workspace family on this cluster, stop/describe/tag its tasks, pass the execution role, `ssm:GetParameters` on its parameters |
+| `channel` | WebSocket API `$connect`, `$default`, `$disconnect` | 29 s / 256 MB | `SANCHORIS_TABLE_MAIN`, `SANCHORIS_TABLE_AUDIT`, `SANCHORIS_DOCS_BUCKET`, `SANCHORIS_SECRETS_PATH`, `SANCHORIS_RECORDS_STORE=s3`, `SANCHORIS_RECORDS_BUCKET`, `SANCHORIS_CHANNEL_ENDPOINT`, `GITHUB_API_URL` | `RUN_TOKEN_SIGNING_KEY`, `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `SANCHORIS_CREDENTIAL_KEY` | tables, docs, records, `execute-api:ManageConnections` (POST and DELETE on `@connections` of the stage), `ssm:GetParameters` on its parameters |
+| `worker` | Work queue (batch 10, `ReportBatchItemFailures`, `MaximumConcurrency` = `WorkerMaxConcurrency`, default 5) | 300 s / 512 MB | `SANCHORIS_TABLE_MAIN`, `SANCHORIS_TABLE_AUDIT`, `SANCHORIS_DOCS_BUCKET`, `SANCHORIS_SECRETS_PATH`, `SANCHORIS_RECORDS_STORE=s3`, `SANCHORIS_RECORDS_BUCKET`, `SANCHORIS_CHANNEL_ENDPOINT`, `GITHUB_API_URL`, `SANCHORIS_ECS_CLUSTER`, `SANCHORIS_ECS_TASK_DEFINITION`, `SANCHORIS_ECS_CONTAINER`, `SANCHORIS_ECS_SUBNETS` (the public or the strict subnet), `SANCHORIS_ECS_SECURITY_GROUPS`, `SANCHORIS_ECS_ASSIGN_PUBLIC_IP` (`ENABLED` in the public network, `DISABLED` in the strict one), `SANCHORIS_CONTROL_URL`, `SANCHORIS_GIT_URL`, `SANCHORIS_RELAY_SERVICE` (`<prefix>-sanchoris-relay`), `SANCHORIS_RELAY_PORT` (3128) | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `RUN_TOKEN_SIGNING_KEY`, `RELAY_TOKEN_SIGNING_KEY` | tables, docs, records, `ManageConnections`, receive/delete/change visibility on the work queue, `ecs:RunTask` of the Workspace family on this cluster, stop/describe/tag its tasks, `ecs:ListTasks` in the cluster, `ecs:UpdateService` / `ecs:DescribeServices` on the relay service, pass the execution role, `ssm:GetParameters` on its parameters |
 | `relay` | DynamoDB Streams of `main` (filter from `streamFilters`, batch 100, bisect on error, 10 retries, failures to `relay-dlq`) | 60 s / 256 MB | `SANCHORIS_WORK_QUEUE_URL`, `SANCHORIS_WORK_QUEUE_ARN`, `SANCHORIS_SCHEDULE_GROUP`, `SANCHORIS_SCHEDULER_ROLE_ARN` | — | stream read, send to the work queue and `relay-dlq`, create/delete/get schedules in the group, pass the scheduler role |
 
-`SANCHORIS_SECRETS_PATH` is `/<prefix>/sanchoris/`, `SANCHORIS_RECORDS_KMS_KEY` the stack key's ARN, and `SANCHORIS_CHANNEL_ENDPOINT` the WebSocket stage's `https://<api id>.execute-api.<region>.amazonaws.com/prod` (output `SanchorisChannelEndpoint`). Table permissions follow `infra/tables.json`: tables with `appendOnly` get `PutItem`, `GetItem`, `Query`, `ConditionCheckItem` and an explicit Deny of `appendOnlyDeniedActions`; the other tables get item reads and writes with an explicit Deny of writes whose leading key is in `readOnlyLeadingKeys` (`PLANS`, written at deploy time by an administrator). Every bucket permission comes with `s3:ListBucket` (a missing key reads as 404) and `kms:GenerateDataKey` / `kms:Decrypt` on the stack key; the app encrypts records with that key and `{"sanchoris:tenant": "<tenant id>"}` as the encryption context, so one key serves every tenant and CloudTrail names the tenant of each data key.
+`SANCHORIS_SECRETS_PATH` is `/<prefix>/sanchoris/` and `SANCHORIS_CHANNEL_ENDPOINT` the WebSocket stage's `https://<api id>.execute-api.<region>.amazonaws.com/prod` (output `SanchorisChannelEndpoint`). Table permissions follow `infra/tables.json`: tables with `appendOnly` get `PutItem`, `GetItem`, `Query`, `ConditionCheckItem` and an explicit Deny of `appendOnlyDeniedActions`; the other tables get item reads and writes with an explicit Deny of writes whose leading key is in `readOnlyLeadingKeys` (`PLANS`, written at deploy time by an administrator). Every bucket permission comes with `s3:ListBucket` (a missing key reads as 404). Tenant separation in the records bucket is the `t/<tenant>/` key prefix, which the app checks before it presigns or writes a key.
 
-## Workspace egress
+## Workspace network
 
-A Workspace reaches the internet only through the egress relay (`HTTPS_PROXY`, sanchoris `docs/architecture.md` "Workspaces"). The Workspace security group allows egress to the relay security group on port 3128, to the endpoint security group on 443, and to the S3 prefix list on 443 (image layers); nothing else. The task definition has no task role, so the agent gets no AWS credentials. Fargate itself still needs ECR and CloudWatch Logs from inside the subnet, which the VPC endpoints provide: their policies allow only principals of this account, and the S3 gateway endpoint allows only `GetObject` on the ECR layer bucket.
+The stack parameter `WorkspaceNetwork` (`SANCHORIS_WORKSPACE_NETWORK`, required at deploy, `public` or `strict`) chooses where Workspaces run. Both keep `HTTPS_PROXY` to the egress relay, and the task definition has no task role, so the agent gets no AWS credentials.
 
-| Egress option for the Workspace subnet | Fixed cost (ap-northeast-1, per month) | Domain control |
-|-----------|-----------------------------------------|----------------|
-| Interface endpoints `ecr.api`, `ecr.dkr`, `logs` in one AZ + S3 gateway endpoint (this module) | 3 x $0.014/h = $30.66, plus $0.01/GB | None needed: the subnet has no internet route; the relay decides |
-| NAT gateway | $0.062/h = $45.26, plus $0.062/GB | Needs the relay or AWS Network Firewall on top |
-| Public subnet + public IP per task | $0.005/h per running task | Security group only; the agent could bypass the relay |
+| Network | Subnet and image pull | Workspace security group egress | Fixed cost (ap-northeast-1, per month) | What the relay enforces |
+|---------|-----------------------|----------------------------------|----------------------------------------|-------------------------|
+| `public` (dev) | Public subnet, a public IP per task; ECR over the internet | 3128 to the relay, 443 to `0.0.0.0/0` | 0 (public IPv4 $0.005/h while a task runs) | Advisory: Claude Code, git, and Node clients (`NODE_USE_ENV_PROXY`) go through the relay, but a process that ignores `HTTPS_PROXY` reaches any host on port 443 directly |
+| `strict` | Strict subnet without an internet route; ECR through `ecr.api` and `ecr.dkr` interface endpoints in one AZ, layers through the S3 gateway endpoint (only `GetObject` on the ECR layer bucket) | 3128 to the relay, 443 to the endpoint security group and to the S3 prefix list | 2 x $0.014/h = $20.44, plus $0.01/GB | Everything: the relay is the only way out |
 
-The interface endpoints and the relay are the largest fixed cost, so they are created only with `EnableWorkspaceEndpoints=true` (`SANCHORIS_ENABLE_WORKSPACES=true` at deploy). Without them the control plane runs, but `RunTask` fails to pull the image. The endpoints' private DNS covers the whole VPC, so the relay in the public subnet also pulls its image and writes its logs through them (the endpoint security group admits the relay security group). The Workspace subnet is in one AZ (the first of `Fn::GetAZs`) so that one set of endpoints serves it.
+In the public network, the relay's deny list, platform hosts, and `Network.Allow` are a guard rail for well-behaved tools, not a boundary against a misbehaving agent. Use `strict` for an environment where the agent must not reach hosts outside `Network.Allow`. A NAT gateway ($0.062/h = $45.26 per month, plus $0.062/GB) would also need the relay or AWS Network Firewall on top, so neither layout uses one.
+
+`EnableWorkspaces` (`SANCHORIS_ENABLE_WORKSPACES=true`) turns the Workspace feature on per environment: it creates the relay service, and in the strict network the interface endpoints. Without it the control plane runs, and starting a Workspace fails with "the egress relay service ... is not active" before `RunTask`. In the strict network the endpoints' private DNS covers the whole VPC, so the relay also pulls its image through them (the endpoint security group admits the relay security group); in the public network it pulls over the internet. The strict subnet is in one AZ (the first of `Fn::GetAZs`) so that one set of endpoints serves it.
 
 ### Egress relay
 
-The relay (sanchoris `apps/egress-relay`, image `infra/relay/Dockerfile`) is an HTTP `CONNECT` proxy on port 3128 in the public subnet; the relay security group admits port 3128 from Workspaces and allows 80/443 to the internet. Workspaces find it as `relay.<prefix>-sanchoris.internal` (Cloud Map, A record, TTL 10 s). The worker puts `http://run:<relay token>@relay.<prefix>-sanchoris.internal:3128` into the Workspace's `HTTPS_PROXY`; the relay token carries the Run's `Network.Allow` and its HMAC under `RELAY_TOKEN_SIGNING_KEY`, which the relay task receives from SSM through its task definition. On each `CONNECT` the relay checks the token, then allows port 443 only, applies the operator deny list (`relay-deny-hosts`), then the platform hosts (`relay-platform-hosts`: the Anthropic API and login hosts, `github.com`, `api.github.com`, `*.githubusercontent.com`, the Run channel host, and the records bucket), then the Run's allow list, and refuses private and link-local addresses. It logs one JSON line per `CONNECT`.
+The relay (sanchoris `apps/egress-relay`, image `infra/relay/Dockerfile`, `linux/arm64`) is an HTTP `CONNECT` proxy on port 3128 in the public subnet; the relay security group admits port 3128 from Workspaces and allows 80/443 to the internet. On each `CONNECT` the relay checks the relay token, then allows port 443 only, applies the operator deny list (`relay-deny-hosts`), then the platform hosts (`relay-platform-hosts`: the Anthropic API and login hosts, `github.com`, `api.github.com`, `*.githubusercontent.com`, the Run channel host, and the records bucket), then the Run's allow list, and refuses private and link-local addresses. It logs one JSON line per `CONNECT`.
 
-The relay does not intercept TLS. Git in the Workspace gets GitHub installation tokens narrowed to the Session's `GitHub.Repos` and `GitHub.Permissions` from the control plane over the Run channel (sanchoris `docs/architecture.md` "Workspaces"). DNS queries from the Workspace go to the VPC resolver; Route 53 Resolver DNS Firewall (/tmp/sanchoris-e2e/doc014.pl.60 per million queries) closes DNS as a side channel.
+The relay service runs only while Workspaces run. The worker keeps a lease item (`pk = RELAY`, `sk = #` in `main`) with a lock and the runs that use the relay; before `RunTask` it sets the service's desired count to 1 under the lock, waits for the relay task to be `RUNNING` (up to 240 s), and puts `http://run:<relay token>@<relay task private IP>:3128` into the Workspace's `HTTPS_PROXY`. When a Workspace stops (`stop_workspace`), and every minute in `sweep_workspaces` while the desired count is above 0, the worker drops runs without a running Workspace task and sets the desired count to 0 when none is left. The relay token carries the Run's `Network.Allow` and its HMAC under `RELAY_TOKEN_SIGNING_KEY`, which the relay task receives from SSM through its task definition. A relay task that ECS replaces gets a new IP, and Workspaces that already run lose their proxy.
 
-Push the images before `SANCHORIS_ENABLE_WORKSPACES=true` creates the relay service (the service waits for a running task):
+The relay does not intercept TLS. Git in the Workspace gets GitHub installation tokens narrowed to the Session's `GitHub.Repos` and `GitHub.Permissions` from the control plane over the Run channel (sanchoris `docs/architecture.md` "Workspaces"). DNS queries from the Workspace go to the VPC resolver; Route 53 Resolver DNS Firewall ($0.60 per million queries) closes DNS as a side channel.
+
+A Workspace that stops before its agent connects to the Run channel (image pull failure, a crash at start) leaves no CloudWatch log. The worker's `sweep_workspaces` reads the stopped task with `DescribeTasks` and writes its `stoppedReason`, stop code, and the container's exit code to the run (`error`) and to the task (`NEEDS_YOU`, `Workspace.Stopped`, `cause`).
+
+Push the images before the first deploy with `SANCHORIS_ENABLE_WORKSPACES=true` (the relay image only copies files, so it builds for arm64 without emulation):
 
 ```bash
 R=<account>.dkr.ecr.ap-northeast-1.amazonaws.com
 aws ecr get-login-password | docker login --username AWS --password-stdin $R
 docker build --platform linux/amd64 -f infra/workspace/Dockerfile -t $R/dev-k8s-sanchoris-workspace:latest .   # in sanchoris
-docker build --platform linux/amd64 -f infra/relay/Dockerfile -t $R/dev-k8s-sanchoris-relay:latest apps/egress-relay
+docker build --platform linux/arm64 -f infra/relay/Dockerfile -t $R/dev-k8s-sanchoris-relay:latest apps/egress-relay
 docker push $R/dev-k8s-sanchoris-workspace:latest
 docker push $R/dev-k8s-sanchoris-relay:latest
 ```
 
-`RunTask` resolves the Workspace tag at each start. A new relay image takes `aws ecs update-service --cluster dev-k8s-sanchoris --service dev-k8s-sanchoris-relay --force-new-deployment`.
+`RunTask` resolves the Workspace tag at each start, and the relay service resolves the relay tag each time it starts a task, so a new image takes effect at the next Task.
 
 ## Prerequisites
 
@@ -101,6 +106,7 @@ docker push $R/dev-k8s-sanchoris-relay:latest
 
 ```bash
 export AWS_PROFILE=conao3.dev.k8s AWS_REGION=ap-northeast-1
+export SANCHORIS_ENABLE_WORKSPACES=true SANCHORIS_WORKSPACE_NETWORK=public SANCHORIS_WORKER_MAX_CONCURRENCY=2
 nix develop --command clojure -M -m conao3.aws-infra-k8s deploy cognito
 nix develop --command clojure -M -m conao3.aws-infra-k8s deploy sanchoris-certificate
 nix develop --command clojure -M -m conao3.aws-infra-k8s deploy sanchoris
@@ -112,7 +118,8 @@ nix develop --command clojure -M -m conao3.aws-infra-k8s deploy sanchoris
 |-----------|--------|
 | `ApiDomainName`, `ChannelDomainName`, `CertificateArn` | `<env>-sanchoris.sancode.dev`, `<env>-sanchoris-channel.sancode.dev` (prd without the env) and export `<prefix>-SanchorisCertificateArn`, or `SANCHORIS_CERTIFICATE_ARN`. Without the certificate no custom domain is created |
 | `S3PrefixListId` | `aws ec2 describe-prefix-lists` (`com.amazonaws.ap-northeast-1.s3`) |
-| `EnableWorkspaceEndpoints` | `SANCHORIS_ENABLE_WORKSPACES=true`; default `false` |
+| `EnableWorkspaces` | `SANCHORIS_ENABLE_WORKSPACES=true`; default `false` |
+| `WorkspaceNetwork` | `SANCHORIS_WORKSPACE_NETWORK` (`public` or `strict`); required |
 | `WorkspaceImageTag` | `SANCHORIS_WORKSPACE_IMAGE_TAG`; default `latest` |
 | `RelayImageTag` | `SANCHORIS_RELAY_IMAGE_TAG`; default `latest` |
 | `WorkerMaxConcurrency` | `SANCHORIS_WORKER_MAX_CONCURRENCY`; default 5 |
@@ -142,25 +149,24 @@ HTTP APIs take neither resource policies nor AWS WAF, so the Cloudflare-only IP 
 
 ## Cost estimate
 
-Monthly USD in ap-northeast-1, before tax. Unit prices come from the AWS Price List API for ap-northeast-1 (`aws pricing get-products`), except EventBridge Scheduler, which is from its pricing page. Free tiers are the always-free amounts on the pricing pages.
+Monthly USD in ap-northeast-1, before tax, for the public Workspace network with Workspaces enabled. Unit prices come from the AWS Price List API for ap-northeast-1 (`aws pricing get-products`), except EventBridge Scheduler, which is from its pricing page. Free tiers are the always-free amounts on the pricing pages. SSE-S3 has no charge.
 
-| Item | Unit price | Dev idle | Light use |
-|------|------------|----------|-----------|
-| KMS key | $1 per key-month; $0.03 per 10,000 requests | 1.00 | 1.10 (about 50,000 requests) |
-| EventBridge Scheduler | 14 million invocations free, then $1.00 per million | 0 (about 98,000 sweep invocations) | 0 |
-| SQS FIFO | $0.50 per million requests (1 million free) | 0 to 0.50 (Lambda polling of an idle queue and the sweeps) | 0.50 |
-| Lambda (ARM) | $0.20 per million requests, $0.0000133334 per GB-s (1 million requests and 400,000 GB-s free) | 0 (sweeps, about 10,000 GB-s) | 0 |
-| DynamoDB on-demand | $0.715 per million WRU, $0.1425 per million RRU, $0.285 per GB-month after 25 GB, PITR $0.228 per GB-month | 0.05 | 1.00 (1 million WRU, 2 million RRU) |
-| API Gateway HTTP API | $1.29 per million requests | 0 | 0.07 (50,000 requests) |
-| API Gateway WebSocket | $1.26 per million messages, $0.315 per million connection minutes | 0 | 0.25 (200,000 messages) |
-| S3 Standard | $0.025 per GB-month, $0.0047 per 1,000 PUT | 0 | 0.15 (5 GB) |
-| CloudWatch Logs | $0.76 per GB ingested, $0.033 per GB-month (5 GB free) | 0 | 0 |
-| ECR | $0.10 per GB-month | 0.10 (one 1 GB image) | 0.50 (5 images) |
-| Fargate (x86) | $0.05056 per vCPU-hour, $0.00553 per GB-hour | 0 | 1.23 (20 Workspaces x 30 min at 2 vCPU / 4 GiB) |
-| Interface endpoints (optional) | $0.014 per endpoint-hour, $0.01 per GB | 0 (off) | 30.66 (3 endpoints) |
-| Egress relay (with the endpoints) | Fargate x86 0.25 vCPU / 0.5 GB + public IPv4 $0.005/h + Cloud Map private namespace (Route 53 hosted zone $0.50) | 0 (off) | 15.40 |
-| **Total** | | **about 1.2 to 1.7** | **about 51** |
+| Item | Unit price | Dev idle | Light use | Per Task |
+|------|------------|----------|-----------|----------|
+| EventBridge Scheduler | 14 million invocations free, then $1.00 per million | 0 (about 142,000 sweep invocations) | 0 | 0 |
+| SQS FIFO | $0.50 per million requests (1 million free) | 0 to 0.50 (Lambda polling of an idle queue and the sweeps) | 0.50 | 0 |
+| Lambda (ARM) | $0.20 per million requests, $0.0000133334 per GB-s (1 million requests and 400,000 GB-s free) | 0 (sweeps, about 15,000 GB-s) | 0 | 0 |
+| DynamoDB on-demand | $0.715 per million WRU, $0.1425 per million RRU, $0.285 per GB-month after 25 GB, PITR $0.228 per GB-month | 0.05 | 1.00 (1 million WRU, 2 million RRU) | 0 |
+| API Gateway HTTP API | $1.29 per million requests | 0 | 0.07 (50,000 requests) | 0 |
+| API Gateway WebSocket | $1.26 per million messages, $0.315 per million connection minutes | 0 | 0.25 (200,000 messages) | 0 |
+| S3 Standard | $0.025 per GB-month, $0.0047 per 1,000 PUT | 0 | 0.15 (5 GB) | 0 |
+| CloudWatch Logs | $0.76 per GB ingested, $0.033 per GB-month (5 GB free) | 0 | 0 | 0 |
+| ECR | $0.10 per GB-month | 0.10 to 0.30 (Workspace images of 0.68 GB, relay image of 0.06 GB) | 0.30 | 0 |
+| Fargate x86 (Workspace, 2 vCPU / 4 GiB) | $0.05056 per vCPU-hour, $0.00553 per GB-hour ($0.1232 per hour) | 0 | 1.23 | 0.062 (30 min) |
+| Public IPv4 of a Workspace | $0.005 per hour | 0 | 0.05 | 0.0025 |
+| Egress relay (Fargate ARM 0.25 vCPU / 0.5 GB and its public IPv4) | $0.04045 per vCPU-hour, $0.00442 per GB-hour, $0.005 per IPv4-hour ($0.0173 per hour) | 0 (desired count 0) | 0.18 | 0.009 (about 32 min: the Workspace plus the start and the sweep) |
+| **Total** | | **about 0.2 to 0.9** | **about 3.7** | **about 0.07** |
 
-Light use means about 20 Tasks a month with one 30 minute Workspace each and a few people on the screens. The fixed cost of running Workspaces at all is the endpoints and the relay (about $46); the per-Task cost is about $0.06.
+Light use means about 20 Tasks a month with one 30 minute Workspace each and a few people on the screens; Tasks that overlap share one relay task. Traffic out to the internet (the Anthropic API, GitHub) is within the 100 GB a month that AWS does not charge. The strict network adds the two interface endpoints: $20.44 a month fixed, plus $0.01/GB of image pulls.
 
-Pricing pages: [Lambda](https://aws.amazon.com/lambda/pricing/), [API Gateway](https://aws.amazon.com/api-gateway/pricing/), [DynamoDB on-demand](https://aws.amazon.com/dynamodb/pricing/on-demand/), [S3](https://aws.amazon.com/s3/pricing/), [KMS](https://aws.amazon.com/kms/pricing/), [SQS](https://aws.amazon.com/sqs/pricing/), [EventBridge (Scheduler)](https://aws.amazon.com/eventbridge/pricing/), [Fargate](https://aws.amazon.com/fargate/pricing/), [PrivateLink (VPC endpoints)](https://aws.amazon.com/privatelink/pricing/), [VPC (NAT gateway, public IPv4)](https://aws.amazon.com/vpc/pricing/), [CloudWatch](https://aws.amazon.com/cloudwatch/pricing/), [ECR](https://aws.amazon.com/ecr/pricing/).
+Pricing pages: [Lambda](https://aws.amazon.com/lambda/pricing/), [API Gateway](https://aws.amazon.com/api-gateway/pricing/), [DynamoDB on-demand](https://aws.amazon.com/dynamodb/pricing/on-demand/), [S3](https://aws.amazon.com/s3/pricing/), [SQS](https://aws.amazon.com/sqs/pricing/), [EventBridge (Scheduler)](https://aws.amazon.com/eventbridge/pricing/), [Fargate](https://aws.amazon.com/fargate/pricing/), [PrivateLink (VPC endpoints)](https://aws.amazon.com/privatelink/pricing/), [VPC (NAT gateway, public IPv4)](https://aws.amazon.com/vpc/pricing/), [CloudWatch](https://aws.amazon.com/cloudwatch/pricing/), [ECR](https://aws.amazon.com/ecr/pricing/).

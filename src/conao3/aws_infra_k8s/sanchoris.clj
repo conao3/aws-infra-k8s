@@ -1,8 +1,11 @@
 (ns conao3.aws-infra-k8s.sanchoris
   "sanchoris (conao3/sanchoris) の基盤。制御側はサーバーレス: API Gateway の HTTP API (画面、webhook、OAuth) と
-  WebSocket API (Run channel) の Lambda、DynamoDB (main は stream 付き、audit は追記だけ)、S3 (docs / records、SSE-KMS)、
+  WebSocket API (Run channel) の Lambda、DynamoDB (main は stream 付き、audit は追記だけ)、S3 (docs / records、SSE-S3)、
   SQS FIFO の作業キューとそれを消費する worker の Lambda、main の stream を作業キューと EventBridge Scheduler に渡す relay の Lambda。
-  Workspace だけが ECS Fargate で動き、外向きの通信は公開サブネットの中継 (egress relay の CONNECT プロキシ) だけに出られる。
+  Workspace だけが ECS Fargate で動き、HTTPS_PROXY に公開サブネットの中継 (egress relay の CONNECT プロキシ) を持つ。
+  中継は Workspace が動く間だけ動く (worker が ECS のサービスの希望数を 1 と 0 に切り替える)。
+  Workspace のネットワークは WorkspaceNetwork で選ぶ: public は公開サブネットと公開 IP (ECR はインターネット経由で、中継は助言にとどまる)、
+  strict はインターネットへの経路のないサブネットと ECR のエンドポイント (中継が唯一の出口)。
   認証は共有の Cognito ユーザープール (cognito スタック。先にデプロイする) の JWT オーソライザー。k8s には載せない。
   表の定義は sanchoris の `infra/tables.json`、Lambda のコードは sanchoris の `target/lambda/<関数>/bootstrap.zip`。"
   (:require
@@ -23,7 +26,7 @@
 (def record-retention-days 90)
 (def vpc-cidr "10.1.0.0/16")
 (def public-subnet-cidr "10.1.0.0/24")
-(def workspace-subnet-cidr "10.1.16.0/20")
+(def strict-subnet-cidr "10.1.16.0/20")
 (def relay-port 3128)
 (def workspace-container "workspace")
 (def relay-container "relay")
@@ -100,11 +103,13 @@
   [["SweepConfigs" "sweep_configs" "rate(5 minutes)"]
    ["SweepChecks" "sweep_checks" "rate(1 minute)"]
    ["SweepTaskLimits" "sweep_task_limits" "rate(1 minute)"]
-   ["UsageAlerts" "usage_alerts" "rate(15 minutes)"]])
+   ["UsageAlerts" "usage_alerts" "rate(15 minutes)"]
+   ["SweepWorkspaces" "sweep_workspaces" "rate(1 minute)"]])
 
 (defn- sub [s] {"Fn::Sub" s})
 (defn- get-att [resource attr] {"Fn::GetAtt" [resource attr]})
 (defn- prefix-name [suffix] (sub (str "${Prefix}-sanchoris-" suffix)))
+(defn- relay-service-name [] (prefix-name "relay"))
 (defn- import-value [export-suffix]
   {"Fn::ImportValue" (sub (str "${Prefix}-" export-suffix))})
 
@@ -160,28 +165,9 @@
 (defn- stream-tables [table-spec]
   (filter #(contains? (:streamFilters table-spec) (table-id %)) (:tables table-spec)))
 
-;; --- KMS と S3 ---
+;; --- S3 ---
 
-(defn resource-key []
-  {:Type "AWS::KMS::Key"
-   :Properties
-   {:Description (sub "${Prefix}-sanchoris: S3 buckets (docs, records; records carry the tenant id in the encryption context)")
-    :EnableKeyRotation true
-    :KeyPolicy
-    {:Version "2012-10-17"
-     :Statement [{:Sid "AccountAdministration"
-                  :Effect "Allow"
-                  :Principal {:AWS (sub "arn:aws:iam::${AWS::AccountId}:root")}
-                  :Action "kms:*"
-                  :Resource "*"}]}}})
-
-(defn resource-key-alias []
-  {:Type "AWS::KMS::Alias"
-   :Properties
-   {:AliasName (sub "alias/${Prefix}-sanchoris")
-    :TargetKeyId {:Ref :Key}}})
-
-(defn resource-bucket [expiration-days bucket-key?]
+(defn resource-bucket [expiration-days]
   {:Type "AWS::S3::Bucket"
    :Properties
    {:PublicAccessBlockConfiguration {:BlockPublicAcls true
@@ -190,9 +176,7 @@
                                      :RestrictPublicBuckets true}
     :OwnershipControls {:Rules [{:ObjectOwnership "BucketOwnerEnforced"}]}
     :BucketEncryption {:ServerSideEncryptionConfiguration
-                       [{:ServerSideEncryptionByDefault {:SSEAlgorithm "aws:kms"
-                                                         :KMSMasterKeyID (get-att :Key :Arn)}
-                         :BucketKeyEnabled bucket-key?}]}
+                       [{:ServerSideEncryptionByDefault {:SSEAlgorithm "AES256"}}]}
     :LifecycleConfiguration
     {:Rules [(cond-> {:Id "cleanup"
                       :Status "Enabled"
@@ -222,10 +206,7 @@
     :Resource (sub (str "${" (name bucket) ".Arn}/*"))}
    {:Effect "Allow"
     :Action "s3:ListBucket"
-    :Resource (get-att bucket :Arn)}
-   {:Effect "Allow"
-    :Action ["kms:GenerateDataKey" "kms:Decrypt"]
-    :Resource (get-att :Key :Arn)}])
+    :Resource (get-att bucket :Arn)}])
 
 
 ;; --- 作業キュー (SQS FIFO) と EventBridge Scheduler ---
@@ -315,8 +296,8 @@
      :SqsParameters {:MessageGroupId (str "sweep:" job)}}}})
 
 ;; --- ネットワークと ECS (Workspace) ---
-;; Workspace のサブネットはインターネットへの経路を持たない。外向きは中継 (relay のプロキシ) と、
-;; イメージの取得とログのための VPC エンドポイントだけ。中継は公開サブネットに置く (下の「中継」)
+;; 中継は公開サブネットに置く (下の「中継」)。Workspace は WorkspaceNetwork が public なら公開サブネットで公開 IP を持ち、
+;; strict ならインターネットへの経路のない strict サブネットで、イメージを ECR のエンドポイントと S3 のゲートウェイから取る
 
 (defn resource-vpc []
   {:Type "AWS::EC2::VPC"
@@ -388,25 +369,26 @@
 
 (defn resource-interface-endpoint [service]
   {:Type "AWS::EC2::VPCEndpoint"
-   :Condition "UseWorkspaceEndpoints"
+   :Condition "UseStrictEndpoints"
    :Properties
    {:VpcId {:Ref :Vpc}
     :ServiceName (sub (str "com.amazonaws.${AWS::Region}." service))
     :VpcEndpointType "Interface"
     :PrivateDnsEnabled true
-    :SubnetIds [{:Ref :WorkspaceSubnet}]
+    :SubnetIds [{:Ref :StrictSubnet}]
     :SecurityGroupIds [{:Ref :EndpointSecurityGroup}]
     :PolicyDocument (account-only-endpoint-policy)}})
 
 (defn resource-s3-endpoint
-  "ECR のイメージのレイヤーは S3 から取る。ゲートウェイ型 (無料) を Workspace の経路表にだけ付け、ECR のレイヤーのバケットだけを許す。"
+  "ECR のイメージのレイヤーは S3 から取る。ゲートウェイ型 (無料) を strict サブネットの経路表にだけ付け、ECR のレイヤーのバケットだけを許す。"
   []
   {:Type "AWS::EC2::VPCEndpoint"
+   :Condition "UseStrictNetwork"
    :Properties
    {:VpcId {:Ref :Vpc}
     :ServiceName (sub "com.amazonaws.${AWS::Region}.s3")
     :VpcEndpointType "Gateway"
-    :RouteTableIds [{:Ref :WorkspaceRouteTable}]
+    :RouteTableIds [{:Ref :StrictRouteTable}]
     :PolicyDocument {:Version "2012-10-17"
                      :Statement [{:Effect "Allow"
                                   :Principal "*"
@@ -434,7 +416,7 @@
     :ClusterSettings [{:Name "containerInsights" :Value "disabled"}]}})
 
 (defn resource-workspace-execution-role
-  "Fargate がイメージを取り、ログを書くためのロール。Workspace の中のプロセスには渡らない。"
+  "Fargate がイメージを取るためのロール。Workspace の中のプロセスには渡らない。"
   []
   {:Type "AWS::IAM::Role"
    :Properties
@@ -453,13 +435,11 @@
                     :Resource "*"}
                    {:Effect "Allow"
                     :Action ["ecr:BatchGetImage" "ecr:GetDownloadUrlForLayer" "ecr:BatchCheckLayerAvailability"]
-                    :Resource (get-att :WorkspaceRepository :Arn)}
-                   {:Effect "Allow"
-                    :Action ["logs:CreateLogStream" "logs:PutLogEvents"]
-                    :Resource (get-att :WorkspaceLogGroup :Arn)}]}}]}})
+                    :Resource (get-att :WorkspaceRepository :Arn)}]}}]}})
 
 (defn resource-workspace-task-definition
   "Workspace のタスク定義。タスクロールは持たない (エージェントは AWS の API を使わない。制御側とは Run channel でだけ話す)。
+   ログのドライバーは持たない (agent のログは Run channel で DynamoDB の LOG# に入り、起動前の停止は worker が停止の理由を Task に書く)。
    Run ごとの値 (Run のトークン、中継の URL、Run channel の URL) は worker が RunTask の overrides で渡す。"
   []
   {:Type "AWS::ECS::TaskDefinition"
@@ -477,16 +457,13 @@
       :Essential true
       :User "1000:1000"
       :StopTimeout 120
-      :LinuxParameters {:InitProcessEnabled true}
-      :LogConfiguration {:LogDriver "awslogs"
-                         :Options {"awslogs-group" {:Ref :WorkspaceLogGroup}
-                                   "awslogs-region" {:Ref "AWS::Region"}
-                                   "awslogs-stream-prefix" "workspace"}}}]}})
+      :LinuxParameters {:InitProcessEnabled true}}]}})
 
 
 ;; --- 中継 (egress relay) ---
 ;; Workspace の HTTPS_PROXY。公開サブネットの Fargate サービスで、CONNECT を 443 番だけ通す。
-;; 運営者の拒否リスト、プラットフォームの通信先、Run ごとの Network.Allow (worker が署名した relay のトークン) の順に当てる
+;; 運営者の拒否リスト、プラットフォームの通信先、Run ごとの Network.Allow (worker が署名した relay のトークン) の順に当てる。
+;; サービスの希望数は 0 で作り、worker が Workspace を始める前に 1 にし、動く Workspace がなくなったら 0 に戻す
 
 (defn- relay-platform-hosts
   "Session の Network.Allow に書かなくても Workspace が出られる通信先 (Worker の provider、GitHub、Run channel、セッションの記録)。"
@@ -550,7 +527,7 @@
     :NetworkMode "awsvpc"
     :Cpu "256"
     :Memory "512"
-    :RuntimePlatform {:CpuArchitecture "X86_64" :OperatingSystemFamily "LINUX"}
+    :RuntimePlatform {:CpuArchitecture "ARM64" :OperatingSystemFamily "LINUX"}
     :ExecutionRoleArn (get-att :RelayExecutionRole :Arn)
     :ContainerDefinitions
     [{:Name relay-container
@@ -568,41 +545,22 @@
                                    "awslogs-region" {:Ref "AWS::Region"}
                                    "awslogs-stream-prefix" "relay"}}}]}})
 
-(defn resource-relay-namespace
-  "Workspace が中継を relay.<prefix>-sanchoris.internal で引くための Cloud Map の名前空間 (VPC のプライベートなホストゾーン)。"
-  []
-  {:Type "AWS::ServiceDiscovery::PrivateDnsNamespace"
-   :Condition "UseWorkspaceEndpoints"
-   :Properties
-   {:Name (sub "${Prefix}-sanchoris.internal")
-    :Vpc {:Ref :Vpc}}})
-
-(defn resource-relay-discovery []
-  {:Type "AWS::ServiceDiscovery::Service"
-   :Condition "UseWorkspaceEndpoints"
-   :Properties
-   {:Name "relay"
-    :NamespaceId {:Ref :RelayNamespace}
-    :DnsConfig {:RoutingPolicy "MULTIVALUE"
-                :DnsRecords [{:Type "A" :TTL 10}]}
-    :HealthCheckCustomConfig {:FailureThreshold 1}}})
-
 (defn resource-relay-service
-  "公開サブネットで公開 IP を持つ 1 タスク。Workspace のセキュリティグループからの 3128 番だけを受ける。"
+  "公開サブネットで公開 IP を持つタスク。Workspace のセキュリティグループからの 3128 番だけを受ける。
+   希望数は 0 で作り、worker が UpdateService で切り替える。Workspace は worker が渡すタスクのプライベート IP で中継に届く。"
   []
   {:Type "AWS::ECS::Service"
-   :Condition "UseWorkspaceEndpoints"
+   :Condition "UseWorkspaces"
    :Properties
-   {:ServiceName (prefix-name "relay")
+   {:ServiceName (relay-service-name)
     :Cluster {:Ref :Cluster}
     :LaunchType "FARGATE"
     :TaskDefinition {:Ref :RelayTaskDefinition}
-    :DesiredCount 1
-    :DeploymentConfiguration {:MinimumHealthyPercent 100 :MaximumPercent 200}
+    :DesiredCount 0
+    :DeploymentConfiguration {:MinimumHealthyPercent 0 :MaximumPercent 100}
     :NetworkConfiguration {:AwsvpcConfiguration {:Subnets [{:Ref :PublicSubnet}]
                                                   :SecurityGroups [{:Ref :RelaySecurityGroup}]
-                                                  :AssignPublicIp "ENABLED"}}
-    :ServiceRegistries [{:RegistryArn (get-att :RelayDiscovery :Arn)}]}})
+                                                  :AssignPublicIp "ENABLED"}}}})
 
 ;; --- Lambda (IAM、環境変数、関数) ---
 
@@ -645,12 +603,12 @@
     :stripe {:STRIPE_API_URL "https://api.stripe.com"
              :STRIPE_PORTAL_CONFIGURATION {:Ref :StripePortalConfiguration}}
     :records {:SANCHORIS_RECORDS_STORE "s3"
-              :SANCHORIS_RECORDS_BUCKET {:Ref :RecordsBucket}
-              :SANCHORIS_RECORDS_KMS_KEY (get-att :Key :Arn)}
+              :SANCHORIS_RECORDS_BUCKET {:Ref :RecordsBucket}}
     :channel-endpoint {:SANCHORIS_CHANNEL_ENDPOINT (channel-endpoint)}
     :control-url {:SANCHORIS_CONTROL_URL (control-url)}
     :git {:SANCHORIS_GIT_URL "https://github.com"}
-    :relay {:SANCHORIS_RELAY_URL (sub (str "http://relay.${Prefix}-sanchoris.internal:" relay-port))}
+    :relay {:SANCHORIS_RELAY_SERVICE (relay-service-name)
+            :SANCHORIS_RELAY_PORT (str relay-port)}
     :work-queue {:SANCHORIS_WORK_QUEUE_URL {:Ref :WorkQueue}
                  :SANCHORIS_WORK_QUEUE_ARN (get-att :WorkQueue :Arn)
                  :SANCHORIS_SCHEDULE_GROUP {:Ref :ScheduleGroup}
@@ -658,8 +616,9 @@
     :ecs {:SANCHORIS_ECS_CLUSTER {:Ref :Cluster}
           :SANCHORIS_ECS_TASK_DEFINITION (prefix-name "workspace")
           :SANCHORIS_ECS_CONTAINER workspace-container
-          :SANCHORIS_ECS_SUBNETS {:Ref :WorkspaceSubnet}
-          :SANCHORIS_ECS_SECURITY_GROUPS {:Ref :WorkspaceSecurityGroup}}))
+          :SANCHORIS_ECS_SUBNETS {"Fn::If" ["UseStrictNetwork" {:Ref :StrictSubnet} {:Ref :PublicSubnet}]}
+          :SANCHORIS_ECS_SECURITY_GROUPS {:Ref :WorkspaceSecurityGroup}
+          :SANCHORIS_ECS_ASSIGN_PUBLIC_IP {"Fn::If" ["UseStrictNetwork" "DISABLED" "ENABLED"]}}))
 
 (defn- main-table-arns [table-spec]
   (mapcat table-arns (filter #(= "main" (:role %)) (:tables table-spec))))
@@ -706,6 +665,13 @@
           {:Effect "Allow"
            :Action ["ecs:StopTask" "ecs:DescribeTasks" "ecs:TagResource"]
            :Resource (sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task/${Cluster}/*")}
+          {:Effect "Allow"
+           :Action "ecs:ListTasks"
+           :Resource "*"
+           :Condition {:ArnEquals {"ecs:cluster" (get-att :Cluster :Arn)}}}
+          {:Effect "Allow"
+           :Action ["ecs:UpdateService" "ecs:DescribeServices"]
+           :Resource (sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:service/${Cluster}/${Prefix}-sanchoris-relay")}
           {:Effect "Allow"
            :Action "iam:PassRole"
            :Resource (get-att :WorkspaceExecutionRole :Arn)
@@ -937,6 +903,11 @@
                    [(function-id f) (resource-function f table-spec code-dir)]])
                 functions)))
 
+(defn- strict
+  "strict の Workspace のネットワークでだけ作るリソース。"
+  [resource]
+  (assoc resource :Condition "UseStrictNetwork"))
+
 (defn- route-id [prefix route-key]
   (keyword (str prefix (str/join (map str/capitalize (re-seq #"[A-Za-z]+" route-key))) "Route")))
 
@@ -956,10 +927,13 @@
       :CertificateArn {:Type "String"
                        :Default ""
                        :Description "両方のドメインを持つ ACM 証明書 (ap-northeast-1) の ARN。空ならカスタムドメインを作らない"}
-      :EnableWorkspaceEndpoints {:Type "String"
-                                 :AllowedValues ["true" "false"]
-                                 :Default "false"
-                                 :Description "true で Workspace のサブネットに ECR (api, dkr) と CloudWatch Logs のインターフェースエンドポイントを作る。固定費が月 30 USD 前後かかる。Workspace を動かすときだけ true"}
+      :EnableWorkspaces {:Type "String"
+                         :AllowedValues ["true" "false"]
+                         :Default "false"
+                         :Description "true で中継のサービス (希望数 0) と、strict なら ECR のエンドポイントを作る"}
+      :WorkspaceNetwork {:Type "String"
+                         :AllowedValues ["public" "strict"]
+                         :Description "public: 公開サブネットと公開 IP (中継は助言)。strict: 経路のないサブネットと ECR のエンドポイント (中継が唯一の出口)"}
       :S3PrefixListId {:Type "String"
                        :Description "リージョンの S3 のマネージドプレフィックスリスト (com.amazonaws.<region>.s3) の ID"}
       :WorkspaceImageTag {:Type "String"
@@ -983,18 +957,19 @@
     {:UseApiDomains {"Fn::And" [{"Fn::Not" [{"Fn::Equals" [{:Ref :ApiDomainName} ""]}]}
                                 {"Fn::Not" [{"Fn::Equals" [{:Ref :ChannelDomainName} ""]}]}
                                 {"Fn::Not" [{"Fn::Equals" [{:Ref :CertificateArn} ""]}]}]}
-     :UseWorkspaceEndpoints {"Fn::Equals" [{:Ref :EnableWorkspaceEndpoints} "true"]}}
+     :UseWorkspaces {"Fn::Equals" [{:Ref :EnableWorkspaces} "true"]}
+     :UseStrictNetwork {"Fn::Equals" [{:Ref :WorkspaceNetwork} "strict"]}
+     :UsePublicNetwork {"Fn::Equals" [{:Ref :WorkspaceNetwork} "public"]}
+     :UseStrictEndpoints {"Fn::And" [{:Condition "UseWorkspaces"} {:Condition "UseStrictNetwork"}]}}
 
     :Resources
     (merge
      (into {} (for [table (:tables table-spec)]
                 [(table-id table) (resource-table table)]))
 
-     {:Key (resource-key)
-      :KeyAlias (resource-key-alias)
-      :DocsBucket (resource-bucket nil true)
+     {:DocsBucket (resource-bucket nil)
       :DocsBucketPolicy (resource-bucket-policy :DocsBucket)
-      :RecordsBucket (resource-bucket record-retention-days false)
+      :RecordsBucket (resource-bucket record-retention-days)
       :RecordsBucketPolicy (resource-bucket-policy :RecordsBucket)
 
       :WorkDlq (resource-work-dlq)
@@ -1015,35 +990,35 @@
       :PublicRouteTable (resource-route-table "public")
       :PublicRoute (resource-public-route)
       :PublicSubnetRouteTableAssociation (resource-route-table-association :PublicSubnet :PublicRouteTable)
-      :WorkspaceSubnet (resource-subnet workspace-subnet-cidr "workspace")
-      :WorkspaceRouteTable (resource-route-table "workspace")
-      :WorkspaceSubnetRouteTableAssociation (resource-route-table-association :WorkspaceSubnet :WorkspaceRouteTable)
+      :StrictSubnet (strict (resource-subnet strict-subnet-cidr "workspace"))
+      :StrictRouteTable (strict (resource-route-table "workspace"))
+      :StrictSubnetRouteTableAssociation (strict (resource-route-table-association :StrictSubnet :StrictRouteTable))
       :S3Endpoint (resource-s3-endpoint)
       :EcrApiEndpoint (resource-interface-endpoint "ecr.api")
       :EcrDkrEndpoint (resource-interface-endpoint "ecr.dkr")
-      :LogsEndpoint (resource-interface-endpoint "logs")
 
-      :WorkspaceSecurityGroup (resource-security-group "sanchoris workspaces: egress to the relay and the VPC endpoints only")
+      :WorkspaceSecurityGroup (resource-security-group "sanchoris workspaces: egress to the relay and to ECR")
       :RelaySecurityGroup (resource-security-group "sanchoris network relay: proxy for workspaces, egress to the internet")
-      :EndpointSecurityGroup (resource-security-group "sanchoris VPC interface endpoints")
+      :EndpointSecurityGroup (strict (resource-security-group "sanchoris VPC interface endpoints"))
       :WorkspaceToRelayEgress (resource-egress :WorkspaceSecurityGroup {:FromPort relay-port :ToPort relay-port
                                                                         :DestinationSecurityGroupId {:Ref :RelaySecurityGroup}})
-      :WorkspaceToEndpointsEgress (resource-egress :WorkspaceSecurityGroup {:FromPort 443 :ToPort 443
-                                                                            :DestinationSecurityGroupId {:Ref :EndpointSecurityGroup}})
-      :WorkspaceToS3Egress (resource-egress :WorkspaceSecurityGroup {:FromPort 443 :ToPort 443
-                                                                     :DestinationPrefixListId {:Ref :S3PrefixListId}})
+      :WorkspaceToInternetEgress (assoc (resource-egress :WorkspaceSecurityGroup {:FromPort 443 :ToPort 443 :CidrIp "0.0.0.0/0"})
+                                        :Condition "UsePublicNetwork")
+      :WorkspaceToEndpointsEgress (strict (resource-egress :WorkspaceSecurityGroup {:FromPort 443 :ToPort 443
+                                                                                    :DestinationSecurityGroupId {:Ref :EndpointSecurityGroup}}))
+      :WorkspaceToS3Egress (strict (resource-egress :WorkspaceSecurityGroup {:FromPort 443 :ToPort 443
+                                                                             :DestinationPrefixListId {:Ref :S3PrefixListId}}))
       :RelayFromWorkspaceIngress (resource-ingress :RelaySecurityGroup {:FromPort relay-port :ToPort relay-port
                                                                         :SourceSecurityGroupId {:Ref :WorkspaceSecurityGroup}})
       :RelayHttpsEgress (resource-egress :RelaySecurityGroup {:FromPort 443 :ToPort 443 :CidrIp "0.0.0.0/0"})
       :RelayHttpEgress (resource-egress :RelaySecurityGroup {:FromPort 80 :ToPort 80 :CidrIp "0.0.0.0/0"})
-      :EndpointFromWorkspaceIngress (resource-ingress :EndpointSecurityGroup {:FromPort 443 :ToPort 443
-                                                                              :SourceSecurityGroupId {:Ref :WorkspaceSecurityGroup}})
-      :EndpointFromRelayIngress (resource-ingress :EndpointSecurityGroup {:FromPort 443 :ToPort 443
-                                                                          :SourceSecurityGroupId {:Ref :RelaySecurityGroup}})
+      :EndpointFromWorkspaceIngress (strict (resource-ingress :EndpointSecurityGroup {:FromPort 443 :ToPort 443
+                                                                                      :SourceSecurityGroupId {:Ref :WorkspaceSecurityGroup}}))
+      :EndpointFromRelayIngress (strict (resource-ingress :EndpointSecurityGroup {:FromPort 443 :ToPort 443
+                                                                                  :SourceSecurityGroupId {:Ref :RelaySecurityGroup}}))
 
       :WorkspaceRepository (resource-workspace-repository)
       :Cluster (resource-cluster)
-      :WorkspaceLogGroup (resource-log-group (sub "/aws/ecs/${Prefix}-sanchoris-workspace"))
       :WorkspaceExecutionRole (resource-workspace-execution-role)
       :WorkspaceTaskDefinition (resource-workspace-task-definition)
 
@@ -1051,8 +1026,6 @@
       :EgressRelayLogGroup (resource-log-group (sub "/aws/ecs/${Prefix}-sanchoris-relay"))
       :RelayExecutionRole (resource-relay-execution-role)
       :RelayTaskDefinition (resource-relay-task-definition)
-      :RelayNamespace (resource-relay-namespace)
-      :RelayDiscovery (resource-relay-discovery)
       :RelayService (resource-relay-service)}
 
      (function-resources table-spec code-dir)
@@ -1101,7 +1074,7 @@
         :SanchorisWorkspaceRepositoryUri (get-att :WorkspaceRepository :RepositoryUri)
         :SanchorisRelayRepositoryUri (get-att :RelayRepository :RepositoryUri)
         :SanchorisCluster {:Ref :Cluster}
-        :SanchorisWorkspaceSubnet {:Ref :WorkspaceSubnet}
+        :SanchorisWorkspaceSubnet {"Fn::If" ["UseStrictNetwork" {:Ref :StrictSubnet} {:Ref :PublicSubnet}]}
         :SanchorisPublicSubnet {:Ref :PublicSubnet}
         :SanchorisRelaySecurityGroup {:Ref :RelaySecurityGroup}}))
      ;; Cloudflare の CNAME の向け先 (カスタムドメインを作ったときだけ)
@@ -1141,6 +1114,14 @@
     (when (seq missing)
       (throw (ex-info (str "create the SSM parameters (String or SecureString) first: " (str/join " " missing))
                       {:missing missing})))))
+
+(defn- workspace-network
+  "SANCHORIS_WORKSPACE_NETWORK (public か strict)。既定値は持たない。"
+  []
+  (let [value (System/getenv "SANCHORIS_WORKSPACE_NETWORK")]
+    (when-not (#{"public" "strict"} value)
+      (throw (ex-info (format "set SANCHORIS_WORKSPACE_NETWORK to public or strict (got %s)" (pr-str value)) {:value value})))
+    value))
 
 (defn template-input
   "sanchoris のリポジトリ (SANCHORIS_DIR、既定 ~/ghq/github.com/conao3/sanchoris) の表の定義と Lambda の成果物の場所。"
@@ -1185,7 +1166,8 @@
                                  :Prefix prefix
                                  :StripePortalConfiguration (format "/%s/sanchoris/stripe-portal-config" prefix)
                                  :S3PrefixListId (s3-prefix-list-id)
-                                 :EnableWorkspaceEndpoints (if (= "true" (System/getenv "SANCHORIS_ENABLE_WORKSPACES")) "true" "false")
+                                 :EnableWorkspaces (if (= "true" (System/getenv "SANCHORIS_ENABLE_WORKSPACES")) "true" "false")
+                                 :WorkspaceNetwork (workspace-network)
                                  :WorkspaceImageTag (or (System/getenv "SANCHORIS_WORKSPACE_IMAGE_TAG") "latest")
                                  :RelayImageTag (or (System/getenv "SANCHORIS_RELAY_IMAGE_TAG") "latest")
                                  :WorkerMaxConcurrency (or (System/getenv "SANCHORIS_WORKER_MAX_CONCURRENCY") "5")}
