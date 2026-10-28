@@ -30,6 +30,9 @@
 (def relay-port 3128)
 (def relay-nofile 65536)
 (def workspace-ephemeral-storage-gib 30)
+;; タスク定義の大きさ。worker が RunTask の overrides で Plan の大きさ (infra/plans.json の workspaceCpu・workspaceMemoryMib) に置き換える
+(def workspace-cpu "1024")
+(def workspace-memory "4096")
 (def workspace-container "workspace")
 ;; Session の Workspace.Architecture ごとのタスク定義 (論理 ID の接尾辞、ファミリーの接尾辞、ECS の CPU アーキテクチャ、イメージのタグの接尾辞)
 (def workspace-architectures
@@ -466,8 +469,8 @@
    {:Family (prefix-name family)
     :RequiresCompatibilities ["FARGATE"]
     :NetworkMode "awsvpc"
-    :Cpu {:Ref :WorkspaceCpu}
-    :Memory {:Ref :WorkspaceMemory}
+    :Cpu workspace-cpu
+    :Memory workspace-memory
     :EphemeralStorage {:SizeInGiB workspace-ephemeral-storage-gib}
     :RuntimePlatform {:CpuArchitecture cpu-architecture :OperatingSystemFamily "LINUX"}
     :ExecutionRoleArn (get-att :WorkspaceExecutionRole :Arn)
@@ -961,8 +964,6 @@
       :S3PrefixListId {:Type "String"}
       :WorkspaceImageTag {:Type "String" :Default "latest"}
       :RelayImageTag {:Type "String" :Default "latest"}
-      :WorkspaceCpu {:Type "String" :Default "2048"}
-      :WorkspaceMemory {:Type "String" :Default "4096"}
       :WorkerMaxConcurrency {:Type "Number" :Default 5 :MinValue 2}})
 
     :Conditions
