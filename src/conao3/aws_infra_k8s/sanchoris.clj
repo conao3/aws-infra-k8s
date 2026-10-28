@@ -50,13 +50,13 @@
 
 (def functions
   [{:id "Api" :name "api" :timeout http-timeout-sec :memory 512
-    :env [:store :secrets-path :public-url :cognito :github-web :github-api :stripe :records]
+    :env [:store :secrets-path :allowed-sources :public-url :cognito :github-web :github-api :stripe :records]
     :secrets ["GITHUB_APP_ID" "GITHUB_APP_PRIVATE_KEY" "GITHUB_APP_CLIENT_ID" "GITHUB_APP_CLIENT_SECRET"
               "GITHUB_APP_SLUG" "GITHUB_WEBHOOK_SECRET" "STRIPE_SECRET_KEY" "STRIPE_WEBHOOK_SECRET"
               "TASK_TOKEN_SIGNING_KEY" "OAUTH_STATE_SIGNING_KEY" "SANCHORIS_CREDENTIAL_KEY"]
     :grants [:tables :docs :records]}
    {:id "ChannelAuthorizer" :name "channel-authorizer" :timeout authorizer-timeout-sec :memory 256
-    :env [:store :secrets-path]
+    :env [:store :secrets-path :allowed-sources]
     :secrets ["RUN_TOKEN_SIGNING_KEY"]
     :grants [:main-read :docs-read]}
    {:id "Channel" :name "channel" :timeout http-timeout-sec :memory 256
@@ -627,6 +627,7 @@
                  (for [table (:tables table-spec)]
                    [(keyword (:tableNameEnv table)) {:Ref (table-id table)}]))
     :secrets-path {:SANCHORIS_SECRETS_PATH (sub "/${Prefix}/sanchoris/")}
+    :allowed-sources {:SANCHORIS_ALLOWED_SOURCES {"Fn::If" ["UseApiDomains" "cloudflare" "any"]}}
     :public-url {:SANCHORIS_PUBLIC_URL (public-url)}
     :cognito {:COGNITO_USER_POOL_ID (import-value "UserPool")
               :COGNITO_CLIENT_ID (import-value "SanchorisUserPoolClient")}
