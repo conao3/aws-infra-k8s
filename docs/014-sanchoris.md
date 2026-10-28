@@ -107,6 +107,7 @@ docker push $R/dev-k8s-sanchoris-relay:latest
 
 3. sanchoris checked out at `~/ghq/github.com/conao3/sanchoris` (or `SANCHORIS_DIR`) with `infra/tables.json` and the built functions `target/lambda/{api,channel-authorizer,channel,worker,relay}/bootstrap.zip` (`VITE_COGNITO_DOMAIN=<Hosted UI domain> VITE_COGNITO_CLIENT_ID=<SanchorisUserPoolClient> nix develop -c pnpm build:lambda`; the api zip embeds the frontend built with those values).
 4. The API Gateway account setting has a CloudWatch Logs role (the WebSocket stage writes access logs through it). The `sanrecap` stack sets it in dev and prd.
+5. The ECS service-linked role `AWSServiceRoleForECS` exists in the account. `CreateCluster` fails with "Unable to assume the service linked role" when the stack creates it in an account that has never used ECS; create it first with `aws iam create-service-linked-role --aws-service-name ecs.amazonaws.com` (dev and prd have it).
 
 ## Deploy
 
@@ -117,6 +118,8 @@ nix develop --command clojure -M -m conao3.aws-infra-k8s deploy cognito
 nix develop --command clojure -M -m conao3.aws-infra-k8s deploy sanchoris-certificate
 nix develop --command clojure -M -m conao3.aws-infra-k8s deploy sanchoris
 ```
+
+prd uses the same commands with `DEPLOY_ENV=prd AWS_PROFILE=conao3.prd.k8s` ("Environments").
 
 `deploy sanchoris` runs `sam validate --lint` first and passes these parameters:
 
@@ -155,7 +158,33 @@ SANCHORIS_TABLE_MAIN=dev-k8s-sanchoris-main SANCHORIS_TABLE_AUDIT=dev-k8s-sancho
 
 Delete in the reverse order (sanchoris, then sanchoris-certificate and cognito). The tables have deletion protection: turn it off (`aws dynamodb update-table --no-deletion-protection-enabled`) before deleting the stack, and empty the buckets and the ECR repository first.
 
-The dev account allows 10 concurrent Lambda executions in total, and the sanrecap worker may take 5 of them; with `WorkerMaxConcurrency` 5 the sanchoris worker can take the rest. Use `SANCHORIS_WORKER_MAX_CONCURRENCY=2` in dev until the quota is raised.
+The dev and prd accounts each allow 10 concurrent Lambda executions in total, and the sanrecap worker may take 5 of them; with `WorkerMaxConcurrency` 5 the sanchoris worker could take the rest and starve the api and channel functions. Use `SANCHORIS_WORKER_MAX_CONCURRENCY=2` in both until the quota is raised. Fargate allows 30 vCPU for On-Demand and 30 for Spot in both accounts, which is 30 Free or Starter Workspaces (1 vCPU) or 15 Pro or Max Workspaces (2 vCPU) at a time.
+
+## Environments
+
+| | dev | prd |
+|---|---|---|
+| `DEPLOY_ENV`, prefix, AWS profile | `dev`, `dev-k8s`, `conao3.dev.k8s` | `prd`, `prd-k8s`, `conao3.prd.k8s` |
+| Web app, webhooks, OAuth (HTTP API) | `https://dev-sanchoris.sancode.dev` | `https://sanchoris.sancode.dev` |
+| Run channel (WebSocket API) | `wss://dev-sanchoris-channel.sancode.dev` | `wss://sanchoris-channel.sancode.dev` |
+| Cognito Hosted UI (`VITE_COGNITO_DOMAIN`) | `dev-auth-k8s.sancode.dev` | `auth-k8s.sancode.dev` |
+| Cognito callbacks of the sanchoris client | `https://sanchoris.localhost/auth/callback`, `https://dev-sanchoris.sancode.dev/auth/callback` | `https://sanchoris.sancode.dev/auth/callback` |
+| SSM | `/dev-k8s/sanchoris/` | `/prd-k8s/sanchoris/` |
+| GitHub App | "Sanchoris (dev)" (`sanchoris-dev`) | "Sanchoris App" (`sanchoris-app`) |
+| Stripe | Test mode | Live mode |
+| Stack settings | `SANCHORIS_ENABLE_WORKSPACES=true`, `SANCHORIS_WORKSPACE_NETWORK=public`, `SANCHORIS_WORKER_MAX_CONCURRENCY=2` | Same |
+
+Both environments mirror each other: the HTTP API serves the web app, `/api`, the webhooks, and the GitHub OAuth on one host name, and the Run channel has its own, both one level under `sancode.dev` so that Cloudflare's Universal SSL covers the proxied names. The api zip embeds the frontend built with the environment's Cognito values, so build the functions for the environment you deploy (`VITE_COGNITO_DOMAIN=<Hosted UI> VITE_COGNITO_CLIENT_ID=<SanchorisUserPoolClient of that environment> nix develop -c pnpm build:lambda`) and push the images to that account's repositories.
+
+The prd `cognito` stack also holds the sanplan and sanrecap clients. Before updating it, create a change set from the generated template (`aws cloudformation create-change-set --template-body file://target/cfn/cognito.json` with `UsePreviousValue` for every parameter and `CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND`), read it with `describe-change-set --include-property-values`, and execute it only when it changes nothing but the sanchoris client.
+
+Steps for a new environment, in order:
+
+1. `deploy cognito` (the sanchoris client) and `deploy sanchoris-certificate`; add the certificate's two DNS validation CNAMEs (DNS only).
+2. Create the GitHub App under `sancode-org` with the manifest flow (public; permissions: Metadata read, Contents, Issues, and Pull requests read and write, Checks and Actions read; events: `issues`, `issue_comment`, `issue_dependencies`, `pull_request`, `push`, `check_run`; webhook `<public URL>/webhooks/github`, callback `<public URL>/auth/github/callback`, Setup URL `<public URL>/auth/github/setup`), and put its id, slug, private key, client id, client secret, and webhook secret into SSM.
+3. In Stripe, create the Starter, Pro, and Max products and monthly USD prices (lookup keys `sanchoris_<plan>`), a customer portal configuration that switches between the three prices without proration and cancels at the period end, a webhook endpoint `<public URL>/webhooks/stripe` with `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, and `invoice.payment_failed`, and the app's restricted key (Customers, Products, Prices read; Subscriptions, Checkout Sessions, Customer Portal write). Put the key, the webhook secret, the prices, and the portal configuration into SSM. A temporary key with write access to Products, Prices, Customer Portal, and Webhook Endpoints creates the objects through the API; expire it afterwards.
+4. Generate the five signing keys (`run-token-signing-key`, `task-token-signing-key`, `oauth-state-signing-key`, `relay-token-signing-key`: 32 random bytes in hex; `credential-key`: 32 random bytes in base64).
+5. Build the functions for the environment, `deploy sanchoris`, push the Workspace and relay images, add the two proxied CNAMEs, and seed `PLANS`.
 
 ## Custom domains behind Cloudflare
 
@@ -197,5 +226,7 @@ Workspace prices per hour in ap-northeast-1 (the dev estimate above uses Starter
 The 30 GiB of ephemeral storage add $0.00133 per hour (10 GiB over the included 20 GiB at $0.000133 per GB-hour). The On-Demand prices are from the Price List API. The Price List API has no Fargate Spot SKU, so the Spot prices are from `https://dftu77xade0tc.cloudfront.net/fargate-spot-prices.json`, the file the [Fargate pricing page](https://aws.amazon.com/fargate/pricing/) reads, which AWS does not guarantee.
 
 Light use means about 20 Tasks a month with one 30 minute Workspace each and a few people on the screens; Tasks that overlap share one relay task. Traffic out to the internet (the Anthropic API, GitHub) is within the 100 GB a month that AWS does not charge. The strict network adds the two interface endpoints: $20.44 a month fixed, plus $0.01/GB of image pulls.
+
+prd has the same layout as dev, so the same figures apply: about $0.2 to $0.9 for an idle month (the ECR images, 1.36 GB of Workspace images and the relay image, and the SQS polling) and about $0.02 for a Task with a 30 minute Workspace on Free or Starter (Spot ARM at 1 vCPU: $0.009, the Workspace's public IPv4 $0.0025, the relay $0.009), about $0.027 on Pro or Max (2 vCPU: $0.015 for the Workspace). A Task that falls back to On-Demand costs about $0.04 (1 vCPU) or $0.06 (2 vCPU). The model usage is on the tenant's own Claude or Codex credential and does not reach the AWS bill.
 
 Pricing pages: [Lambda](https://aws.amazon.com/lambda/pricing/), [API Gateway](https://aws.amazon.com/api-gateway/pricing/), [DynamoDB on-demand](https://aws.amazon.com/dynamodb/pricing/on-demand/), [S3](https://aws.amazon.com/s3/pricing/), [SQS](https://aws.amazon.com/sqs/pricing/), [EventBridge (Scheduler)](https://aws.amazon.com/eventbridge/pricing/), [Fargate](https://aws.amazon.com/fargate/pricing/), [PrivateLink (VPC endpoints)](https://aws.amazon.com/privatelink/pricing/), [VPC (NAT gateway, public IPv4)](https://aws.amazon.com/vpc/pricing/), [CloudWatch](https://aws.amazon.com/cloudwatch/pricing/), [ECR](https://aws.amazon.com/ecr/pricing/).
