@@ -43,7 +43,7 @@ Create a secret containing credentials used by various services:
 
 ```bash
 cat <<EOF > /tmp/dev-k8s-secret.json
-{"rds-postgres-password":"ChangeMe12345","sancode-cloudflare-api-token":"YOUR_TOKEN"}
+{"rds-postgres-password":"ChangeMe12345"}
 EOF
 
 aws secretsmanager create-secret \
@@ -59,7 +59,6 @@ rm /tmp/dev-k8s-secret.json
 | Key | Description | Used By |
 |-----|-------------|---------|
 | `rds-postgres-password` | RDS PostgreSQL master password | rds stack |
-| `sancode-cloudflare-api-token` | Cloudflare API token for Pages deploy | sancode-resources CodeBuild |
 
 The Google OAuth client for the shared Cognito user pool is not in this secret. See "3b. SSM Parameters for Cognito" below.
 
