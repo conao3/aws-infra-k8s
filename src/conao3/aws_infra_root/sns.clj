@@ -11,7 +11,7 @@
   (a.cfn/template
    {:Parameters
     (a.cfn/list-string-parameters
-     [:Env :Prefix])
+     [:Env :Prefix :AlertEmail])
 
     :Resources
     {:CostAnomalySns
@@ -43,6 +43,13 @@
           :Condition
           {:StringEquals {"aws:SourceAccount" {:Ref "AWS::AccountId"}}}}]}}}
 
+     :CostAnomalySnsEmail
+     {:Type "AWS::SNS::Subscription"
+      :Properties
+      {:TopicArn {:Ref :CostAnomalySns}
+       :Protocol "email"
+       :Endpoint {:Ref :AlertEmail}}}
+
      :ChatbotRole
      {:Type "AWS::IAM::Role"
       :Properties
@@ -61,6 +68,12 @@
     (a.cfn/list-outputs
      {:CostAnomalySnsTopicArn {"Fn::GetAtt" [:CostAnomalySns :TopicArn]}
       :ChatbotRoleArn {"Fn::GetAtt" [:ChatbotRole :Arn]}})}))
+
+(defn- alert-email []
+  (let [value (System/getenv "ROOT_ALERT_EMAIL")]
+    (when (str/blank? value)
+      (throw (ex-info "set ROOT_ALERT_EMAIL to the address that receives the cost alerts" {})))
+    value))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn_root/sns.json")
@@ -85,7 +98,8 @@
                    "--region" "ap-northeast-1"
                    "--parameter-overrides"
                    (->> {:Env (-> param :env)
-                         :Prefix (-> param :prefix)}
+                         :Prefix (-> param :prefix)
+                         :AlertEmail (alert-email)}
                         (map (fn [[k v]]
                                (format "%s=\"%s\"" (name k) v)))
                         (str/join " ")))))
