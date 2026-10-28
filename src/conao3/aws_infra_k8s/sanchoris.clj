@@ -31,6 +31,10 @@
 (def relay-nofile 65536)
 (def workspace-ephemeral-storage-gib 30)
 (def workspace-container "workspace")
+;; Session の Workspace.Architecture ごとのタスク定義 (論理 ID の接尾辞、ファミリーの接尾辞、ECS の CPU アーキテクチャ、イメージのタグの接尾辞)
+(def workspace-architectures
+  [{:id "Arm64" :family "workspace-arm64" :cpu-architecture "ARM64" :image-suffix "arm64"}
+   {:id "X8664" :family "workspace-x86_64" :cpu-architecture "X86_64" :image-suffix "amd64"}])
 (def relay-container "relay")
 
 ;; 運営者の拒否リスト。Session の Network.Allow より先に中継が当てる
@@ -449,27 +453,27 @@
                     :Resource (get-att :WorkspaceRepository :Arn)}]}}]}})
 
 (defn resource-workspace-task-definition
-  "Workspace のタスク定義。タスクロールは持たない (エージェントは AWS の API を使わない。制御側とは Run channel でだけ話す)。
+  "Workspace のタスク定義 (アーキテクチャごとに 1 つ、大きさは同じ)。イメージはアーキテクチャごとのタグ (`<WorkspaceImageTag>-arm64`、`-amd64`) を使う。タスクロールは持たない (エージェントは AWS の API を使わない。制御側とは Run channel でだけ話す)。
    ログのドライバーは持たない (agent のログは Run channel で DynamoDB の LOG# に入り、起動前の停止は worker が停止の理由を Task に書く)。
    Run ごとの値 (Run のトークン、中継の URL、Run channel の URL) は worker が RunTask の overrides で渡す。
    ECS の init プロセスは使わない (PID 1 が元の環境変数、つまり Run と中継のトークンを持ち続けるため)。
    イメージの entrypoint が 2 つのトークンを環境変数から外して stdin に移し、tini の下で agent を動かす。
    ルートファイルシステムは書き込めるままにする (git、Claude Code、npm などが /workspace・/home/node・/tmp 以外にも書くことがあり、
    Fargate のボリュームに置き換えたときの所有者とイメージの中身の扱いは実機で確かめていない)。"
-  []
+  [{:keys [family cpu-architecture image-suffix]}]
   {:Type "AWS::ECS::TaskDefinition"
    :Properties
-   {:Family (prefix-name "workspace")
+   {:Family (prefix-name family)
     :RequiresCompatibilities ["FARGATE"]
     :NetworkMode "awsvpc"
     :Cpu {:Ref :WorkspaceCpu}
     :Memory {:Ref :WorkspaceMemory}
     :EphemeralStorage {:SizeInGiB workspace-ephemeral-storage-gib}
-    :RuntimePlatform {:CpuArchitecture "X86_64" :OperatingSystemFamily "LINUX"}
+    :RuntimePlatform {:CpuArchitecture cpu-architecture :OperatingSystemFamily "LINUX"}
     :ExecutionRoleArn (get-att :WorkspaceExecutionRole :Arn)
     :ContainerDefinitions
     [{:Name workspace-container
-      :Image (sub "${WorkspaceRepository.RepositoryUri}:${WorkspaceImageTag}")
+      :Image (sub (str "${WorkspaceRepository.RepositoryUri}:${WorkspaceImageTag}-" image-suffix))
       :Essential true
       :User "1000:1000"
       :StopTimeout 120
@@ -639,7 +643,8 @@
                  :SANCHORIS_SCHEDULE_GROUP {:Ref :ScheduleGroup}
                  :SANCHORIS_SCHEDULER_ROLE_ARN (get-att :SchedulerRole :Arn)}
     :ecs {:SANCHORIS_ECS_CLUSTER {:Ref :Cluster}
-          :SANCHORIS_ECS_TASK_DEFINITION (prefix-name "workspace")
+          :SANCHORIS_ECS_TASK_DEFINITION_ARM64 (prefix-name "workspace-arm64")
+          :SANCHORIS_ECS_TASK_DEFINITION_X86_64 (prefix-name "workspace-x86_64")
           :SANCHORIS_ECS_CONTAINER workspace-container
           :SANCHORIS_ECS_SUBNETS {"Fn::If" ["UseStrictNetwork" {:Ref :StrictSubnet} {:Ref :PublicSubnet}]}
           :SANCHORIS_ECS_SECURITY_GROUPS {:Ref :WorkspaceSecurityGroup}
@@ -685,7 +690,8 @@
                      :Resource (get-att (table-id table) :StreamArn)}))
     :ecs [{:Effect "Allow"
            :Action "ecs:RunTask"
-           :Resource (sub "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${Prefix}-sanchoris-workspace:*")
+           :Resource (vec (for [{:keys [family]} workspace-architectures]
+                            (sub (str "arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${Prefix}-sanchoris-" family ":*"))))
            :Condition {:ArnEquals {"ecs:cluster" (get-att :Cluster :Arn)}}}
           {:Effect "Allow"
            :Action ["ecs:StopTask" "ecs:DescribeTasks" "ecs:TagResource"]
@@ -1024,13 +1030,14 @@
       :WorkspaceRepository (resource-workspace-repository)
       :Cluster (resource-cluster)
       :WorkspaceExecutionRole (resource-workspace-execution-role)
-      :WorkspaceTaskDefinition (resource-workspace-task-definition)
 
       :RelayRepository (resource-relay-repository)
       :EgressRelayLogGroup (resource-log-group (sub "/aws/ecs/${Prefix}-sanchoris-relay"))
       :RelayExecutionRole (resource-relay-execution-role)
       :RelayTaskDefinition (resource-relay-task-definition)
       :RelayService (resource-relay-service)}
+     (into {} (for [{:keys [id] :as architecture} workspace-architectures]
+                [(keyword (str "WorkspaceTaskDefinition" id)) (resource-workspace-task-definition architecture)]))
 
      (function-resources table-spec code-dir)
      {:WorkEventSource (resource-work-event-source)}
