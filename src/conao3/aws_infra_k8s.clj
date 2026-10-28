@@ -37,6 +37,8 @@
 (defn run [args param]
   (let [[command & rest-args] args]
     (case command
+      "template" (case (first rest-args)
+                   "sanchoris" (c.sanchoris/template param))
       "deploy" (let [target (first rest-args)
                      parsed-args (parse-args (rest rest-args))
                      param (merge param parsed-args)]

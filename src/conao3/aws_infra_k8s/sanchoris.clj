@@ -1150,47 +1150,97 @@
     {:table-spec (read-tables tables-file)
      :code-dir (str (fs/path dir "target" "lambda"))}))
 
-(defn deploy [param]
+(defmacro ^:private timed [step & body]
+  `(let [t0# (System/nanoTime)
+         result# (do ~@body)]
+     (c.util/eprintln (format "[time] %s %.1fs" ~step (/ (- (System/nanoTime) t0#) 1e9)))
+     result#))
+
+(defn- sha256 [^String s]
+  (->> (.digest (java.security.MessageDigest/getInstance "SHA-256") (.getBytes s "UTF-8"))
+       (map #(format "%02x" (bit-and % 0xff)))
+       (apply str)))
+
+(defn- ssm-string [name]
+  (str/trim (:out (c.util/eshell {:out :string} "aws" "ssm" "get-parameter" "--region" "ap-northeast-1"
+                                 "--name" name "--query" "Parameter.Value" "--output" "text"))))
+
+(defn- deploy-parameters [param]
+  (let [prefix (-> param :prefix)
+        cert (or (System/getenv "SANCHORIS_CERTIFICATE_ARN") (certificate-arn prefix))]
+    (cond-> {:Env (-> param :env)
+             :Prefix prefix
+             :StripePortalConfiguration (format "/%s/sanchoris/stripe-portal-config" prefix)
+             :S3PrefixListId (s3-prefix-list-id)
+             :EnableWorkspaces (if (= "true" (System/getenv "SANCHORIS_ENABLE_WORKSPACES")) "true" "false")
+             :WorkspaceNetwork (workspace-network)
+             :WorkspaceImageTag (or (System/getenv "SANCHORIS_WORKSPACE_IMAGE_TAG") "latest")
+             :RelayImageTag (or (System/getenv "SANCHORIS_RELAY_IMAGE_TAG") "latest")
+             :WorkerMaxConcurrency (or (System/getenv "SANCHORIS_WORKER_MAX_CONCURRENCY") "5")}
+      cert
+      (assoc :ApiDomainName (:sanchoris-domain-name param)
+             :ChannelDomainName (:sanchoris-channel-domain-name param)
+             :CertificateArn cert))))
+
+(defn- write-template
+  "テンプレートを target/cfn/sanchoris.json に書く。Output `SanchorisTemplateHash` は、成果物の場所を除いたテンプレートとパラメータ (ポータル設定は SSM の値) の SHA-256 で、scripts/deploy.mjs がデプロイ済みのスタックと比べる。"
+  [param]
   (let [file (fs/file "target/cfn/sanchoris.json")
         prefix (-> param :prefix)
-        stack-name (str prefix "-" "sanchoris")
-        {:keys [code-dir] :as input} (template-input)
-        cert (or (System/getenv "SANCHORIS_CERTIFICATE_ARN") (certificate-arn prefix))]
-    (doseq [f functions]
-      (let [zip (fs/path code-dir (:name f) "bootstrap.zip")]
-        (when-not (fs/exists? zip)
-          (throw (ex-info (format "build the Lambda functions in sanchoris first (%s)" zip) {:file (str zip)})))))
-    (ensure-secrets prefix)
+        input (template-input)
+        parameters (timed "parameters" (deploy-parameters param))
+        portal (timed "portal configuration" (ssm-string (:StripePortalConfiguration parameters)))
+        hash (timed "template hash"
+               (sha256 (json/generate-string [(cfn (assoc input :code-dir "CODE"))
+                                              (into (sorted-map) (assoc parameters :StripePortalConfiguration portal))])))
+        template (timed "template" (assoc-in (cfn input) [:Outputs :SanchorisTemplateHash] {:Value hash}))]
     (fs/create-dirs (fs/parent file))
-
     (c.util/eprintln (format "Write: %s" (fs/path file)))
     (with-open [writer (io/writer file)]
-      (-> (cfn input)
-          (json/generate-stream writer)))
+      (json/generate-stream template writer))
+    {:file file
+     :input input
+     :hash hash
+     :parameters parameters
+     :stack-name (str prefix "-" "sanchoris")}))
 
-    (c.util/eshell "sam" "validate" "--lint" "--template-file" (str (fs/path file)))
-    (c.util/ensure-stack-deployable stack-name)
-    (c.util/eshell "sam" "deploy"
-                   "--template-file" (str (fs/path file))
-                   "--stack-name" stack-name
-                   "--resolve-s3"
-                   "--capabilities" "CAPABILITY_IAM"
-                   "--no-fail-on-empty-changeset"
-                   "--on-failure" "DELETE"
-                   "--parameter-overrides"
-                   (->> (cond-> {:Env (-> param :env)
-                                 :Prefix prefix
-                                 :StripePortalConfiguration (format "/%s/sanchoris/stripe-portal-config" prefix)
-                                 :S3PrefixListId (s3-prefix-list-id)
-                                 :EnableWorkspaces (if (= "true" (System/getenv "SANCHORIS_ENABLE_WORKSPACES")) "true" "false")
-                                 :WorkspaceNetwork (workspace-network)
-                                 :WorkspaceImageTag (or (System/getenv "SANCHORIS_WORKSPACE_IMAGE_TAG") "latest")
-                                 :RelayImageTag (or (System/getenv "SANCHORIS_RELAY_IMAGE_TAG") "latest")
-                                 :WorkerMaxConcurrency (or (System/getenv "SANCHORIS_WORKER_MAX_CONCURRENCY") "5")}
-                          cert
-                          (assoc :ApiDomainName (:sanchoris-domain-name param)
-                                 :ChannelDomainName (:sanchoris-channel-domain-name param)
-                                 :CertificateArn cert))
-                        (map (fn [[k v]]
-                               (format "%s=\"%s\"" (name k) v)))
-                        (str/join " ")))))
+(defn template
+  "テンプレートを書き、ハッシュを JSON で標準出力に出す。AWS には読み取りだけを行う。"
+  [param]
+  (let [{:keys [file hash stack-name]} (write-template param)]
+    (println (json/generate-string {:stackName stack-name :templateHash hash :file (str (fs/absolutize file))}))))
+
+(defn- lint
+  "sam validate --lint を、前回通したテンプレートと中身が違うときだけ実行する。"
+  [file]
+  (let [content-hash (sha256 (slurp file))
+        stamp (fs/file "target/cfn/sanchoris.lint-ok")]
+    (if (and (fs/exists? stamp) (= content-hash (slurp stamp)))
+      (c.util/eprintln "sam validate --lint: unchanged template, skipped")
+      (do
+        (c.util/eshell "sam" "validate" "--lint" "--template-file" (str (fs/path file)))
+        (spit stamp content-hash)))))
+
+(defn deploy [param]
+  (let [{:keys [file input parameters stack-name]} (timed "write template" (write-template param))
+        prefix (-> param :prefix)]
+    (doseq [f functions]
+      (let [zip (fs/path (:code-dir input) (:name f) "bootstrap.zip")]
+        (when-not (fs/exists? zip)
+          (throw (ex-info (format "build the Lambda functions in sanchoris first (%s)" zip) {:file (str zip)})))))
+    (timed "ssm parameters" (ensure-secrets prefix))
+    (timed "sam validate --lint" (lint file))
+    (timed "stack status" (c.util/ensure-stack-deployable stack-name))
+    (timed "sam deploy"
+      (c.util/eshell "sam" "deploy"
+                     "--template-file" (str (fs/path file))
+                     "--stack-name" stack-name
+                     "--resolve-s3"
+                     "--capabilities" "CAPABILITY_IAM"
+                     "--no-fail-on-empty-changeset"
+                     "--on-failure" "DELETE"
+                     "--parameter-overrides"
+                     (->> parameters
+                          (map (fn [[k v]]
+                                 (format "%s=\"%s\"" (name k) v)))
+                          (str/join " "))))))

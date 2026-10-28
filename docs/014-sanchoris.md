@@ -121,7 +121,7 @@ nix develop --command clojure -M -m conao3.aws-infra-k8s deploy sanchoris
 
 prd uses the same commands with `DEPLOY_ENV=prd AWS_PROFILE=conao3.prd.k8s` ("Environments").
 
-`deploy sanchoris` runs `sam validate --lint` first and passes these parameters:
+`deploy sanchoris` writes `target/cfn/sanchoris.json`, runs `sam validate --lint` when the template differs from the last one that passed (`target/cfn/sanchoris.lint-ok`), prints the time of each step as `[time] <step> <seconds>s` on stderr, and passes these parameters:
 
 | Parameter | Source |
 |-----------|--------|
@@ -133,7 +133,9 @@ prd uses the same commands with `DEPLOY_ENV=prd AWS_PROFILE=conao3.prd.k8s` ("En
 | `RelayImageTag` | `SANCHORIS_RELAY_IMAGE_TAG`; default `latest` |
 | `WorkerMaxConcurrency` | `SANCHORIS_WORKER_MAX_CONCURRENCY`; default 5 |
 
-The template's parameters carry no `Description`; this table and the Resources table describe them. The minified template stays under the 51,200 bytes that `aws cloudformation validate-template --template-body` accepts (about 49,200 today) because the Lambda settings shared by every function sit in SAM `Globals` and each function role lists its SSM parameters with one `Fn::Sub` and `Fn::Split`. Check both networks before a change is merged:
+The output `SanchorisTemplateHash` is the SHA-256 of the template without the location of the Lambda zips and of the parameters, with the Stripe portal configuration resolved from SSM. `clojure -M -m conao3.aws-infra-k8s template sanchoris` writes the template and prints `{"stackName", "templateHash", "file"}` without changing anything in AWS; sanchoris `scripts/deploy.mjs` compares the hash with the deployed stack's output to decide whether a deploy needs CloudFormation.
+
+The template's parameters carry no `Description`; this table and the Resources table describe them. The minified template stays under the 51,200 bytes that `aws cloudformation validate-template --template-body` accepts (about 49,300 today) because the Lambda settings shared by every function sit in SAM `Globals` and each function role lists its SSM parameters with one `Fn::Sub` and `Fn::Split`. Check both networks before a change is merged:
 
 ```bash
 jq -c '.Parameters.WorkspaceNetwork.Default="public"' target/cfn/sanchoris.json > target/cfn/sanchoris-public.json
