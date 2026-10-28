@@ -15,7 +15,6 @@ The `sanchoris` module builds the AWS side of [sanchoris](https://github.com/con
 | Compute | Five Lambda functions (`functions`, below), event source mappings for the work queue and for every table listed in `streamFilters` |
 | Workspaces | VPC `10.1.0.0/16` with a public subnet `10.1.0.0/24` (the relay, and the Workspaces in the public network), ECR repository `<prefix>-sanchoris-workspace` (scan on push, last 10 images), ECS cluster `<prefix>-sanchoris` (Fargate and Fargate Spot, Container Insights off), the Workspace task definition (X86_64, 2 vCPU / 4 GiB, 30 GiB ephemeral storage, user `1000:1000`, all Linux capabilities dropped, `stopTimeout` 120 s, no log driver, no ECS init process: the image runs `tini` itself so that no process keeps the environment with the Run and relay tokens; the root file system stays writable because git, Claude Code, and package managers write outside `/workspace`, `/home/node`, and `/tmp`), its execution role (image pull only), and security groups for Workspaces and the relay. The strict network adds the strict subnet `10.1.16.0/20` without a route to the internet, the S3 gateway endpoint, an endpoint security group, and (with Workspaces enabled) the `ecr.api` and `ecr.dkr` interface endpoints ("Workspace network") |
 | Egress relay | ECR repository `<prefix>-sanchoris-relay` (last 5 images), its task definition (ARM64, 0.25 vCPU / 0.5 GB, user `1000:1000`, read-only root file system, all Linux capabilities dropped, `nofile` 65536), execution role (image pull, logs, the relay signing key from SSM) and log group `/aws/ecs/<prefix>-sanchoris-relay`, and the ECS service `<prefix>-sanchoris-relay` in the public subnet with a public IP, created with desired count 0 when Workspaces are enabled and deployed with `MinimumHealthyPercent` 100 and `MaximumPercent` 200. The worker scales it to 1 while Workspaces run ("Egress relay") |
-| Alarms | SNS topic `<prefix>-sanchoris-alarms`, with an email subscription when `AlarmEmail` is set (confirm it from the mail). CloudWatch alarms (5 minutes, above 0, missing data counts as OK) on the visible messages of `work-dlq.fifo` and `relay-dlq` and on the worker function's `Errors`, and an EventBridge rule that sends the relay tasks that stop with `EssentialContainerExited` or `TaskFailedToStart` (not the scale-in to 0) to the topic |
 | Logs | One log group per Lambda, the relay log group, and the two access log groups, all with 30 days retention. Workspaces write no CloudWatch logs: the agent's log lines reach DynamoDB (`LOG#`) over the Run channel |
 
 ## Lambda functions
@@ -124,7 +123,6 @@ nix develop --command clojure -M -m conao3.aws-infra-k8s deploy sanchoris
 | `WorkspaceImageTag` | `SANCHORIS_WORKSPACE_IMAGE_TAG`; default `latest` |
 | `RelayImageTag` | `SANCHORIS_RELAY_IMAGE_TAG`; default `latest` |
 | `WorkerMaxConcurrency` | `SANCHORIS_WORKER_MAX_CONCURRENCY`; default 5 |
-| `AlarmEmail` | `SANCHORIS_ALARM_EMAIL`; default empty (no email subscription on the alarm topic) |
 
 The template's parameters carry no `Description`; this table and the Resources table describe them. The minified template stays under the 51,200 bytes that `aws cloudformation validate-template --template-body` accepts (about 50,650 today) because the Lambda settings shared by every function sit in SAM `Globals` and each function role lists its SSM parameters with one `Fn::Sub` and `Fn::Split`. Check both networks before a change is merged:
 
@@ -175,12 +173,11 @@ Monthly USD in ap-northeast-1, before tax, for the public Workspace network with
 | API Gateway WebSocket | $1.26 per million messages, $0.315 per million connection minutes | 0 | 0.25 (200,000 messages) | 0 |
 | S3 Standard | $0.025 per GB-month, $0.0047 per 1,000 PUT | 0 | 0.15 (5 GB) | 0 |
 | CloudWatch Logs | $0.76 per GB ingested, $0.033 per GB-month (5 GB free) | 0 | 0 | 0 |
-| CloudWatch alarms | $0.10 per standard alarm-month (10 free) | 0 to 0.30 (3 alarms) | 0 to 0.30 | 0 |
 | ECR | $0.10 per GB-month | 0.10 to 0.30 (Workspace images of 0.68 GB, relay image of 0.06 GB) | 0.30 | 0 |
 | Fargate x86 (Workspace, 2 vCPU / 4 GiB) | $0.05056 per vCPU-hour, $0.00553 per GB-hour ($0.1232 per hour) | 0 | 1.23 | 0.062 (30 min) |
 | Public IPv4 of a Workspace | $0.005 per hour | 0 | 0.05 | 0.0025 |
 | Egress relay (Fargate ARM 0.25 vCPU / 0.5 GB and its public IPv4) | $0.04045 per vCPU-hour, $0.00442 per GB-hour, $0.005 per IPv4-hour ($0.0173 per hour) | 0 (desired count 0) | 0.18 | 0.009 (about 32 min: the Workspace plus the start and the sweep) |
-| **Total** | | **about 0.2 to 1.2** | **about 3.7 to 4.0** | **about 0.07** |
+| **Total** | | **about 0.2 to 0.9** | **about 3.7** | **about 0.07** |
 
 Light use means about 20 Tasks a month with one 30 minute Workspace each and a few people on the screens; Tasks that overlap share one relay task. Traffic out to the internet (the Anthropic API, GitHub) is within the 100 GB a month that AWS does not charge. The strict network adds the two interface endpoints: $20.44 a month fixed, plus $0.01/GB of image pulls.
 

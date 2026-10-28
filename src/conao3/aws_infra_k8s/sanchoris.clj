@@ -582,69 +582,6 @@
                                                   :SecurityGroups [{:Ref :RelaySecurityGroup}]
                                                   :AssignPublicIp "ENABLED"}}}})
 
-;; --- 通知 (アラームと中継の異常停止) ---
-
-(defn resource-alarm-topic
-  "アラームと中継の異常停止の送り先。AlarmEmail が空でなければメールの購読を作る (購読の確認メールを受けて有効にする)。"
-  []
-  {:Type "AWS::SNS::Topic"
-   :Properties {:TopicName (prefix-name "alarms")}})
-
-(defn resource-alarm-subscription []
-  {:Type "AWS::SNS::Subscription"
-   :Condition "UseAlarmEmail"
-   :Properties {:TopicArn {:Ref :AlarmTopic}
-                :Protocol "email"
-                :Endpoint {:Ref :AlarmEmail}}})
-
-(defn resource-alarm-topic-policy
-  "EventBridge のルール (中継のタスクの異常停止) がトピックに送れるようにする。"
-  []
-  {:Type "AWS::SNS::TopicPolicy"
-   :Properties
-   {:Topics [{:Ref :AlarmTopic}]
-    :PolicyDocument
-    {:Version "2012-10-17"
-     :Statement [{:Effect "Allow"
-                  :Principal {:Service "events.amazonaws.com"}
-                  :Action "sns:Publish"
-                  :Resource {:Ref :AlarmTopic}
-                  :Condition {:ArnEquals {"aws:SourceArn" (get-att :RelayStopRule :Arn)}}}]}}})
-
-(defn resource-alarm
-  "5 分ごとの値が 0 を超えたら AlarmTopic に送る。データがない間は正常として扱う。"
-  [namespace metric statistic dimension-name dimension-value]
-  {:Type "AWS::CloudWatch::Alarm"
-   :Properties
-   {:Namespace namespace
-    :MetricName metric
-    :Dimensions [{:Name dimension-name :Value dimension-value}]
-    :Statistic statistic
-    :Period 300
-    :EvaluationPeriods 1
-    :Threshold 0
-    :ComparisonOperator "GreaterThanThreshold"
-    :TreatMissingData "notBreaching"
-    :AlarmActions [{:Ref :AlarmTopic}]
-    :OKActions [{:Ref :AlarmTopic}]}})
-
-(defn- dlq-alarm [queue]
-  (resource-alarm "AWS/SQS" "ApproximateNumberOfMessagesVisible" "Maximum" "QueueName" (get-att queue :QueueName)))
-
-(defn resource-relay-stop-rule
-  "中継のタスクがコンテナの終了や起動の失敗で止まったら AlarmTopic に送る。
-   worker が希望数を 0 にしたときの停止 (ServiceSchedulerInitiated) は送らない。"
-  []
-  {:Type "AWS::Events::Rule"
-   :Properties
-   {:EventPattern {:source ["aws.ecs"]
-                   :detail-type ["ECS Task State Change"]
-                   :detail {:clusterArn [(get-att :Cluster :Arn)]
-                            :group [(sub "service:${Prefix}-sanchoris-relay")]
-                            :lastStatus ["STOPPED"]
-                            :stopCode ["EssentialContainerExited" "TaskFailedToStart"]}}
-    :Targets [{:Id "alarms" :Arn {:Ref :AlarmTopic}}]}})
-
 ;; --- Lambda (IAM、環境変数、関数) ---
 
 (defn resource-log-group [log-group-name]
@@ -1020,8 +957,7 @@
       :RelayImageTag {:Type "String" :Default "latest"}
       :WorkspaceCpu {:Type "String" :Default "2048"}
       :WorkspaceMemory {:Type "String" :Default "4096"}
-      :WorkerMaxConcurrency {:Type "Number" :Default 5 :MinValue 2}
-      :AlarmEmail {:Type "String" :Default ""}})
+      :WorkerMaxConcurrency {:Type "Number" :Default 5 :MinValue 2}})
 
     :Conditions
     {:UseApiDomains {"Fn::And" [{"Fn::Not" [{"Fn::Equals" [{:Ref :ApiDomainName} ""]}]}
@@ -1030,8 +966,7 @@
      :UseWorkspaces {"Fn::Equals" [{:Ref :EnableWorkspaces} "true"]}
      :UseStrictNetwork {"Fn::Equals" [{:Ref :WorkspaceNetwork} "strict"]}
      :UsePublicNetwork {"Fn::Equals" [{:Ref :WorkspaceNetwork} "public"]}
-     :UseStrictEndpoints {"Fn::And" [{:Condition "UseWorkspaces"} {:Condition "UseStrictNetwork"}]}
-     :UseAlarmEmail {"Fn::Not" [{"Fn::Equals" [{:Ref :AlarmEmail} ""]}]}}
+     :UseStrictEndpoints {"Fn::And" [{:Condition "UseWorkspaces"} {:Condition "UseStrictNetwork"}]}}
 
     :Resources
     (merge
@@ -1095,15 +1030,7 @@
       :EgressRelayLogGroup (resource-log-group (sub "/aws/ecs/${Prefix}-sanchoris-relay"))
       :RelayExecutionRole (resource-relay-execution-role)
       :RelayTaskDefinition (resource-relay-task-definition)
-      :RelayService (resource-relay-service)
-
-      :AlarmTopic (resource-alarm-topic)
-      :AlarmSubscription (resource-alarm-subscription)
-      :AlarmTopicPolicy (resource-alarm-topic-policy)
-      :WorkDlqAlarm (dlq-alarm :WorkDlq)
-      :RelayDlqAlarm (dlq-alarm :RelayDlq)
-      :WorkerErrorsAlarm (resource-alarm "AWS/Lambda" "Errors" "Sum" "FunctionName" {:Ref (function-id {:id work-function})})
-      :RelayStopRule (resource-relay-stop-rule)}
+      :RelayService (resource-relay-service)}
 
      (function-resources table-spec code-dir)
      {:WorkEventSource (resource-work-event-source)}
@@ -1248,8 +1175,6 @@
                                  :WorkspaceImageTag (or (System/getenv "SANCHORIS_WORKSPACE_IMAGE_TAG") "latest")
                                  :RelayImageTag (or (System/getenv "SANCHORIS_RELAY_IMAGE_TAG") "latest")
                                  :WorkerMaxConcurrency (or (System/getenv "SANCHORIS_WORKER_MAX_CONCURRENCY") "5")}
-                          (System/getenv "SANCHORIS_ALARM_EMAIL")
-                          (assoc :AlarmEmail (System/getenv "SANCHORIS_ALARM_EMAIL"))
                           cert
                           (assoc :ApiDomainName (:sanchoris-domain-name param)
                                  :ChannelDomainName (:sanchoris-channel-domain-name param)
