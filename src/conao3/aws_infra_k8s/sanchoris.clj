@@ -2,7 +2,7 @@
   "sanchoris (conao3/sanchoris) の基盤。制御側はサーバーレス: API Gateway の HTTP API (画面、webhook、OAuth) と
   WebSocket API (Run channel) の Lambda、DynamoDB (main は stream 付き、audit は追記だけ)、S3 (docs / records、SSE-S3)、
   SQS FIFO の作業キューとそれを消費する worker の Lambda、main の stream を作業キューと EventBridge Scheduler に渡す relay の Lambda。
-  Workspace だけが ECS Fargate で動き、HTTPS_PROXY に公開サブネットの中継 (egress relay の CONNECT プロキシ) を持つ。
+  Workspace だけが ECS Fargate で動き、公開サブネットの中継 (egress relay の CONNECT プロキシ) を出口に持つ。
   中継は Workspace が動く間だけ動く (worker が ECS のサービスの希望数を 1 と 0 に切り替える)。
   Workspace のネットワークは WorkspaceNetwork で選ぶ: public は公開サブネットと公開 IP (ECR はインターネット経由で、中継は助言にとどまる)、
   strict はインターネットへの経路のないサブネットと ECR のエンドポイント (中継が唯一の出口)。
@@ -28,6 +28,8 @@
 (def public-subnet-cidr "10.1.0.0/24")
 (def strict-subnet-cidr "10.1.16.0/20")
 (def relay-port 3128)
+(def relay-nofile 65536)
+(def workspace-ephemeral-storage-gib 30)
 (def workspace-container "workspace")
 (def relay-container "relay")
 
@@ -117,8 +119,17 @@
   (or (some (fn [[name ssm-name]] (when (= name env-name) ssm-name)) secrets)
       (throw (ex-info (str "no SSM parameter for " env-name) {:env env-name}))))
 
+(def ^:private secret-parameter-arn-prefix
+  "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}/sanchoris/")
+
 (defn- secret-parameter-arn [env-name]
-  (sub (str "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${Prefix}/sanchoris/" (secret-parameter env-name))))
+  (sub (str secret-parameter-arn-prefix (secret-parameter env-name))))
+
+(defn- secret-parameter-arns
+  "複数の SSM パラメータの ARN のリスト。ARN の共通部分を 1 回だけ書いて Fn::Split で分ける (テンプレートを短くする)。"
+  [env-names]
+  {"Fn::Split" ["|" {"Fn::Sub" [(str/join "|" (map #(str "${p}" (secret-parameter %)) env-names))
+                                {:p (sub secret-parameter-arn-prefix)}]}]})
 
 ;; --- 表 (sanchoris の infra/tables.json) ---
 
@@ -440,7 +451,11 @@
 (defn resource-workspace-task-definition
   "Workspace のタスク定義。タスクロールは持たない (エージェントは AWS の API を使わない。制御側とは Run channel でだけ話す)。
    ログのドライバーは持たない (agent のログは Run channel で DynamoDB の LOG# に入り、起動前の停止は worker が停止の理由を Task に書く)。
-   Run ごとの値 (Run のトークン、中継の URL、Run channel の URL) は worker が RunTask の overrides で渡す。"
+   Run ごとの値 (Run のトークン、中継の URL、Run channel の URL) は worker が RunTask の overrides で渡す。
+   ECS の init プロセスは使わない (PID 1 が元の環境変数、つまり Run と中継のトークンを持ち続けるため)。
+   イメージの entrypoint が 2 つのトークンを環境変数から外して stdin に移し、tini の下で agent を動かす。
+   ルートファイルシステムは書き込めるままにする (git、Claude Code、npm などが /workspace・/home/node・/tmp 以外にも書くことがあり、
+   Fargate のボリュームに置き換えたときの所有者とイメージの中身の扱いは実機で確かめていない)。"
   []
   {:Type "AWS::ECS::TaskDefinition"
    :Properties
@@ -449,6 +464,7 @@
     :NetworkMode "awsvpc"
     :Cpu {:Ref :WorkspaceCpu}
     :Memory {:Ref :WorkspaceMemory}
+    :EphemeralStorage {:SizeInGiB workspace-ephemeral-storage-gib}
     :RuntimePlatform {:CpuArchitecture "X86_64" :OperatingSystemFamily "LINUX"}
     :ExecutionRoleArn (get-att :WorkspaceExecutionRole :Arn)
     :ContainerDefinitions
@@ -457,11 +473,11 @@
       :Essential true
       :User "1000:1000"
       :StopTimeout 120
-      :LinuxParameters {:InitProcessEnabled true}}]}})
+      :LinuxParameters {:Capabilities {:Drop ["ALL"]}}}]}})
 
 
 ;; --- 中継 (egress relay) ---
-;; Workspace の HTTPS_PROXY。公開サブネットの Fargate サービスで、CONNECT を 443 番だけ通す。
+;; Workspace の出口。公開サブネットの Fargate サービスで、CONNECT を 443 番だけ通す。
 ;; 運営者の拒否リスト、プラットフォームの通信先、Run ごとの Network.Allow (worker が署名した relay のトークン) の順に当てる。
 ;; サービスの希望数は 0 で作り、worker が Workspace を始める前に 1 にし、動く Workspace がなくなったら 0 に戻す
 
@@ -534,6 +550,9 @@
       :Image (sub "${RelayRepository.RepositoryUri}:${RelayImageTag}")
       :Essential true
       :User "1000:1000"
+      :ReadonlyRootFilesystem true
+      :LinuxParameters {:Capabilities {:Drop ["ALL"]}}
+      :Ulimits [{:Name "nofile" :SoftLimit relay-nofile :HardLimit relay-nofile}]
       :PortMappings [{:ContainerPort relay-port :Protocol "tcp"}]
       :Environment [{:Name "SANCHORIS_RELAY_PORT" :Value (str relay-port)}
                     {:Name "SANCHORIS_RELAY_PLATFORM_HOSTS" :Value (relay-platform-hosts)}
@@ -547,7 +566,8 @@
 
 (defn resource-relay-service
   "公開サブネットで公開 IP を持つタスク。Workspace のセキュリティグループからの 3128 番だけを受ける。
-   希望数は 0 で作り、worker が UpdateService で切り替える。Workspace は worker が渡すタスクのプライベート IP で中継に届く。"
+   希望数は 0 で作り、worker が UpdateService で切り替える。Workspace は worker が渡すタスクのプライベート IP で中継に届く。
+   デプロイは新しいタスクが動いてから古いタスクを止める (動いている Workspace は古いタスクが止まると外に出られなくなる)。"
   []
   {:Type "AWS::ECS::Service"
    :Condition "UseWorkspaces"
@@ -557,10 +577,73 @@
     :LaunchType "FARGATE"
     :TaskDefinition {:Ref :RelayTaskDefinition}
     :DesiredCount 0
-    :DeploymentConfiguration {:MinimumHealthyPercent 0 :MaximumPercent 100}
+    :DeploymentConfiguration {:MinimumHealthyPercent 100 :MaximumPercent 200}
     :NetworkConfiguration {:AwsvpcConfiguration {:Subnets [{:Ref :PublicSubnet}]
                                                   :SecurityGroups [{:Ref :RelaySecurityGroup}]
                                                   :AssignPublicIp "ENABLED"}}}})
+
+;; --- 通知 (アラームと中継の異常停止) ---
+
+(defn resource-alarm-topic
+  "アラームと中継の異常停止の送り先。AlarmEmail が空でなければメールの購読を作る (購読の確認メールを受けて有効にする)。"
+  []
+  {:Type "AWS::SNS::Topic"
+   :Properties {:TopicName (prefix-name "alarms")}})
+
+(defn resource-alarm-subscription []
+  {:Type "AWS::SNS::Subscription"
+   :Condition "UseAlarmEmail"
+   :Properties {:TopicArn {:Ref :AlarmTopic}
+                :Protocol "email"
+                :Endpoint {:Ref :AlarmEmail}}})
+
+(defn resource-alarm-topic-policy
+  "EventBridge のルール (中継のタスクの異常停止) がトピックに送れるようにする。"
+  []
+  {:Type "AWS::SNS::TopicPolicy"
+   :Properties
+   {:Topics [{:Ref :AlarmTopic}]
+    :PolicyDocument
+    {:Version "2012-10-17"
+     :Statement [{:Effect "Allow"
+                  :Principal {:Service "events.amazonaws.com"}
+                  :Action "sns:Publish"
+                  :Resource {:Ref :AlarmTopic}
+                  :Condition {:ArnEquals {"aws:SourceArn" (get-att :RelayStopRule :Arn)}}}]}}})
+
+(defn resource-alarm
+  "5 分ごとの値が 0 を超えたら AlarmTopic に送る。データがない間は正常として扱う。"
+  [namespace metric statistic dimension-name dimension-value]
+  {:Type "AWS::CloudWatch::Alarm"
+   :Properties
+   {:Namespace namespace
+    :MetricName metric
+    :Dimensions [{:Name dimension-name :Value dimension-value}]
+    :Statistic statistic
+    :Period 300
+    :EvaluationPeriods 1
+    :Threshold 0
+    :ComparisonOperator "GreaterThanThreshold"
+    :TreatMissingData "notBreaching"
+    :AlarmActions [{:Ref :AlarmTopic}]
+    :OKActions [{:Ref :AlarmTopic}]}})
+
+(defn- dlq-alarm [queue]
+  (resource-alarm "AWS/SQS" "ApproximateNumberOfMessagesVisible" "Maximum" "QueueName" (get-att queue :QueueName)))
+
+(defn resource-relay-stop-rule
+  "中継のタスクがコンテナの終了や起動の失敗で止まったら AlarmTopic に送る。
+   worker が希望数を 0 にしたときの停止 (ServiceSchedulerInitiated) は送らない。"
+  []
+  {:Type "AWS::Events::Rule"
+   :Properties
+   {:EventPattern {:source ["aws.ecs"]
+                   :detail-type ["ECS Task State Change"]
+                   :detail {:clusterArn [(get-att :Cluster :Arn)]
+                            :group [(sub "service:${Prefix}-sanchoris-relay")]
+                            :lastStatus ["STOPPED"]
+                            :stopCode ["EssentialContainerExited" "TaskFailedToStart"]}}
+    :Targets [{:Id "alarms" :Arn {:Ref :AlarmTopic}}]}})
 
 ;; --- Lambda (IAM、環境変数、関数) ---
 
@@ -584,8 +667,13 @@
              (sub "https://${ApiDomainName}")
              (get-att :HttpApi :ApiEndpoint)]})
 
-(defn- channel-endpoint []
-  (sub "https://${ChannelApi}.execute-api.${AWS::Region}.amazonaws.com/${ChannelStage}"))
+(defn- channel-endpoint
+  "API Gateway Management API (@connections) の呼び先。カスタムドメインがあるときは execute-api のエンドポイントを止めるので、
+   カスタムドメイン (Cloudflare の proxied の CNAME) を通る。"
+  []
+  {"Fn::If" ["UseApiDomains"
+             (sub "https://${ChannelDomainName}")
+             (sub "https://${ChannelApi}.execute-api.${AWS::Region}.amazonaws.com/${ChannelStage}")]})
 
 (defn env-vars
   "環境変数のまとまり。名前と意味は sanchoris の docs/architecture.md「Lambda functions」「Environment」。"
@@ -696,17 +784,20 @@
                      (mapcat #(grant-statements % table-spec) (:grants f)))
          (seq (:secrets f)) (conj {:Effect "Allow"
                                    :Action "ssm:GetParameters"
-                                   :Resource (mapv secret-parameter-arn (:secrets f))}))}}]}})
+                                   :Resource (secret-parameter-arns (:secrets f))}))}}]}})
+
+(def function-globals
+  "全 Lambda に共通の設定。SAM の Globals に置く。"
+  {:LoggingConfig {:LogFormat "JSON"}
+   :Runtime "provided.al2023"
+   :Architectures ["arm64"]
+   :Handler "bootstrap"})
 
 (defn resource-function [f table-spec code-dir]
   {:Type "AWS::Serverless::Function"
    :DependsOn [(name (function-log-group-id f))]
    :Properties
    {:FunctionName (prefix-name (:name f))
-    :LoggingConfig {:LogFormat "JSON"}
-    :Runtime "provided.al2023"
-    :Architectures ["arm64"]
-    :Handler "bootstrap"
     :CodeUri (str (fs/path code-dir (:name f) "bootstrap.zip"))
     :Timeout (:timeout f)
     :MemorySize (:memory f)
@@ -824,7 +915,8 @@
    :Properties
    {:Name (prefix-name "channel")
     :ProtocolType "WEBSOCKET"
-    :RouteSelectionExpression "$request.body.action"}})
+    :RouteSelectionExpression "$request.body.action"
+    :DisableExecuteApiEndpoint {"Fn::If" ["UseApiDomains" true false]}}})
 
 (defn resource-channel-integration []
   {:Type "AWS::ApiGatewayV2::Integration"
@@ -913,45 +1005,23 @@
 
 (defn cfn [{:keys [table-spec code-dir]}]
   (a.cfn/template
-   {:Parameters
+   {:Globals {:Function function-globals}
+    :Parameters
     (merge
      (a.cfn/list-string-parameters [:Env :Prefix])
-     {:StripePortalConfiguration {:Type "AWS::SSM::Parameter::Value<String>"
-                                  :Description "Stripe のカスタマーポータル設定の ID (bpc_...) を置いた SSM パラメータ (String) の名前。Stripe のアカウントを他の製品と共有するので、ポータルのセッションは必ずこの設定を指定する"}
-      :ApiDomainName {:Type "String"
-                      :Default ""
-                      :Description "HTTP API のカスタムドメイン (dev-sanchoris.sancode.dev など)。空なら作らない"}
-      :ChannelDomainName {:Type "String"
-                          :Default ""
-                          :Description "WebSocket API (Run channel) のカスタムドメイン (dev-sanchoris-channel.sancode.dev など)"}
-      :CertificateArn {:Type "String"
-                       :Default ""
-                       :Description "両方のドメインを持つ ACM 証明書 (ap-northeast-1) の ARN。空ならカスタムドメインを作らない"}
-      :EnableWorkspaces {:Type "String"
-                         :AllowedValues ["true" "false"]
-                         :Default "false"
-                         :Description "true で中継のサービス (希望数 0) と、strict なら ECR のエンドポイントを作る"}
-      :WorkspaceNetwork {:Type "String"
-                         :AllowedValues ["public" "strict"]
-                         :Description "public: 公開サブネットと公開 IP (中継は助言)。strict: 経路のないサブネットと ECR のエンドポイント (中継が唯一の出口)"}
-      :S3PrefixListId {:Type "String"
-                       :Description "リージョンの S3 のマネージドプレフィックスリスト (com.amazonaws.<region>.s3) の ID"}
-      :WorkspaceImageTag {:Type "String"
-                          :Default "latest"
-                          :Description "Workspace のイメージのタグ"}
-      :RelayImageTag {:Type "String"
-                      :Default "latest"
-                      :Description "中継のイメージのタグ"}
-      :WorkspaceCpu {:Type "String"
-                     :Default "2048"
-                     :Description "Workspace のタスクの CPU (1024 = 1 vCPU)"}
-      :WorkspaceMemory {:Type "String"
-                        :Default "4096"
-                        :Description "Workspace のタスクのメモリ (MiB)"}
-      :WorkerMaxConcurrency {:Type "Number"
-                             :Default 5
-                             :MinValue 2
-                             :Description "作業キューを消費する worker の同時実行数の上限"}})
+     {:StripePortalConfiguration {:Type "AWS::SSM::Parameter::Value<String>"}
+      :ApiDomainName {:Type "String" :Default ""}
+      :ChannelDomainName {:Type "String" :Default ""}
+      :CertificateArn {:Type "String" :Default ""}
+      :EnableWorkspaces {:Type "String" :AllowedValues ["true" "false"] :Default "false"}
+      :WorkspaceNetwork {:Type "String" :AllowedValues ["public" "strict"]}
+      :S3PrefixListId {:Type "String"}
+      :WorkspaceImageTag {:Type "String" :Default "latest"}
+      :RelayImageTag {:Type "String" :Default "latest"}
+      :WorkspaceCpu {:Type "String" :Default "2048"}
+      :WorkspaceMemory {:Type "String" :Default "4096"}
+      :WorkerMaxConcurrency {:Type "Number" :Default 5 :MinValue 2}
+      :AlarmEmail {:Type "String" :Default ""}})
 
     :Conditions
     {:UseApiDomains {"Fn::And" [{"Fn::Not" [{"Fn::Equals" [{:Ref :ApiDomainName} ""]}]}
@@ -960,7 +1030,8 @@
      :UseWorkspaces {"Fn::Equals" [{:Ref :EnableWorkspaces} "true"]}
      :UseStrictNetwork {"Fn::Equals" [{:Ref :WorkspaceNetwork} "strict"]}
      :UsePublicNetwork {"Fn::Equals" [{:Ref :WorkspaceNetwork} "public"]}
-     :UseStrictEndpoints {"Fn::And" [{:Condition "UseWorkspaces"} {:Condition "UseStrictNetwork"}]}}
+     :UseStrictEndpoints {"Fn::And" [{:Condition "UseWorkspaces"} {:Condition "UseStrictNetwork"}]}
+     :UseAlarmEmail {"Fn::Not" [{"Fn::Equals" [{:Ref :AlarmEmail} ""]}]}}
 
     :Resources
     (merge
@@ -1010,9 +1081,7 @@
                                                                              :DestinationPrefixListId {:Ref :S3PrefixListId}}))
       :RelayFromWorkspaceIngress (resource-ingress :RelaySecurityGroup {:FromPort relay-port :ToPort relay-port
                                                                         :SourceSecurityGroupId {:Ref :WorkspaceSecurityGroup}})
-      :RelayHttpsEgress (resource-egress :RelaySecurityGroup {:FromPort 443 :ToPort 443 :CidrIp "0.0.0.0/0"})
-      :RelayHttpEgress (resource-egress :RelaySecurityGroup {:FromPort 80 :ToPort 80 :CidrIp "0.0.0.0/0"})
-      :EndpointFromWorkspaceIngress (strict (resource-ingress :EndpointSecurityGroup {:FromPort 443 :ToPort 443
+      :RelayHttpsEgress (resource-egress :RelaySecurityGroup {:FromPort 443 :ToPort 443 :CidrIp "0.0.0.0/0"})      :EndpointFromWorkspaceIngress (strict (resource-ingress :EndpointSecurityGroup {:FromPort 443 :ToPort 443
                                                                                       :SourceSecurityGroupId {:Ref :WorkspaceSecurityGroup}}))
       :EndpointFromRelayIngress (strict (resource-ingress :EndpointSecurityGroup {:FromPort 443 :ToPort 443
                                                                                   :SourceSecurityGroupId {:Ref :RelaySecurityGroup}}))
@@ -1026,7 +1095,15 @@
       :EgressRelayLogGroup (resource-log-group (sub "/aws/ecs/${Prefix}-sanchoris-relay"))
       :RelayExecutionRole (resource-relay-execution-role)
       :RelayTaskDefinition (resource-relay-task-definition)
-      :RelayService (resource-relay-service)}
+      :RelayService (resource-relay-service)
+
+      :AlarmTopic (resource-alarm-topic)
+      :AlarmSubscription (resource-alarm-subscription)
+      :AlarmTopicPolicy (resource-alarm-topic-policy)
+      :WorkDlqAlarm (dlq-alarm :WorkDlq)
+      :RelayDlqAlarm (dlq-alarm :RelayDlq)
+      :WorkerErrorsAlarm (resource-alarm "AWS/Lambda" "Errors" "Sum" "FunctionName" {:Ref (function-id {:id work-function})})
+      :RelayStopRule (resource-relay-stop-rule)}
 
      (function-resources table-spec code-dir)
      {:WorkEventSource (resource-work-event-source)}
@@ -1171,6 +1248,8 @@
                                  :WorkspaceImageTag (or (System/getenv "SANCHORIS_WORKSPACE_IMAGE_TAG") "latest")
                                  :RelayImageTag (or (System/getenv "SANCHORIS_RELAY_IMAGE_TAG") "latest")
                                  :WorkerMaxConcurrency (or (System/getenv "SANCHORIS_WORKER_MAX_CONCURRENCY") "5")}
+                          (System/getenv "SANCHORIS_ALARM_EMAIL")
+                          (assoc :AlarmEmail (System/getenv "SANCHORIS_ALARM_EMAIL"))
                           cert
                           (assoc :ApiDomainName (:sanchoris-domain-name param)
                                  :ChannelDomainName (:sanchoris-channel-domain-name param)
