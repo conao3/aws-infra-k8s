@@ -1,5 +1,5 @@
 (ns conao3.aws-infra-k8s.sanrecap
-  "sanrecap (conao3/sanrecap) のバックエンド。API Gateway (REST API) + WAF の入口。認証は共有の Cognito
+  "sanrecap (sancode-org/sanrecap) のバックエンド。API Gateway (REST API) + WAF の入口。認証は共有の Cognito
   ユーザープール (cognito スタック。先にデプロイする) のオーソライザー。モノリスの API Lambda、
   重い処理を SNS → SQS → コンシューマの Lambda で非同期に処理し、結果を DynamoDB (TTL) に置く。
   字幕は API Gateway / WAF を通さず、署名付き POST で S3 に直接置かせる。ユーザーは DynamoDB の users 表。
@@ -729,7 +729,7 @@
         stripe-source (stripe-event-source prefix)
         code-uri (str (fs/absolutize
                        (or (System/getenv "SANRECAP_DIST")
-                           (fs/expand-home "~/ghq/github.com/conao3/sanrecap/apps/api/dist/lambda"))))]
+                           (fs/expand-home "~/ghq/github.com/sancode-org/sanrecap/apps/api/dist/lambda"))))]
     (doseq [entry ["index.mjs" "worker.mjs" "billing.mjs"]]
       (when-not (fs/exists? (fs/path code-uri entry))
         (throw (ex-info (format "build first: vp run build-api (%s/%s)" code-uri entry)

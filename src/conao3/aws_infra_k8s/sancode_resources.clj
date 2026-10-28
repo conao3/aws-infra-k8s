@@ -40,7 +40,7 @@
     :ServiceRole {"Fn::GetAtt" [:CodeBuildRole :Arn]}
     :Source
     {:Type "GITHUB"
-     :Location "https://github.com/conao3/sancode.git"
+     :Location "https://github.com/sancode-org/sancode.git"
      :BuildSpec "buildspecs/deploy.yml"
      :GitCloneDepth 1}
     :Environment

@@ -1,6 +1,6 @@
 # 013: sanrecap backend
 
-The `sanrecap` module builds the backend of [sanrecap](https://github.com/conao3/sanrecap). It does not run on k8s and is not part of `deploy all`.
+The `sanrecap` module builds the backend of [sanrecap](https://github.com/sancode-org/sanrecap). It does not run on k8s and is not part of `deploy all`.
 
 ## Resources
 
