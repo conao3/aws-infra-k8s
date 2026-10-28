@@ -1,9 +1,9 @@
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /build
 COPY jwt-validator/package.json .
 RUN npm install --production
 
-FROM nginx:1.27-alpine
+FROM nginx:1.31-alpine
 RUN apk add --no-cache nodejs tini
 COPY --from=builder /build/node_modules /app/node_modules
 COPY jwt-validator/index.js /app/index.js

@@ -355,7 +355,7 @@
    :Properties
    {:FunctionName (prefix-name "billing")
     :LoggingConfig {:LogFormat "JSON"}
-    :Runtime "nodejs22.x"
+    :Runtime "nodejs24.x"
     :Architectures ["arm64"]
     :Handler "billing.handler"
     :CodeUri code-uri
@@ -393,7 +393,7 @@
    {:FunctionName (prefix-name "api")
     ;; 1 行 1 JSON のログ (アプリの構造化ログを Logs Insights で event ごとに集計できる)
     :LoggingConfig {:LogFormat "JSON"}
-    :Runtime "nodejs22.x"
+    :Runtime "nodejs24.x"
     :Architectures ["arm64"]
     :Handler "index.handler"
     :CodeUri code-uri
@@ -442,7 +442,7 @@
    {:FunctionName (prefix-name "worker")
     ;; 1 行 1 JSON のログ (アプリの構造化ログを Logs Insights で event ごとに集計できる)
     :LoggingConfig {:LogFormat "JSON"}
-    :Runtime "nodejs22.x"
+    :Runtime "nodejs24.x"
     :Architectures ["arm64"]
     :Handler "worker.handler"
     :CodeUri code-uri
