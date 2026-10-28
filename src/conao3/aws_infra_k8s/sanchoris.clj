@@ -574,7 +574,8 @@
 (defn resource-relay-service
   "公開サブネットで公開 IP を持つタスク。Workspace のセキュリティグループからの 3128 番だけを受ける。
    希望数は 0 で作り、worker が UpdateService で切り替える。Workspace は worker が渡すタスクのプライベート IP で中継に届く。
-   デプロイは新しいタスクが動いてから古いタスクを止める (動いている Workspace は古いタスクが止まると外に出られなくなる)。"
+   デプロイは新しいタスクが動いてから古いタスクを止める (動いている Workspace は古いタスクが止まると外に出られなくなる)。
+   タスクが起動しないデプロイは circuit breaker が数分で失敗にして前の版に戻す。"
   []
   {:Type "AWS::ECS::Service"
    :Condition "UseWorkspaces"
@@ -584,7 +585,9 @@
     :LaunchType "FARGATE"
     :TaskDefinition {:Ref :RelayTaskDefinition}
     :DesiredCount 0
-    :DeploymentConfiguration {:MinimumHealthyPercent 100 :MaximumPercent 200}
+    :DeploymentConfiguration {:MinimumHealthyPercent 100
+                              :MaximumPercent 200
+                              :DeploymentCircuitBreaker {:Enable true :Rollback true}}
     :NetworkConfiguration {:AwsvpcConfiguration {:Subnets [{:Ref :PublicSubnet}]
                                                   :SecurityGroups [{:Ref :RelaySecurityGroup}]
                                                   :AssignPublicIp "ENABLED"}}}})
