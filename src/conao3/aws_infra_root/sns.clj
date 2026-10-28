@@ -20,6 +20,29 @@
       {:TopicName (a.cfn/prefix "cost-anomaly-alerts")
        :DisplayName "Cost Anomaly Alerts"}}
 
+     :CostAnomalySnsPolicy
+     {:Type "AWS::SNS::TopicPolicy"
+      :Properties
+      {:Topics [{:Ref :CostAnomalySns}]
+       :PolicyDocument
+       {:Version "2012-10-17"
+        :Statement
+        [{:Sid "AWSBudgetsSNSPublishingPermissions"
+          :Effect "Allow"
+          :Principal {:Service "budgets.amazonaws.com"}
+          :Action "SNS:Publish"
+          :Resource {:Ref :CostAnomalySns}
+          :Condition
+          {:StringEquals {"aws:SourceAccount" {:Ref "AWS::AccountId"}}
+           :ArnLike {"aws:SourceArn" {"Fn::Sub" "arn:aws:budgets::${AWS::AccountId}:*"}}}}
+         {:Sid "AWSAnomalyDetectionSNSPublishingPermissions"
+          :Effect "Allow"
+          :Principal {:Service "costalerts.amazonaws.com"}
+          :Action "SNS:Publish"
+          :Resource {:Ref :CostAnomalySns}
+          :Condition
+          {:StringEquals {"aws:SourceAccount" {:Ref "AWS::AccountId"}}}}]}}}
+
      :ChatbotRole
      {:Type "AWS::IAM::Role"
       :Properties
