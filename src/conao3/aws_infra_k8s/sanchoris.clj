@@ -67,7 +67,7 @@
    {:id "Worker" :name "worker" :timeout worker-timeout-sec :memory 512
     :env [:store :secrets-path :records :channel-endpoint :github-api :ecs :control-url :git :relay]
     :secrets ["GITHUB_APP_ID" "GITHUB_APP_PRIVATE_KEY" "RUN_TOKEN_SIGNING_KEY" "RELAY_TOKEN_SIGNING_KEY"]
-    :grants [:tables :docs :records :connections :work-consume :ecs]}
+    :grants [:tables :docs :records :connections :work-consume :ecs :tenant-delete]}
    {:id "Relay" :name "relay" :timeout relay-timeout-sec :memory 256
     :env [:work-queue]
     :secrets []
@@ -676,6 +676,13 @@
                  :Action "dynamodb:GetItem"
                  :Resource (vec (main-table-arns table-spec))}]
     :records (bucket-statements :RecordsBucket ["s3:GetObject" "s3:PutObject"])
+    :tenant-delete [{:Effect "Allow"
+                     :Action ["dynamodb:Scan" "dynamodb:BatchWriteItem"]
+                     :Resource (vec (for [table (:tables table-spec) :when (= "main" (:role table))]
+                                      (get-att (table-id table) :Arn)))}
+                    {:Effect "Allow"
+                     :Action "s3:DeleteObject"
+                     :Resource [(sub "${DocsBucket.Arn}/*") (sub "${RecordsBucket.Arn}/*")]}]
     :connections [{:Effect "Allow"
                    :Action "execute-api:ManageConnections"
                    :Resource [(sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ChannelApi}/${ChannelStage}/POST/@connections/*")
