@@ -62,7 +62,7 @@
     :grants [:main-read :docs-read]}
    {:id "Channel" :name "channel" :timeout http-timeout-sec :memory 256
     :env [:store :secrets-path :records :channel-endpoint :github-api]
-    :secrets ["RUN_TOKEN_SIGNING_KEY" "GITHUB_APP_ID" "GITHUB_APP_PRIVATE_KEY" "SANCHORIS_CREDENTIAL_KEY"]
+    :secrets ["RUN_TOKEN_SIGNING_KEY" "RELAY_TOKEN_SIGNING_KEY" "GITHUB_APP_ID" "GITHUB_APP_PRIVATE_KEY" "SANCHORIS_CREDENTIAL_KEY"]
     :grants [:tables :docs :records :connections]}
    {:id "Worker" :name "worker" :timeout worker-timeout-sec :memory 512
     :env [:store :secrets-path :records :channel-endpoint :github-api :ecs :control-url :git :relay]
@@ -466,8 +466,8 @@
 (defn resource-workspace-task-definition
   "Workspace のタスク定義 (アーキテクチャごとに 1 つ、大きさは同じ)。イメージはアーキテクチャごとのタグ (`<WorkspaceImageTag>-arm64`、`-amd64`) を使う。タスクロールは持たない (エージェントは AWS の API を使わない。制御側とは Run channel でだけ話す)。
    ログのドライバーは持たない (agent のログは Run channel で DynamoDB の LOG# に入り、起動前の停止は worker が停止の理由を Task に書く)。
-   Run ごとの値 (Run のトークン、中継の URL、Run channel の URL) は worker が RunTask の overrides で渡す。
-   ECS の init プロセスは使わない (PID 1 が元の環境変数、つまり Run と中継のトークンを持ち続けるため)。
+   Run ごとの値 (ブートストラップのトークン、中継の URL、Run channel の URL) は worker が RunTask の overrides で渡す。overrides は CloudTrail と DescribeTasks から読めるので、2 つのトークンは 15 分で切れ、ブートストラップのトークンは Run channel の接続 1 回にしか使えない。12 時間の Run と中継のトークンは、agent が最初の接続で channel から受け取る。
+   ECS の init プロセスは使わない (PID 1 が元の環境変数、つまりブートストラップと中継のトークンを持ち続けるため)。
    イメージの entrypoint が 2 つのトークンを環境変数から外して stdin に移し、tini の下で agent を動かす。
    ルートファイルシステムは読み取り専用にし、書き込む場所は /workspace・/home/node・/tmp のバインドマウント (タスクのエフェメラルストレージ) だけにする。
    イメージがこの 3 つを VOLUME に書くので、Fargate はイメージの中身・所有者・モード (/workspace と /home/node は node、/tmp は 1777) をボリュームに写してからコンテナを始める。"
@@ -859,7 +859,7 @@
     :SourceArn (sub (str "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${" (name api) "}/" source-path))}})
 
 ;; --- API Gateway: WebSocket API (Run channel) ---
-;; $connect は channel-authorizer の Lambda (REQUEST オーソライザー) が Authorization ヘッダーの Run のトークンを検証する
+;; $connect は channel-authorizer の Lambda (REQUEST オーソライザー) が Authorization ヘッダーの Run のトークンかブートストラップのトークンを検証する
 
 (defn- lambda-invocation-uri [function-id]
   (sub (str "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${"
