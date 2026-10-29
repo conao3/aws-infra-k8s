@@ -413,18 +413,25 @@
                                   :Action "s3:GetObject"
                                   :Resource (sub "arn:aws:s3:::prod-${AWS::Region}-starport-layer-bucket/*")}]}}})
 
+(defn- repository-lifecycle-policy [source-images]
+  {:LifecyclePolicyText
+   (json/generate-string
+    {:rules [{:rulePriority 1
+              :selection {:tagStatus "tagged" :tagPatternList ["latest*"] :countType "imageCountMoreThan" :countNumber 1000}
+              :action {:type "expire"}}
+             {:rulePriority 2
+              :selection {:tagStatus "untagged" :countType "sinceImagePushed" :countUnit "days" :countNumber 1}
+              :action {:type "expire"}}
+             {:rulePriority 3
+              :selection {:tagStatus "tagged" :tagPrefixList ["src-"] :countType "imageCountMoreThan" :countNumber source-images}
+              :action {:type "expire"}}]})})
+
 (defn resource-workspace-repository []
   {:Type "AWS::ECR::Repository"
    :Properties
    {:RepositoryName (prefix-name "workspace")
     :ImageScanningConfiguration {:ScanOnPush true}
-    :LifecyclePolicy
-    {:LifecyclePolicyText
-     (json/generate-string
-      {:rules [{:rulePriority 1
-                :description "keep the last 10 images"
-                :selection {:tagStatus "any" :countType "imageCountMoreThan" :countNumber 10}
-                :action {:type "expire"}}]})}}})
+    :LifecyclePolicy (repository-lifecycle-policy (* 3 (count workspace-architectures)))}})
 
 (defn resource-cluster []
   {:Type "AWS::ECS::Cluster"
@@ -504,13 +511,7 @@
    :Properties
    {:RepositoryName (prefix-name "relay")
     :ImageScanningConfiguration {:ScanOnPush true}
-    :LifecyclePolicy
-    {:LifecyclePolicyText
-     (json/generate-string
-      {:rules [{:rulePriority 1
-                :description "keep the last 5 images"
-                :selection {:tagStatus "any" :countType "imageCountMoreThan" :countNumber 5}
-                :action {:type "expire"}}]})}}})
+    :LifecyclePolicy (repository-lifecycle-policy 3)}})
 
 (defn resource-relay-execution-role
   "中継のイメージを取り、ログを書き、署名鍵を SSM から読んでコンテナに渡すためのロール。"
