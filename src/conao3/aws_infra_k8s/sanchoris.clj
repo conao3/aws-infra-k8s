@@ -34,6 +34,7 @@
 (def workspace-cpu "1024")
 (def workspace-memory "4096")
 (def workspace-container "workspace")
+(def workspace-volumes {"workspace" "/workspace" "home" "/home/node" "tmp" "/tmp"})
 ;; Session の Workspace.Architecture ごとのタスク定義 (論理 ID の接尾辞、ファミリーの接尾辞、ECS の CPU アーキテクチャ、イメージのタグの接尾辞)
 (def workspace-architectures
   [{:id "Arm64" :family "workspace-arm64" :cpu-architecture "ARM64" :image-suffix "arm64"}
@@ -468,8 +469,8 @@
    Run ごとの値 (Run のトークン、中継の URL、Run channel の URL) は worker が RunTask の overrides で渡す。
    ECS の init プロセスは使わない (PID 1 が元の環境変数、つまり Run と中継のトークンを持ち続けるため)。
    イメージの entrypoint が 2 つのトークンを環境変数から外して stdin に移し、tini の下で agent を動かす。
-   ルートファイルシステムは書き込めるままにする (git、Claude Code、npm などが /workspace・/home/node・/tmp 以外にも書くことがあり、
-   Fargate のボリュームに置き換えたときの所有者とイメージの中身の扱いは実機で確かめていない)。"
+   ルートファイルシステムは読み取り専用にし、書き込む場所は /workspace・/home/node・/tmp のバインドマウント (タスクのエフェメラルストレージ) だけにする。
+   イメージがこの 3 つを VOLUME に書くので、Fargate はイメージの中身・所有者・モード (/workspace と /home/node は node、/tmp は 1777) をボリュームに写してからコンテナを始める。"
   [{:keys [family cpu-architecture image-suffix]}]
   {:Type "AWS::ECS::TaskDefinition"
    :Properties
@@ -481,11 +482,14 @@
     :EphemeralStorage {:SizeInGiB workspace-ephemeral-storage-gib}
     :RuntimePlatform {:CpuArchitecture cpu-architecture :OperatingSystemFamily "LINUX"}
     :ExecutionRoleArn (get-att :WorkspaceExecutionRole :Arn)
+    :Volumes (vec (for [n (keys workspace-volumes)] {:Name n}))
     :ContainerDefinitions
     [{:Name workspace-container
       :Image (sub (str "${WorkspaceRepository.RepositoryUri}:${WorkspaceImageTag}-" image-suffix))
       :Essential true
       :User "1000:1000"
+      :ReadonlyRootFilesystem true
+      :MountPoints (vec (for [[n p] workspace-volumes] {:SourceVolume n :ContainerPath p}))
       :StopTimeout 120
       :LinuxParameters {:Capabilities {:Drop ["ALL"]}}}]}})
 
