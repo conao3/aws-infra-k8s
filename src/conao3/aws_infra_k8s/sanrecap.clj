@@ -97,6 +97,17 @@
                 {:AttributeName "sk" :KeyType "RANGE"}]
     :TimeToLiveSpecification {:AttributeName "expiresAt" :Enabled true}}})
 
+;; --- クリップ (運営のバッチ `vp run admin:clips` が管理者の認証情報で書き、GET /v1/clips が読む) ---
+
+;; 主キーは clipId (`<videoId>-<startSec>`)。属性は区間とメタデータ (題名・チャンネル・ジャンル・難しさ・一言) だけで、字幕・論点は持たない
+(defn resource-clips-table []
+  {:Type "AWS::DynamoDB::Table"
+   :Properties
+   {:TableName (prefix-name "clips")
+    :BillingMode "PAY_PER_REQUEST"
+    :AttributeDefinitions [{:AttributeName "clipId" :AttributeType "S"}]
+    :KeySchema [{:AttributeName "clipId" :KeyType "HASH"}]}})
+
 ;; --- 字幕の置き場 (署名付き POST で直接置かせ、API とワーカーが読んで消す) ---
 
 (defn resource-uploads-bucket []
@@ -248,6 +259,10 @@
     {:Effect "Allow"
      :Action ["dynamodb:GetItem" "dynamodb:PutItem" "dynamodb:UpdateItem"]
      :Resource (get-att :UsageTable :Arn)}
+    ;; クリップの一覧は表全体を Scan で読む (小さい表)
+    {:Effect "Allow"
+     :Action ["dynamodb:Scan" "dynamodb:GetItem"]
+     :Resource (get-att :ClipsTable :Arn)}
     {:Effect "Allow"
      :Action "sns:Publish"
      :Resource {:Ref :JobsTopic}}
@@ -415,6 +430,7 @@
       :COGNITO_CLIENT_ID (import-value "SanrecapUserPoolClient")
       :USERS_TABLE {:Ref :UsersTable}
       :USAGE_TABLE {:Ref :UsageTable}
+      :CLIPS_TABLE {:Ref :ClipsTable}
       :JOBS_TABLE {:Ref :JobsTable}
       :JOBS_TOPIC_ARN {:Ref :JobsTopic}
       :UPLOADS_BUCKET {:Ref :UploadsBucket}}
@@ -647,6 +663,7 @@
 
      :UsersTable (resource-users-table)
      :UsageTable (resource-usage-table)
+     :ClipsTable (resource-clips-table)
      :UploadsBucket (resource-uploads-bucket)
      :UploadsBucketPolicy (resource-uploads-bucket-policy)
 
@@ -692,6 +709,7 @@
       :SanrecapWorkerFunction {:Ref :WorkerFunction}
       :SanrecapUsersTable {:Ref :UsersTable}
       :SanrecapUsageTable {:Ref :UsageTable}
+      :SanrecapClipsTable {:Ref :ClipsTable}
       :SanrecapUploadsBucket {:Ref :UploadsBucket}
       :SanrecapJobsTable {:Ref :JobsTable}
       :SanrecapJobsDlqUrl {:Ref :JobsDlq}})

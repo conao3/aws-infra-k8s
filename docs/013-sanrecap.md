@@ -11,6 +11,7 @@ The `sanrecap` module builds the backend of [sanrecap](https://github.com/sancod
 | Async jobs | SNS topic, SQS queue (visibility timeout 720 s = 6 x the worker timeout) and DLQ, DynamoDB `jobs` table (TTL `expiresAt`, key `userId` + `jobId`) |
 | Users | DynamoDB `users` table (key: lowercase `email`; attributes `userId`, `plan`). The API creates a row on the first login (conditional `PutItem`); the billing Lambda updates `plan` |
 | Usage | DynamoDB `usage` table (key `userId` + `sk`): `videos#<period>` counts videos (`lifetime` for free, `YYYY-MM` for paid), `session#<job id>` counts the turns, debriefs and speech clips of one interview and expires by TTL (`expiresAt`). The API Lambda has `GetItem` / `PutItem` / `UpdateItem` on it. No content is stored |
+| Clips | DynamoDB `clips` table (key `clipId` = `<videoId>-<startSec>`; attributes `videoId`, `startSec`, `endSec`, `title`, `channel`, `genre`, `level`, `hook`, `createdAt`). The API Lambda has `Scan` / `GetItem` on it (`GET /v1/clips`, env `CLIPS_TABLE`). Written only by the operator's batch. No captions or key points are stored |
 | Uploads | S3 bucket for transcripts: public access blocked, SSE-S3, TLS only, `uploads/` expires in 1 day, CORS allows POST from the extension origins only |
 | IAM | One role per Lambda, scoped to its own log group, tables, topic/queue and `uploads/*` |
 
@@ -45,6 +46,15 @@ Both commands run `sam validate --lint` first. Delete in the reverse order (sanr
 ## Register a user
 
 Users are registered by the administrator with `pnpm admin:add-user` in sanrecap, which calls `aws dynamodb put-item` on the `users` table (`SanrecapUsersTable` output).
+
+## Write the clips
+
+The clip list is written by the operator with `vp run admin:clips` in sanrecap, using the operator's own (administrator) AWS credentials; no extra role is needed. The table name is the output `SanrecapClipsTable` (`<prefix>-sanrecap-clips`):
+
+```bash
+CLIPS_TABLE=dev-k8s-sanrecap-clips AWS_PROFILE=conao3.dev.k8s AWS_REGION=ap-northeast-1 \
+  AI_GATEWAY_API_KEY=... vp run admin:clips   # --dry-run prints the clips, --force redoes videos that have one
+```
 
 ## Custom domain behind Cloudflare
 
