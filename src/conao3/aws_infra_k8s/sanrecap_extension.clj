@@ -1,5 +1,5 @@
 (ns conao3.aws-infra-k8s.sanrecap-extension
-  "sanrecap の Chrome 拡張 ID。cognito (アプリクライアントのコールバック URL) と
+  "sanrecap の Chrome 拡張 ID と iPhone アプリのコールバック URL。cognito (アプリクライアントのコールバック URL) と
   sanrecap (CORS の許可オリジン) が同じ一覧を使う。")
 
 ;; 1 つ目は manifest の `key` で固定した開発用の ID (sanrecap の README)、
@@ -13,6 +13,10 @@
 
 (defn origins []
   (mapv #(str "chrome-extension://" %) extension-ids))
+
+;; iPhone アプリ (sanrecap の apps/mobile、Expo) のサインインの戻り先。アプリの URL スキーム sanrecap:// で受ける。
+;; dev と prd で同じ (アプリのビルドの profile が向け先の環境を決める)
+(def ios-app-url "sanrecap://auth")
 
 ;; API 自身が配信するアカウントページ (GET /account)。ログインのコールバック URL になる。
 ;; 条件式 `IsPrd` (パラメータ Env) が要る。ドメインは aws_infra_k8s.clj の sanrecap-domain と同じ

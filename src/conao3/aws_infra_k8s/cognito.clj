@@ -87,7 +87,7 @@
     :SupportedIdentityProviders ["COGNITO" "Google"]}})
 
 (defn resource-user-pool-client-sanrecap
-  "sanrecap の Chrome 拡張とアカウントページ用。認可コード + PKCE (シークレットなし)。"
+  "sanrecap の Chrome 拡張とアカウントページと iPhone アプリ用。認可コード + PKCE (シークレットなし)。"
   []
   {:Type "AWS::Cognito::UserPoolClient"
    :DependsOn ["UserPoolIdentityProviderGoogle"]
@@ -99,9 +99,13 @@
                         "ALLOW_REFRESH_TOKEN_AUTH"]
     :PreventUserExistenceErrors "ENABLED"
     :EnableTokenRevocation true
-    ;; chrome.identity.launchWebAuthFlow のリダイレクト先 (拡張機能 ID ごと) と、API が配信するアカウントページ
-    :CallbackURLs (conj (c.sanrecap-extension/callback-urls) c.sanrecap-extension/account-url)
-    :LogoutURLs (conj (c.sanrecap-extension/callback-urls) c.sanrecap-extension/account-url)
+    ;; chrome.identity.launchWebAuthFlow のリダイレクト先 (拡張機能 ID ごと) と、API が配信するアカウントページと、iPhone アプリ
+    :CallbackURLs (conj (c.sanrecap-extension/callback-urls)
+                        c.sanrecap-extension/account-url
+                        c.sanrecap-extension/ios-app-url)
+    :LogoutURLs (conj (c.sanrecap-extension/callback-urls)
+                      c.sanrecap-extension/account-url
+                      c.sanrecap-extension/ios-app-url)
     :AllowedOAuthFlows ["code"]
     :AllowedOAuthScopes ["email" "openid" "profile"]
     :AllowedOAuthFlowsUserPoolClient true
