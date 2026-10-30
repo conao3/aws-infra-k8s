@@ -421,13 +421,16 @@
       (role-model-env :TurnModel)
       (when stripe? (stripe-api-env)))}
     :Events
-    {;; /healthz と /account (アカウントページの HTML) だけ認証なし。それ以外のパスは既定のオーソライザー (Cognito) で守る
+    {;; /healthz と /account (アカウントページの HTML) と / (sancode.dev の製品ページへの転送) だけ認証なし。それ以外のパスは既定のオーソライザー (Cognito) で守る
      :Health {:Type "Api"
               :Properties {:RestApiId {:Ref :Api} :Path "/healthz" :Method "GET"
                            :Auth {:Authorizer "NONE"}}}
      :Account {:Type "Api"
                :Properties {:RestApiId {:Ref :Api} :Path "/account" :Method "GET"
                             :Auth {:Authorizer "NONE"}}}
+     :Root {:Type "Api"
+            :Properties {:RestApiId {:Ref :Api} :Path "/" :Method "GET"
+                         :Auth {:Authorizer "NONE"}}}
      ;; CORS のプリフライトはトークンを持たないので、認証なしで Hono (cors) に通す
      :Preflight {:Type "Api"
                  :Properties {:RestApiId {:Ref :Api} :Path "/{proxy+}" :Method "OPTIONS"
