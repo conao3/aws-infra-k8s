@@ -81,9 +81,13 @@ The API accepts only Cloudflare source IPs. When the custom domain exists, the R
 
 Both Lambdas log in JSON (`LoggingConfig.LogFormat: JSON`), so the application's structured logs can be queried in CloudWatch Logs Insights by `message.event` (event list in sanrecap `README.md`, section "ログ").
 
+## Monitoring
+
+The service is small, so monitoring is a daily check by the operator, the same for every san* product: once a day, look at the depth of the DLQs (`<prefix>-sanrecap-jobs-dlq`, and `<prefix>-sanrecap-billing-dlq` when billing is on), the `Errors` and `Throttles` of the Lambdas, and the API's 5XX count, and query the `ERROR` logs in Logs Insights. This daily check is how failures of the stack are noticed.
+
 ## Stripe subscription events (optional)
 
-Billing is built from the Stripe settings in SSM. The six String parameters `/<prefix>/sanrecap/stripe-{secret-key,price-starter,price-pro,price-max,portal-config,event-source}` must all exist; `deploy sanrecap` checks this (`aws ssm get-parameters`) and, only then, adds:
+Billing is built from the Stripe settings in SSM. The six String parameters `/<prefix>/sanrecap/stripe-{secret-key,price-pro,price-max,price-ultra,portal-config,event-source}` must all exist; `deploy sanrecap` checks this (`aws ssm get-parameters`) and, only then, adds:
 
 | Resource | Purpose |
 |----------|---------|

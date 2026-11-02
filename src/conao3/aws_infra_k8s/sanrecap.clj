@@ -287,11 +287,11 @@
     (uploads-list-statement)]))
 
 ;; --- Stripe の契約イベント (Stripe → EventBridge のパートナーイベントソース → SQS → billing Lambda → users 表) ---
-;; SSM パラメータ `/<prefix>/sanrecap/stripe-{secret-key,price-starter,price-pro,price-max,portal-config,event-source}` が
+;; SSM パラメータ `/<prefix>/sanrecap/stripe-{secret-key,price-pro,price-max,price-ultra,portal-config,event-source}` が
 ;; 全部あるときだけ作る (`deploy` が確かめる)。portal-config は契約の管理画面の設定 ID (`bpc_...`)。イベントソース名は Stripe の「イベント送信先」(Amazon EventBridge) が作る
 
 (def stripe-ssm-names
-  ["stripe-secret-key" "stripe-price-starter" "stripe-price-pro" "stripe-price-max" "stripe-portal-config" "stripe-event-source"])
+  ["stripe-secret-key" "stripe-price-pro" "stripe-price-max" "stripe-price-ultra" "stripe-portal-config" "stripe-event-source"])
 
 (defn- stripe-ref [name]
   (sub (str "{{resolve:ssm:/${Prefix}/sanrecap/" name "}}")))
@@ -380,9 +380,9 @@
     :Environment
     {:Variables
      {:USERS_TABLE {:Ref :UsersTable}
-      :STRIPE_PRICE_STARTER (stripe-ref "stripe-price-starter")
       :STRIPE_PRICE_PRO (stripe-ref "stripe-price-pro")
-      :STRIPE_PRICE_MAX (stripe-ref "stripe-price-max")}}
+      :STRIPE_PRICE_MAX (stripe-ref "stripe-price-max")
+      :STRIPE_PRICE_ULTRA (stripe-ref "stripe-price-ultra")}}
     :Events
     {:Stripe {:Type "SQS"
               :Properties {:Queue (get-att :StripeQueue :Arn)
@@ -395,9 +395,9 @@
   "Checkout と契約の管理に使う Stripe のキーと価格 ID (SSM の動的参照)。"
   []
   {:STRIPE_SECRET_KEY (stripe-ref "stripe-secret-key")
-   :STRIPE_PRICE_STARTER (stripe-ref "stripe-price-starter")
    :STRIPE_PRICE_PRO (stripe-ref "stripe-price-pro")
    :STRIPE_PRICE_MAX (stripe-ref "stripe-price-max")
+   :STRIPE_PRICE_ULTRA (stripe-ref "stripe-price-ultra")
    ;; 契約の管理画面の設定 (Stripe のアカウントは sanplan と共用なので、sanrecap 用の設定を明示する)
    :STRIPE_PORTAL_CONFIG (stripe-ref "stripe-portal-config")})
 
