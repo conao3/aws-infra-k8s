@@ -79,9 +79,10 @@
 (def work-function "Worker")
 (def stream-function "Relay")
 
-;; HTTP API のルート。:jwt は Cognito の JWT オーソライザーを付ける。$default (webhook、OAuth、/health、画面の SPA) は署名と state をアプリが検証する
+;; HTTP API のルート。:jwt は Cognito の JWT オーソライザーを付ける。/api/cli (sancli の device flow) は device code と access token を、$default (webhook、OAuth、/health、画面の SPA) は署名と state をアプリが検証する
 (def http-routes
   [["ANY /api/{proxy+}" :jwt]
+   ["ANY /api/cli/{proxy+}" nil]
    ["$default" nil]])
 
 (def channel-routes ["$connect" "$disconnect" "$default"])
