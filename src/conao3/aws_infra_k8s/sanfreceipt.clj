@@ -14,10 +14,11 @@
    [conao3.aws-infra-k8s.util :as c.util]
    [conao3.aws-infra.cfn :as a.cfn]))
 
-;; HTTP API の統合タイムアウトの上限は 30 秒。api の Lambda はそれ以下にする
-(def api-timeout-sec 29)
-;; 証憑の読み取り (PDF・画像の扱いと、サブスクの読み取りで起動する Claude Code) に足りる大きさ
-(def api-memory-mb 1024)
+;; api の Lambda の大きさは sanfreceipt の README「Deployment (AWS Lambda)」に合わせる (サブスクの読み取りで Claude Code を起動する)
+(def api-timeout-sec 60)
+(def api-memory-mb 2048)
+;; HTTP API の統合タイムアウトの上限
+(def http-integration-timeout-ms 30000)
 (def billing-timeout-sec 30)
 (def billing-memory-mb 256)
 ;; SQS の可視性タイムアウトは関数のタイムアウトの 6 倍
@@ -28,12 +29,18 @@
 (def default-ai-gateway-model "anthropic/claude-opus-5.5")
 (def freee-accounts-base "https://accounts.secure.freee.co.jp")
 (def freee-api-base "https://api.freee.co.jp")
+(def nta-api-base "https://web-api.invoice-kohyo.nta.go.jp")
+(def ai-gateway-base-url "https://ai-gateway.vercel.sh/v4/ai")
+(def stripe-api-base "https://api.stripe.com/v1")
 ;; ECR に残すタグ付きのイメージの数 (ロールバックの候補)
 (def kept-images 5)
 
-;; イメージの CMD を関数ごとに上書きするハンドラ (AWS の Lambda のベースイメージの形式 `<ファイル>.<関数>`)
-(def api-handler "api.handler")
-(def billing-handler "billing.handler")
+;; イメージの CMD を関数ごとに上書きするハンドラ (AWS の Lambda のベースイメージの形式 `<ファイル>.<関数>`、/var/task から)
+(def api-handler "lambda/index.handler")
+(def billing-handler "lambda/billing.handler")
+;; 両方の関数が表に使う操作。TransactWriteItems は中の項目ごとの操作 (PutItem・UpdateItem・DeleteItem・ConditionCheckItem) で許可される
+(def table-actions
+  ["dynamodb:GetItem" "dynamodb:PutItem" "dynamodb:UpdateItem" "dynamodb:DeleteItem" "dynamodb:Query" "dynamodb:ConditionCheckItem"])
 
 ;; --- SSM パラメータ (String、`/<prefix>/sanfreceipt/<名前>`)。値は手で作る ---
 ;; [名前 環境変数 渡す関数]。環境変数が nil のものはスタックのパラメータとして読む
@@ -216,8 +223,7 @@
    "sanfreceipt-api"
    :ApiLogGroup
    [{:Effect "Allow"
-     :Action ["dynamodb:GetItem" "dynamodb:PutItem" "dynamodb:UpdateItem" "dynamodb:DeleteItem"
-              "dynamodb:Query" "dynamodb:BatchGetItem" "dynamodb:BatchWriteItem" "dynamodb:ConditionCheckItem"]
+     :Action table-actions
      :Resource (get-att :Table :Arn)}]))
 
 (defn resource-billing-function-role []
@@ -225,8 +231,7 @@
    "sanfreceipt-billing"
    :BillingLogGroup
    [{:Effect "Allow"
-     ;; 事業所の契約を書き換え、イベントの重複を条件付きの PutItem で弾く
-     :Action ["dynamodb:GetItem" "dynamodb:PutItem" "dynamodb:UpdateItem" "dynamodb:Query" "dynamodb:ConditionCheckItem"]
+     :Action table-actions
      :Resource (get-att :Table :Arn)}
     {:Effect "Allow"
      :Action ["sqs:ReceiveMessage" "sqs:DeleteMessage" "sqs:GetQueueAttributes"]
@@ -261,6 +266,9 @@
        :SANFRECEIPT_ALLOWED_SOURCES {"Fn::If" ["UseApiDomain" "cloudflare" "any"]}
        :FREEE_ACCOUNTS_BASE freee-accounts-base
        :FREEE_API_BASE freee-api-base
+       :NTA_API_BASE nta-api-base
+       :AI_GATEWAY_BASE_URL ai-gateway-base-url
+       :STRIPE_API_BASE stripe-api-base
        :AI_GATEWAY_MODEL {:Ref :AiGatewayModel}}
       (ssm-env versions :api))}}})
 
@@ -306,7 +314,7 @@
     :IntegrationType "AWS_PROXY"
     :IntegrationUri (get-att :ApiFunction :Arn)
     :PayloadFormatVersion "2.0"
-    :TimeoutInMillis (* 1000 api-timeout-sec)}})
+    :TimeoutInMillis http-integration-timeout-ms}})
 
 (defn resource-http-route []
   {:Type "AWS::ApiGatewayV2::Route"

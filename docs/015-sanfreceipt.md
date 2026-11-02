@@ -15,7 +15,7 @@ Three stacks per environment:
 | Group | Resources |
 |-------|-----------|
 | Image | ECR repository `<prefix>-sanfreceipt`: scan on push, immutable tags, untagged images expire after 1 day, the last 5 images are kept for a rollback; the repository policy lets only `lambda.amazonaws.com` for functions named `<prefix>-sanfreceipt-*` pull |
-| Entry | API Gateway HTTP API `<prefix>-sanfreceipt-http` with one `$default` route (no authorizer) to the `api` function (payload 2.0, 29 s), stage `$default` (20 requests/s, burst 40, JSON access logs without cookies, query strings or bodies). With the certificate: regional custom domain and API mapping, and the `execute-api` endpoint disabled |
+| Entry | API Gateway HTTP API `<prefix>-sanfreceipt-http` with one `$default` route (no authorizer) to the `api` function (payload 2.0, integration timeout 30 s, the HTTP API maximum), stage `$default` (20 requests/s, burst 40, JSON access logs without cookies, query strings or bodies). With the certificate: regional custom domain and API mapping, and the `execute-api` endpoint disabled |
 | Compute | Lambda `<prefix>-sanfreceipt-api` and `<prefix>-sanfreceipt-billing`, both `PackageType: Image` from the same image tag, `arm64`, JSON logs, one IAM role each |
 | Data | DynamoDB table `<prefix>-sanfreceipt`: on-demand, key `pk` (S) + `sk` (S), TTL on `ttl`, point-in-time recovery, deletion protection. Encryption at rest is DynamoDB's default (AWS owned key); the stack has no KMS key |
 | Billing | `AWS::Events::EventBus` named after the Stripe partner event source, a rule (`source` prefix `aws.partner/stripe.com`) to SQS `<prefix>-sanfreceipt-billing` (visibility timeout 180 s = 6 x the function timeout, `maxReceiveCount` 5) and DLQ `-billing-dlq` (14 days), both with SSE-SQS and TLS only; the queue policy allows only this rule |
@@ -28,12 +28,14 @@ The browser talks to freee's API directly for deals, partners and receipt metada
 
 | Function | Trigger | Image command | Timeout / memory | Environment | Table permissions |
 |----------|---------|---------------|------------------|-------------|-------------------|
-| `api` | HTTP API `$default` | `api.handler` | 29 s / 1024 MB | `SANFRECEIPT_APP_ORIGIN`, `SANFRECEIPT_TABLE`, `SANFRECEIPT_ALLOWED_SOURCES`, `SANFRECEIPT_ADMIN_COMPANY_IDS`, `FREEE_CLIENT_ID`, `FREEE_CLIENT_SECRET`, `FREEE_ACCOUNTS_BASE`, `FREEE_API_BASE`, `AI_GATEWAY_API_KEY`, `AI_GATEWAY_MODEL`, `NTA_APPLICATION_ID`, `STRIPE_SECRET_KEY`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PORTAL_CONFIG` | `GetItem`, `PutItem`, `UpdateItem`, `DeleteItem`, `Query`, `BatchGetItem`, `BatchWriteItem`, `ConditionCheckItem` |
-| `billing` | Billing queue (batch 1, `ReportBatchItemFailures`, `MaximumConcurrency` 2) | `billing.handler` | 30 s / 256 MB | `SANFRECEIPT_TABLE`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX` | `GetItem`, `PutItem`, `UpdateItem`, `Query`, `ConditionCheckItem` |
+| `api` | HTTP API `$default` | `lambda/index.handler` | 60 s / 2048 MB | `SANFRECEIPT_APP_ORIGIN`, `SANFRECEIPT_TABLE`, `SANFRECEIPT_ALLOWED_SOURCES`, `SANFRECEIPT_ADMIN_COMPANY_IDS`, `FREEE_CLIENT_ID`, `FREEE_CLIENT_SECRET`, `FREEE_ACCOUNTS_BASE`, `FREEE_API_BASE`, `NTA_API_BASE`, `NTA_APPLICATION_ID`, `AI_GATEWAY_BASE_URL`, `AI_GATEWAY_API_KEY`, `AI_GATEWAY_MODEL`, `STRIPE_API_BASE`, `STRIPE_SECRET_KEY`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PORTAL_CONFIG` | `GetItem`, `PutItem`, `UpdateItem`, `DeleteItem`, `Query`, `ConditionCheckItem` |
+| `billing` | Billing queue (batch 1, `ReportBatchItemFailures`, `MaximumConcurrency` 2) | `lambda/billing.handler` | 30 s / 256 MB | `SANFRECEIPT_TABLE`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX` | Same as `api` |
 
 - `SANFRECEIPT_APP_ORIGIN` is `https://<custom domain>` with the certificate and the HTTP API's `execute-api` URL without it.
 - `SANFRECEIPT_ALLOWED_SOURCES` is `cloudflare` with the custom domain and `any` without it. HTTP APIs take neither resource policies nor AWS WAF, so the app answers 403 to a request whose source address (`requestContext.http.sourceIp`) is outside Cloudflare's published ranges, as sanchoris does ([014](014-sanchoris.md), "Custom domains behind Cloudflare").
-- `FREEE_ACCOUNTS_BASE` is `https://accounts.secure.freee.co.jp` and `FREEE_API_BASE` `https://api.freee.co.jp`.
+- The fixed bases: `FREEE_ACCOUNTS_BASE` `https://accounts.secure.freee.co.jp`, `FREEE_API_BASE` `https://api.freee.co.jp`, `NTA_API_BASE` `https://web-api.invoice-kohyo.nta.go.jp`, `AI_GATEWAY_BASE_URL` `https://ai-gateway.vercel.sh/v4/ai`, `STRIPE_API_BASE` `https://api.stripe.com/v1`.
+- The sizes and the timeout of `api` follow sanfreceipt README "Deployment (AWS Lambda)": a reading with a Claude subscription runs Claude Code in the function. The HTTP API answers the browser within 30 s; a reading takes 5 to 10 s.
+- The app writes items in transactions (`TransactWriteItems`); IAM authorizes a transaction through the item actions above.
 - `AI_GATEWAY_MODEL` is the stack parameter `AiGatewayModel` (default `anthropic/claude-opus-5.5`, `SANFRECEIPT_AI_GATEWAY_MODEL` overrides it).
 - The other values come from SSM (next section).
 
@@ -43,11 +45,11 @@ The stack fixes these names; the app (sanfreceipt `apps/api`, its DynamoDB store
 
 | Item | Contract |
 |------|----------|
-| Image | `linux/arm64`, a Lambda image (an AWS Lambda Node.js base image or one with the runtime interface client) whose handlers are `api.handler` and `billing.handler`; the stack sets the command of each function with `ImageConfig.Command`. The image carries the web build and sets `SANFRECEIPT_WEB_DIR` for it, and carries Claude Code (from the Agent SDK) with `SANFRECEIPT_CLAUDE_PATH`. Only `/tmp` is writable at run time, so the image points `HOME` and `CLAUDE_CONFIG_DIR` under `/tmp` |
+| Image | Built by sanfreceipt `scripts/build-image.sh <image>`: `linux/arm64`, base `public.ecr.aws/lambda/nodejs:24`, the bundles in `/var/task/lambda` (`index.mjs`, `billing.mjs`), the web app in `/var/task/web`, and Claude Code of the installed Agent SDK version in `/var/task/claude-code/claude`. The image sets `SANFRECEIPT_WEB_DIR` and `SANFRECEIPT_CLAUDE_PATH` itself; the stack sets the command of each function with `ImageConfig.Command` |
 | Image tag | `git-<first 12 hex digits of the commit>`, pushed to `<account>.dkr.ecr.ap-northeast-1.amazonaws.com/<prefix>-sanfreceipt`. Tags are immutable, so build a new commit for a new image |
-| `api.handler` | HTTP API payload 2.0 for every path (`/api/graphql`, `/api/oauth/*`, `/api/cli/*`, `/health`, and the SPA). Logs one JSON object per line to stdout |
-| `billing.handler` | SQS event whose record body is the EventBridge envelope of one Stripe event (`detail` is the Stripe event object); returns `{ batchItemFailures }`. An event it cannot apply (unknown price) must fail so that it ends up in the DLQ |
-| Table | Name in `SANFRECEIPT_TABLE`. Key attributes `pk` and `sk`, both strings. No secondary index: lookups by another key (freee user ID to user, user to sessions) are items of their own or `Query` on a `pk`. TTL attribute `ttl` (a reserved word: `#ttl` in expressions) in epoch seconds (a number) on OAuth state, device flow codes and sessions, apart from the app's own `expiresAt` values in milliseconds; items that must stay (users, freee tokens, settings) have no `ttl`. DynamoDB deletes expired items within about two days, so reads also check the expiry |
+| `lambda/index.handler` | HTTP API payload 2.0 for every path (the API under `/api`: `/api/graphql`, `/api/oauth/*`, `/api/cli/*`; the web app for every other path, `/cli` included). Logs one JSON object per line to stdout |
+| `lambda/billing.handler` | SQS event whose record body is the EventBridge envelope of one Stripe event (`detail` is the Stripe event object); returns `{ batchItemFailures }`. An event it cannot apply (unknown price) must fail so that it ends up in the DLQ |
+| Table | Name in `SANFRECEIPT_TABLE`. Key attributes `pk` and `sk`, both strings. No secondary index: lookups by another key (freee user ID to user, user to sessions) are items of their own or `Query` on a `pk`. TTL attribute `ttl` (a reserved word: `#ttl` in expressions) in epoch seconds (a number) on OAuth states, sessions, device codes, CLI tokens, read marks and Stripe event IDs, apart from the app's own `expiresAt` values in milliseconds; items that must stay (users, freee tokens, settings) have no `ttl`. The item layout is in sanfreceipt README "Deployment (AWS Lambda)". DynamoDB deletes expired items within about two days, so reads also check the expiry |
 | Store selection | The Lambda entry points build the DynamoDB store from `SANFRECEIPT_TABLE`; `SANFRECEIPT_STORE_FILE` and `SANFRECEIPT_API_PORT` are not set in Lambda |
 | Stripe | Checkout puts the freee company ID in `client_reference_id` and in `subscription_data.metadata.company_id`, so the subscription events carry it. The portal session names `STRIPE_PORTAL_CONFIG` (the Stripe account is shared with other products) |
 
@@ -86,11 +88,11 @@ Steps for a new environment, in order:
    R=$(aws cloudformation list-exports --query "Exports[?Name=='dev-k8s-SanfreceiptRepositoryUri'].Value | [0]" --output text)
    TAG=git-$(git rev-parse --short=12 HEAD)
    aws ecr get-login-password | docker login --username AWS --password-stdin ${R%%/*}
-   docker build --platform linux/arm64 --provenance=false -t $R:$TAG .
+   scripts/build-image.sh $R:$TAG
    docker push $R:$TAG
    ```
 
-   `--provenance=false` keeps the push a single image manifest, which Lambda requires.
+   The script builds with `--provenance=false`, which keeps the push a single image manifest as Lambda requires.
 3. Certificate: `deploy sanfreceipt-certificate`. The stack waits for DNS validation: read the record with `aws acm describe-certificate --certificate-arn <arn> --query 'Certificate.DomainValidationOptions[].ResourceRecord'` and add it to the `sancode.dev` zone in Cloudflare as a CNAME, DNS only.
 4. Stripe (test mode on dev, live mode on prd): products `Sanfreceipt Starter`, `Sanfreceipt Pro`, `Sanfreceipt Max` with monthly JPY prices, a customer portal configuration for the three prices, a restricted key (Customers read, Products read, Prices read, Checkout Sessions write, Customer Portal write), and the event destination in the dashboard (Developers → Workbench → Webhooks → Add destination → Amazon EventBridge; events `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, snapshot payload; name `<prefix>-sanfreceipt-billing`, the AWS account ID and `ap-northeast-1`). The destination's source name is also listed by `aws events list-event-sources`.
 5. SSM: put the eleven parameters above.
@@ -137,12 +139,12 @@ The dev and prd accounts allow 10 concurrent Lambda executions in total, shared 
 
 ## Cost estimate
 
-Monthly USD in ap-northeast-1, before tax, per environment. Unit prices as in [014](014-sanchoris.md) ("Cost estimate"). Light use means one or two companies reading about 500 receipts a month (about 8 s of `api` at 1 GB per reading) and 30,000 HTTP requests.
+Monthly USD in ap-northeast-1, before tax, per environment. Unit prices as in [014](014-sanchoris.md) ("Cost estimate"). Light use means one or two companies reading about 500 receipts a month (about 8 s of `api` at 2 GB per reading) and 30,000 HTTP requests.
 
 | Item | Unit price | Idle | Light use |
 |------|------------|------|-----------|
 | API Gateway HTTP API | $1.29 per million requests | 0 | 0.04 |
-| Lambda (ARM) | $0.20 per million requests, $0.0000133334 per GB-s (1 million requests and 400,000 GB-s free) | 0 | 0 (about 10,000 GB-s) |
+| Lambda (ARM) | $0.20 per million requests, $0.0000133334 per GB-s (1 million requests and 400,000 GB-s free) | 0 | 0 (about 20,000 GB-s) |
 | DynamoDB on-demand | $0.715 per million WRU, $0.1425 per million RRU, 25 GB free, PITR $0.228 per GB-month | 0 | 0.02 |
 | SQS standard | $0.40 per million requests (1 million free) | 0 to 0.2 (Lambda polling the empty billing queue) | 0 to 0.2 |
 | ECR | $0.10 per GB-month | 0.05 to 0.25 (one to five images of about 0.5 GB) | 0.05 to 0.25 |
