@@ -121,7 +121,7 @@
 ;; --- データ (単一の表) ---
 
 ;; 主キーは汎用の pk / sk (S)。項目の種類と形はアプリ (sanfreceipt の DynamoDB のストア) が決める。
-;; expiresAt (epoch 秒) のある項目 (OAuth の state、device flow のコード、セッション) は TTL で消える
+;; ttl (epoch 秒) のある項目 (OAuth の state、device flow のコード、セッション) は TTL で消える。アプリの値の expiresAt (ミリ秒) と名前を分ける
 (defn resource-table []
   {:Type "AWS::DynamoDB::Table"
    :Properties
@@ -131,7 +131,7 @@
                            {:AttributeName "sk" :AttributeType "S"}]
     :KeySchema [{:AttributeName "pk" :KeyType "HASH"}
                 {:AttributeName "sk" :KeyType "RANGE"}]
-    :TimeToLiveSpecification {:AttributeName "expiresAt" :Enabled true}
+    :TimeToLiveSpecification {:AttributeName "ttl" :Enabled true}
     :PointInTimeRecoverySpecification {:PointInTimeRecoveryEnabled true}
     :DeletionProtectionEnabled true}})
 
