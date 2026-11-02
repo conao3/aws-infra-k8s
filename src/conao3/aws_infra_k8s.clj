@@ -21,7 +21,8 @@
    [conao3.aws-infra-k8s.electrobunmacs-resources :as c.electrobunmacs-resources]
    [conao3.aws-infra-k8s.certificate :as c.certificate]
    [conao3.aws-infra-k8s.sanrecap :as c.sanrecap]
-   [conao3.aws-infra-k8s.sanchoris :as c.sanchoris])
+   [conao3.aws-infra-k8s.sanchoris :as c.sanchoris]
+   [conao3.aws-infra-k8s.sanfreceipt :as c.sanfreceipt])
   (:gen-class))
 
 (defn parse-args [args]
@@ -38,7 +39,8 @@
   (let [[command & rest-args] args]
     (case command
       "template" (case (first rest-args)
-                   "sanchoris" (c.sanchoris/template param))
+                   "sanchoris" (c.sanchoris/template param)
+                   "sanfreceipt" (c.sanfreceipt/template param))
       "deploy" (let [target (first rest-args)
                      parsed-args (parse-args (rest rest-args))
                      param (merge param parsed-args)]
@@ -70,11 +72,15 @@
                    "certificate" (c.certificate/deploy param)
                    "sanrecap-certificate" (c.certificate/deploy-sanrecap param)
                    "sanchoris-certificate" (c.certificate/deploy-sanchoris param)
+                   "sanfreceipt-certificate" (c.certificate/deploy-sanfreceipt param)
 
                    ;; k8s に載せない (API Gateway + Cognito + WAF + Lambda + SNS/SQS/DynamoDB)。`all` には含めない
                    "sanrecap" (c.sanrecap/deploy param)
                    ;; k8s に載せない (API Gateway + Lambda + DynamoDB + S3 + SQS + EventBridge Scheduler + ECS Fargate)。`all` には含めない
                    "sanchoris" (c.sanchoris/deploy param)
+                   ;; k8s に載せない (API Gateway の HTTP API + コンテナイメージの Lambda + DynamoDB + SQS + EventBridge)。`all` には含めない
+                   "sanfreceipt-repository" (c.sanfreceipt/deploy-repository param)
+                   "sanfreceipt" (c.sanfreceipt/deploy param)
                    "all" (do
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
@@ -103,6 +109,7 @@
         sanrecap-domain (if (= env "prd") "sanrecap.sancode.dev" (format "%s-sanrecap.sancode.dev" env))
         sanchoris-domain (if (= env "prd") "sanchoris.sancode.dev" (format "%s-sanchoris.sancode.dev" env))
         sanchoris-channel-domain (if (= env "prd") "sanchoris-channel.sancode.dev" (format "%s-sanchoris-channel.sancode.dev" env))
+        sanfreceipt-domain (if (= env "prd") "sanfreceipt.sancode.dev" (format "%s-sanfreceipt.sancode.dev" env))
         stripe-event-source (System/getenv "STRIPE_EVENT_SOURCE_NAME")
         app-domains (if (= env "prd")
                       ["admin" "n8n"]
@@ -113,6 +120,7 @@
                :sanrecap-domain-name sanrecap-domain
                :sanchoris-domain-name sanchoris-domain
                :sanchoris-channel-domain-name sanchoris-channel-domain
+               :sanfreceipt-domain-name sanfreceipt-domain
                :alb-certificate-domain-name "*.sancode.dev"
                :StripeEventSourceName stripe-event-source
                :domain-aliases (str/join "," (map #(format "%s.sancode.dev" %) app-domains))}]

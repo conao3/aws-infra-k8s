@@ -85,3 +85,11 @@
                        :domain-name (-> param :sanchoris-domain-name)
                        :alternative-names [(-> param :sanchoris-channel-domain-name)]
                        :output-key :SanchorisCertificateArn}))
+
+(defn deploy-sanfreceipt
+  "sanfreceipt の API Gateway (リージョナル、HTTP API) のカスタムドメイン用 (ap-northeast-1)。"
+  [param]
+  (deploy-stack param {:stack-name (str (-> param :prefix) "-" "sanfreceipt-certificate")
+                       :region "ap-northeast-1"
+                       :domain-name (-> param :sanfreceipt-domain-name)
+                       :output-key :SanfreceiptCertificateArn}))
