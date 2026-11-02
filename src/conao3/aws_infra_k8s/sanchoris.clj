@@ -107,7 +107,7 @@
 ;; 秘密ではない String のパラメータ。stripe-portal-config はスタックが api の STRIPE_PORTAL_CONFIGURATION に解決し、
 ;; stripe-price-<plan> はデプロイ後の PLANS の投入 (sanchoris-dynamo-create) が読む
 (def string-parameters
-  ["stripe-portal-config" "stripe-price-starter" "stripe-price-pro" "stripe-price-max"])
+  ["stripe-portal-config" "stripe-price-pro" "stripe-price-max" "stripe-price-ultra"])
 
 ;; EventBridge Scheduler の定期実行 (architecture.md「Rate schedules」)
 (def rate-schedules
