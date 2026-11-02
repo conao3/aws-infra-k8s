@@ -19,7 +19,6 @@ Three stacks per environment:
 | Compute | Lambda `<prefix>-sanfreceipt-api` and `<prefix>-sanfreceipt-billing`, both `PackageType: Image` from the same image tag, `arm64`, JSON logs, one IAM role each |
 | Data | DynamoDB table `<prefix>-sanfreceipt`: on-demand, key `pk` (S) + `sk` (S), TTL on `ttl`, point-in-time recovery, deletion protection. Encryption at rest is DynamoDB's default (AWS owned key); the stack has no KMS key |
 | Billing | `AWS::Events::EventBus` named after the Stripe partner event source, a rule (`source` prefix `aws.partner/stripe.com`) to SQS `<prefix>-sanfreceipt-billing` (visibility timeout 180 s = 6 x the function timeout, `maxReceiveCount` 5) and DLQ `-billing-dlq` (14 days), both with SSE-SQS and TLS only; the queue policy allows only this rule |
-| Monitoring | SNS topic `<prefix>-sanfreceipt-alarms` with an email subscription, and five alarms (period 5 minutes, missing data is OK): `api` Errors >= 1, `api` Throttles >= 1, `billing` Errors >= 1, HTTP API `5xx` >= 5, billing DLQ visible messages >= 1. Each alarm also notifies when it returns to OK |
 | Logs | `/aws/lambda/<prefix>-sanfreceipt-api`, `/aws/lambda/<prefix>-sanfreceipt-billing`, `/aws/apigateway/<prefix>-sanfreceipt-http-access`, 30 days |
 
 The browser talks to freee's API directly for deals, partners and receipt metadata; those requests never reach AWS. The backend calls freee only for OAuth and for the receipt file it reads, Vercel AI Gateway for paid readings, Claude Code with the user's own subscription token for subscription readings, and the National Tax Agency Web-API for registration numbers. Lambda reaches them over the internet (no VPC).
@@ -28,8 +27,8 @@ The browser talks to freee's API directly for deals, partners and receipt metada
 
 | Function | Trigger | Image command | Timeout / memory | Environment | Table permissions |
 |----------|---------|---------------|------------------|-------------|-------------------|
-| `api` | HTTP API `$default` | `lambda/index.handler` | 60 s / 2048 MB | `SANFRECEIPT_APP_ORIGIN`, `SANFRECEIPT_TABLE`, `SANFRECEIPT_ALLOWED_SOURCES`, `SANFRECEIPT_ADMIN_COMPANY_IDS`, `FREEE_CLIENT_ID`, `FREEE_CLIENT_SECRET`, `FREEE_ACCOUNTS_BASE`, `FREEE_API_BASE`, `NTA_API_BASE`, `NTA_APPLICATION_ID`, `AI_GATEWAY_BASE_URL`, `AI_GATEWAY_API_KEY`, `AI_GATEWAY_MODEL`, `STRIPE_API_BASE`, `STRIPE_SECRET_KEY`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PORTAL_CONFIG` | `GetItem`, `PutItem`, `UpdateItem`, `DeleteItem`, `Query`, `ConditionCheckItem` |
-| `billing` | Billing queue (batch 1, `ReportBatchItemFailures`, `MaximumConcurrency` 2) | `lambda/billing.handler` | 30 s / 256 MB | `SANFRECEIPT_TABLE`, `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX` | Same as `api` |
+| `api` | HTTP API `$default` | `lambda/index.handler` | 60 s / 2048 MB | `SANFRECEIPT_APP_ORIGIN`, `SANFRECEIPT_TABLE`, `SANFRECEIPT_ALLOWED_SOURCES`, `SANFRECEIPT_ADMIN_COMPANY_IDS`, `FREEE_CLIENT_ID`, `FREEE_CLIENT_SECRET`, `FREEE_ACCOUNTS_BASE`, `FREEE_API_BASE`, `NTA_API_BASE`, `NTA_APPLICATION_ID`, `AI_GATEWAY_BASE_URL`, `AI_GATEWAY_API_KEY`, `AI_GATEWAY_MODEL`, `STRIPE_API_BASE`, `STRIPE_SECRET_KEY`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PRICE_ULTRA`, `STRIPE_PORTAL_CONFIG` | `GetItem`, `PutItem`, `UpdateItem`, `DeleteItem`, `Query`, `ConditionCheckItem` |
+| `billing` | Billing queue (batch 1, `ReportBatchItemFailures`, `MaximumConcurrency` 2) | `lambda/billing.handler` | 30 s / 256 MB | `SANFRECEIPT_TABLE`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PRICE_ULTRA` | Same as `api` |
 
 - `SANFRECEIPT_APP_ORIGIN` is `https://<custom domain>` with the certificate and the HTTP API's `execute-api` URL without it.
 - `SANFRECEIPT_ALLOWED_SOURCES` is `cloudflare` with the custom domain and `any` without it. HTTP APIs take neither resource policies nor AWS WAF, so the app answers 403 to a request whose source address (`requestContext.http.sourceIp`) is outside Cloudflare's published ranges, as sanchoris does ([014](014-sanchoris.md), "Custom domains behind Cloudflare").
@@ -57,17 +56,19 @@ The stack fixes these names; the app (sanfreceipt `apps/api`, its DynamoDB store
 
 All are `String` parameters under `/<prefix>/sanfreceipt/`, created by hand before `deploy sanfreceipt`. `deploy sanfreceipt` reads them with `aws ssm get-parameters` and stops with the list of missing names. The template references each with a versioned dynamic reference (`{{resolve:ssm:/<prefix>/sanfreceipt/<name>:<version>}}`), so a new value changes the template and reaches the functions on the next `deploy sanfreceipt`. The values end up in the Lambda configuration in plain text (the decision for sanfreceipt: no KMS, no Secrets Manager), so the Stripe key is a restricted key.
 
-| Name | Variable | Functions |
-|------|----------|-----------|
-| `freee-client-id` | `FREEE_CLIENT_ID` | api |
-| `freee-client-secret` | `FREEE_CLIENT_SECRET` | api |
-| `ai-gateway-api-key` | `AI_GATEWAY_API_KEY` | api |
-| `nta-application-id` | `NTA_APPLICATION_ID` (National Tax Agency Web-API application ID) | api |
-| `admin-company-ids` | `SANFRECEIPT_ADMIN_COMPANY_IDS` (comma-separated freee company IDs on the Admin plan) | api |
-| `stripe-secret-key` | `STRIPE_SECRET_KEY` (restricted key) | api |
-| `stripe-price-starter`, `stripe-price-pro`, `stripe-price-max` | `STRIPE_PRICE_STARTER`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX` | api, billing |
-| `stripe-portal-config` | `STRIPE_PORTAL_CONFIG` (`bpc_...`) | api |
-| `stripe-event-source` | Stack parameter `StripeEventSourceName` (`aws.partner/stripe.com/ed_...`) | — |
+| Name | Type | Value | Variable | Functions |
+|------|------|-------|----------|-----------|
+| `freee-client-id` | String | Client ID of the freee app | `FREEE_CLIENT_ID` | api |
+| `freee-client-secret` | String | Client secret of the freee app | `FREEE_CLIENT_SECRET` | api |
+| `ai-gateway-api-key` | String | Vercel AI Gateway API key for paid readings | `AI_GATEWAY_API_KEY` | api |
+| `nta-application-id` | String | National Tax Agency Web-API application ID | `NTA_APPLICATION_ID` | api |
+| `admin-company-ids` | String | Comma-separated freee company IDs on the Admin plan (Sancode: `12298327`) | `SANFRECEIPT_ADMIN_COMPANY_IDS` | api |
+| `stripe-secret-key` | String | Stripe restricted key (`rk_...`) | `STRIPE_SECRET_KEY` | api |
+| `stripe-price-pro` | String | Price ID of `Sanfreceipt Pro` (USD 20 a month, lookup key `sanfreceipt_pro`) | `STRIPE_PRICE_PRO` | api, billing |
+| `stripe-price-max` | String | Price ID of `Sanfreceipt Max` (USD 100 a month, lookup key `sanfreceipt_max`) | `STRIPE_PRICE_MAX` | api, billing |
+| `stripe-price-ultra` | String | Price ID of `Sanfreceipt Ultra` (USD 200 a month, lookup key `sanfreceipt_ultra`) | `STRIPE_PRICE_ULTRA` | api, billing |
+| `stripe-portal-config` | String | Customer portal configuration ID (`bpc_...`, `metadata[app]=sanfreceipt`) | `STRIPE_PORTAL_CONFIG` | api |
+| `stripe-event-source` | String | Name of the Stripe partner event source (`aws.partner/stripe.com/ed_...`) | Stack parameter `StripeEventSourceName` | — (the stack's event bus and rule) |
 
 ```bash
 aws ssm put-parameter --type String --name /dev-k8s/sanfreceipt/freee-client-id --value '<client id>'
@@ -94,16 +95,15 @@ Steps for a new environment, in order:
 
    The script builds with `--provenance=false`, which keeps the push a single image manifest as Lambda requires.
 3. Certificate: `deploy sanfreceipt-certificate`. The stack waits for DNS validation: read the record with `aws acm describe-certificate --certificate-arn <arn> --query 'Certificate.DomainValidationOptions[].ResourceRecord'` and add it to the `sancode.dev` zone in Cloudflare as a CNAME, DNS only.
-4. Stripe (test mode on dev, live mode on prd): products `Sanfreceipt Starter`, `Sanfreceipt Pro`, `Sanfreceipt Max` with monthly JPY prices, a customer portal configuration for the three prices, a restricted key (Customers read, Products read, Prices read, Checkout Sessions write, Customer Portal write), and the event destination in the dashboard (Developers → Workbench → Webhooks → Add destination → Amazon EventBridge; events `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, snapshot payload; name `<prefix>-sanfreceipt-billing`, the AWS account ID and `ap-northeast-1`). The destination's source name is also listed by `aws events list-event-sources`.
+4. Stripe (test mode on dev, live mode on prd): products `Sanfreceipt Pro`, `Sanfreceipt Max`, `Sanfreceipt Ultra` with monthly USD prices (20, 100, 200) and a customer portal configuration for the three prices, both made by sanfreceipt `scripts/stripe-setup.mjs`, a restricted key (Customers read, Products read, Prices read, Checkout Sessions write, Customer Portal write), and the event destination in the dashboard (Developers → Workbench → Webhooks → Add destination → Amazon EventBridge; events `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, snapshot payload; name `<prefix>-sanfreceipt-billing`, the AWS account ID and `ap-northeast-1`). The destination's source name is also listed by `aws events list-event-sources`.
 5. SSM: put the eleven parameters above.
-6. Stack, with the image tag of step 2 and the address that receives the alarms:
+6. Stack, with the image tag of step 2:
 
    ```bash
-   SANFRECEIPT_IMAGE_TAG=$TAG SANFRECEIPT_ALARM_EMAIL=<address> \
-     nix develop --command clojure -M -m conao3.aws-infra-k8s deploy sanfreceipt
+   SANFRECEIPT_IMAGE_TAG=$TAG nix develop --command clojure -M -m conao3.aws-infra-k8s deploy sanfreceipt
    ```
 
-   It checks that the image tag exists in ECR and that the SSM parameters exist, writes `target/cfn/sanfreceipt.json`, runs `sam validate --lint`, and deploys. The custom domain is created when the certificate export exists (`SANFRECEIPT_CERTIFICATE_ARN` overrides it). The partner event source turns from `PENDING` to `ACTIVE` once the bus exists. Open the "AWS Notification - Subscription Confirmation" mail and confirm the alarm subscription.
+   It checks that the image tag exists in ECR and that the SSM parameters exist, writes `target/cfn/sanfreceipt.json`, runs `sam validate --lint`, and deploys. The custom domain is created when the certificate export exists (`SANFRECEIPT_CERTIFICATE_ARN` overrides it). The partner event source turns from `PENDING` to `ACTIVE` once the bus exists.
 7. Cloudflare: add a **proxied** CNAME `<env>-sanfreceipt` (prd `sanfreceipt`) to the output `SanfreceiptApiDomainTarget`, SSL/TLS mode Full (strict). On dev, add the Access application `Dev Sanfreceipt Access` for `dev-sanfreceipt.sancode.dev` and the bypass application `Dev Sanfreceipt CLI Bypass` for `dev-sanfreceipt.sancode.dev/api/cli`, the device flow endpoints that sancli calls without a browser and that the app authenticates with the device code and the one-time access token (agents-share `notes/cloudflare.md`). The approval page `/cli` stays behind Access.
 8. freee: add `https://<host>/api/oauth/callback` to the callback URLs of the freee app.
 
@@ -124,9 +124,15 @@ nix develop --command sam validate --lint --template-file target/cfn/sanfreceipt
 - Billing: events that failed 5 times are in `<prefix>-sanfreceipt-billing-dlq` (output `SanfreceiptBillingDlqUrl`); after fixing the cause, move them back with `aws sqs start-message-move-task --source-arn <dlq arn>`.
 - Removal: delete `<prefix>-sanfreceipt` (deletion protection off first), then `-certificate`, then `-repository` after emptying the repository (`aws ecr batch-delete-image`). Remove the Cloudflare records, the Access applications, the Stripe event destination, and the freee callback URL.
 
+## Monitoring
+
+The service is small, so monitoring is a daily check by the operator, the same for every san* product: once a day, look at the depth of `<prefix>-sanfreceipt-billing-dlq`, the `Errors` and `Throttles` of the `api` and `billing` functions, and the HTTP API's 5xx count, and query the `ERROR` logs in Logs Insights. This daily check is how failures of the stack are noticed.
+
+External services that email operational notices about sanfreceipt (Stripe, freee, Vercel, the National Tax Agency Web-API, AWS) send them to `alerm+sanfreceipt@sancode.dev`. Register this address wherever sanfreceipt's accounts or apps ask for a notification or technical contact address.
+
 ## Lambda concurrency
 
-The dev and prd accounts allow 10 concurrent Lambda executions in total, shared with sanrecap (worker up to 5) and sanchoris (worker 2). The billing function is capped at 2 (the smallest `MaximumConcurrency`). The api function has no cap; a burst of readings that hits the account limit shows as the `api` Throttles alarm. Raise the quota before more than a few users read receipts at the same time.
+The dev and prd accounts allow 10 concurrent Lambda executions in total, shared with sanrecap (worker up to 5) and sanchoris (worker 2); an increase of the quota to 100 is requested. The billing function is capped at 2 (the smallest `MaximumConcurrency`). The api function has no cap; a burst of readings that hits the account limit shows as `api` Throttles in the daily check.
 
 ## Environments
 
@@ -148,8 +154,8 @@ Monthly USD in ap-northeast-1, before tax, per environment. Unit prices as in [0
 | DynamoDB on-demand | $0.715 per million WRU, $0.1425 per million RRU, 25 GB free, PITR $0.228 per GB-month | 0 | 0.02 |
 | SQS standard | $0.40 per million requests (1 million free) | 0 to 0.2 (Lambda polling the empty billing queue) | 0 to 0.2 |
 | ECR | $0.10 per GB-month | 0.05 to 0.25 (one to five images of about 0.5 GB) | 0.05 to 0.25 |
-| CloudWatch | Logs $0.76 per GB ingested (5 GB free); alarms $0.10 each after 10 free | 0 | 0 |
-| EventBridge, SNS email, SSM standard parameters, ACM | Free at this volume | 0 | 0 |
+| CloudWatch Logs | $0.76 per GB ingested (5 GB free) | 0 | 0 |
+| EventBridge, SSM standard parameters, ACM | Free at this volume | 0 | 0 |
 | **Total** | | **about 0.05 to 0.45** | **about 0.1 to 0.5** |
 
-Outside AWS: Vercel AI Gateway bills the model tokens of paid readings (Claude Opus 5.5 at $4 / $20 per million input / output tokens; the product plan estimates 3,000 to 4,000 input and 200 output tokens, about JPY 2, per receipt); readings on a user's own Claude subscription cost Sancode nothing. Cloudflare (Free plan, Access for fewer than 50 users) adds nothing. Traffic out to the internet stays within the 100 GB a month that AWS does not charge.
+Outside AWS: Vercel AI Gateway bills the model tokens of paid readings (Claude Opus 5.5 at $4 / $20 per million input / output tokens; a measured reading takes 5,300 input tokens for a one-page PDF and 8,300 for the largest image, with up to 300 output tokens, so USD 0.02 to 0.04 per receipt; the plans count USD 0.05 a reading); readings on a user's own Claude subscription cost Sancode nothing. Cloudflare (Free plan, Access for fewer than 50 users) adds nothing. Traffic out to the internet stays within the 100 GB a month that AWS does not charge.

@@ -4,7 +4,7 @@
   Stripe の契約イベントは、Stripe のイベント送信先 (EventBridge のパートナーイベントソース) → SQS (+DLQ) → 同じイメージの別ハンドラの Lambda `billing`。
   データは単一の DynamoDB 表 (PITR、TTL。暗号化は DynamoDB 既定の保存時暗号化だけで、KMS の鍵を持たない)。
   設定と秘密は SSM パラメータ (String) `/<prefix>/sanfreceipt/*` をバージョン付きの動的参照で Lambda の環境変数に渡す。
-  Lambda のエラー・スロットル、HTTP API の 5xx、DLQ に CloudWatch アラーム (SNS のメール)。k8s には載せない。
+  監視は運用者の毎日の確認 (DLQ の深さ、Lambda の Errors・Throttles、HTTP API の 5xx、エラーのログ) で行う。k8s には載せない。
   イメージの置き場の ECR は別スタック (`deploy sanfreceipt-repository`)。Lambda を作る前にイメージが要るため。"
   (:require
    [babashka.fs :as fs]
@@ -52,9 +52,9 @@
    ["nta-application-id" "NTA_APPLICATION_ID" #{:api}]
    ["admin-company-ids" "SANFRECEIPT_ADMIN_COMPANY_IDS" #{:api}]
    ["stripe-secret-key" "STRIPE_SECRET_KEY" #{:api}]
-   ["stripe-price-starter" "STRIPE_PRICE_STARTER" #{:api :billing}]
    ["stripe-price-pro" "STRIPE_PRICE_PRO" #{:api :billing}]
    ["stripe-price-max" "STRIPE_PRICE_MAX" #{:api :billing}]
+   ["stripe-price-ultra" "STRIPE_PRICE_ULTRA" #{:api :billing}]
    ["stripe-portal-config" "STRIPE_PORTAL_CONFIG" #{:api}]
    ["stripe-event-source" nil #{}]])
 
@@ -373,63 +373,6 @@
     :ApiId {:Ref :HttpApi}
     :Stage "$default"}})
 
-;; --- 監視 (CloudWatch アラーム → SNS → メール) ---
-
-(defn resource-alarm-topic []
-  {:Type "AWS::SNS::Topic"
-   :Properties {:TopicName (prefix-name "alarms")}})
-
-(defn resource-alarm-subscription []
-  {:Type "AWS::SNS::Subscription"
-   :Properties
-   {:TopicArn {:Ref :AlarmTopic}
-    :Protocol "email"
-    :Endpoint {:Ref :AlarmEmail}}})
-
-(defn- alarm [{:keys [description namespace metric dimensions statistic threshold]}]
-  {:Type "AWS::CloudWatch::Alarm"
-   :Properties
-   {:AlarmDescription description
-    :Namespace namespace
-    :MetricName metric
-    :Dimensions dimensions
-    :Statistic statistic
-    :Period 300
-    :EvaluationPeriods 1
-    :Threshold threshold
-    :ComparisonOperator "GreaterThanOrEqualToThreshold"
-    :TreatMissingData "notBreaching"
-    :AlarmActions [{:Ref :AlarmTopic}]
-    :OKActions [{:Ref :AlarmTopic}]}})
-
-(defn- function-alarm [function metric description]
-  (alarm {:description description
-          :namespace "AWS/Lambda"
-          :metric metric
-          :dimensions [{:Name "FunctionName" :Value {:Ref function}}]
-          :statistic "Sum"
-          :threshold 1}))
-
-(defn- alarm-resources []
-  {:AlarmTopic (resource-alarm-topic)
-   :AlarmSubscription (resource-alarm-subscription)
-   :ApiErrorsAlarm (function-alarm :ApiFunction "Errors" "sanfreceipt api: the function failed (5 minutes)")
-   :ApiThrottlesAlarm (function-alarm :ApiFunction "Throttles" "sanfreceipt api: throttled by the account's Lambda concurrency (5 minutes)")
-   :BillingErrorsAlarm (function-alarm :BillingFunction "Errors" "sanfreceipt billing: the function failed (5 minutes)")
-   :Http5xxAlarm (alarm {:description "sanfreceipt HTTP API: 5 or more 5xx responses in 5 minutes"
-                         :namespace "AWS/ApiGateway"
-                         :metric "5xx"
-                         :dimensions [{:Name "ApiId" :Value {:Ref :HttpApi}}
-                                      {:Name "Stage" :Value "$default"}]
-                         :statistic "Sum"
-                         :threshold 5})
-   :BillingDlqAlarm (alarm {:description "sanfreceipt billing: a Stripe event is in the DLQ"
-                            :namespace "AWS/SQS"
-                            :metric "ApproximateNumberOfMessagesVisible"
-                            :dimensions [{:Name "QueueName" :Value (get-att :BillingDlq :QueueName)}]
-                            :statistic "Maximum"
-                            :threshold 1})})
-
 ;; --- テンプレート ---
 
 (defn cfn
@@ -438,7 +381,7 @@
   (a.cfn/template
    {:Parameters
     (merge
-     (a.cfn/list-string-parameters [:Env :Prefix :AlarmEmail])
+     (a.cfn/list-string-parameters [:Env :Prefix])
      {:AiGatewayModel {:Type "String" :Default default-ai-gateway-model}
       :ApiDomainName {:Type "String" :Default ""}
       :CertificateArn {:Type "String" :Default ""}
@@ -450,33 +393,31 @@
                                {"Fn::Not" [{"Fn::Equals" [{:Ref :CertificateArn} ""]}]}]}}
 
     :Resources
-    (merge
-     {:ApiLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-sanfreceipt-api"))
-      :BillingLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-sanfreceipt-billing"))
-      :HttpAccessLogGroup (resource-log-group (sub "/aws/apigateway/${Prefix}-sanfreceipt-http-access"))
+    {:ApiLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-sanfreceipt-api"))
+     :BillingLogGroup (resource-log-group (sub "/aws/lambda/${Prefix}-sanfreceipt-billing"))
+     :HttpAccessLogGroup (resource-log-group (sub "/aws/apigateway/${Prefix}-sanfreceipt-http-access"))
 
-      :Table (resource-table)
+     :Table (resource-table)
 
-      :BillingDlq (resource-billing-dlq)
-      :BillingQueue (resource-billing-queue)
-      :BillingQueuePolicy (resource-billing-queue-policy)
-      :BillingDlqPolicy (resource-billing-dlq-policy)
-      :StripeEventBus (resource-stripe-event-bus)
-      :StripeRule (resource-stripe-rule)
+     :BillingDlq (resource-billing-dlq)
+     :BillingQueue (resource-billing-queue)
+     :BillingQueuePolicy (resource-billing-queue-policy)
+     :BillingDlqPolicy (resource-billing-dlq-policy)
+     :StripeEventBus (resource-stripe-event-bus)
+     :StripeRule (resource-stripe-rule)
 
-      :ApiFunctionRole (resource-api-function-role)
-      :BillingFunctionRole (resource-billing-function-role)
-      :ApiFunction (resource-api-function image-uri ssm-versions)
-      :BillingFunction (resource-billing-function image-uri ssm-versions)
+     :ApiFunctionRole (resource-api-function-role)
+     :BillingFunctionRole (resource-billing-function-role)
+     :ApiFunction (resource-api-function image-uri ssm-versions)
+     :BillingFunction (resource-billing-function image-uri ssm-versions)
 
-      :HttpApi (resource-http-api)
-      :HttpIntegration (resource-http-integration)
-      :HttpDefaultRoute (resource-http-route)
-      :HttpStage (resource-http-stage)
-      :HttpInvokePermission (resource-invoke-permission)
-      :HttpDomain (resource-domain-name)
-      :HttpApiMapping (resource-api-mapping)}
-     (alarm-resources))
+     :HttpApi (resource-http-api)
+     :HttpIntegration (resource-http-integration)
+     :HttpDefaultRoute (resource-http-route)
+     :HttpStage (resource-http-stage)
+     :HttpInvokePermission (resource-invoke-permission)
+     :HttpDomain (resource-domain-name)
+     :HttpApiMapping (resource-api-mapping)}
 
     :Outputs
     (merge
@@ -485,8 +426,7 @@
        :SanfreceiptTable {:Ref :Table}
        :SanfreceiptApiFunction {:Ref :ApiFunction}
        :SanfreceiptBillingFunction {:Ref :BillingFunction}
-       :SanfreceiptBillingDlqUrl {:Ref :BillingDlq}
-       :SanfreceiptAlarmTopic {:Ref :AlarmTopic}})
+       :SanfreceiptBillingDlqUrl {:Ref :BillingDlq}})
      ;; Cloudflare の CNAME の向け先 (カスタムドメインを作ったときだけ)
      {:SanfreceiptApiDomainTarget {:Condition "UseApiDomain"
                                    :Value (get-att :HttpDomain :RegionalDomainName)}})}))
@@ -580,7 +520,6 @@
         prefix (:prefix param)
         image (image-uri prefix)
         values (ssm-values prefix)
-        alarm-email (required-env "SANFRECEIPT_ALARM_EMAIL")
         cert (or (System/getenv "SANFRECEIPT_CERTIFICATE_ARN")
                  (export-value (str prefix "-SanfreceiptCertificateArn")))]
     (write-template file {:image-uri image
@@ -589,7 +528,6 @@
                 (str prefix "-sanfreceipt")
                 (cond-> {:Env (:env param)
                          :Prefix prefix
-                         :AlarmEmail alarm-email
                          :AiGatewayModel (or (System/getenv "SANFRECEIPT_AI_GATEWAY_MODEL") default-ai-gateway-model)
                          :StripeEventSourceName (get-in values ["stripe-event-source" :value])}
                   ;; カスタムドメインは、証明書のスタック (`deploy sanfreceipt-certificate`) があれば作る
