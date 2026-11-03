@@ -147,6 +147,41 @@
     :AccessTokenValidity 60
     :RefreshTokenValidity 30}})
 
+(defn- sanimmerse-urls
+  "sanimmerse の画面 (デプロイ先は <env>-sanimmerse.sancode.dev、prd は sanimmerse.sancode.dev、開発は vite の http://localhost:5173) に
+   path を付けた URL と、iOS アプリの戻り先 sanimmerse://auth。ドメインは aws_infra_k8s.clj の sanimmerse-domain と同じ。"
+  [path]
+  {"Fn::If" ["IsPrd"
+             [(str "https://sanimmerse.sancode.dev" path)
+              "sanimmerse://auth"]
+             [{"Fn::Sub" (str "https://${Env}-sanimmerse.sancode.dev" path)}
+              (str "http://localhost:5173" path)
+              "sanimmerse://auth"]]})
+
+(defn resource-user-pool-client-sanimmerse
+  "sanimmerse の Web アプリと iOS アプリ用。認可コード + PKCE (シークレットなし)。"
+  []
+  {:Type "AWS::Cognito::UserPoolClient"
+   :DependsOn ["UserPoolIdentityProviderGoogle"]
+   :Properties
+   {:ClientName (a.cfn/prefix "user-pool-client-sanimmerse")
+    :UserPoolId {:Ref :UserPool}
+    :GenerateSecret false
+    :ExplicitAuthFlows ["ALLOW_ADMIN_USER_PASSWORD_AUTH"
+                        "ALLOW_REFRESH_TOKEN_AUTH"]
+    :PreventUserExistenceErrors "ENABLED"
+    :EnableTokenRevocation true
+    :CallbackURLs (sanimmerse-urls "/auth/callback")
+    :LogoutURLs (sanimmerse-urls "/")
+    :AllowedOAuthFlows ["code"]
+    :AllowedOAuthScopes ["email" "openid" "profile"]
+    :AllowedOAuthFlowsUserPoolClient true
+    :SupportedIdentityProviders ["COGNITO" "Google"]
+    :TokenValidityUnits {:IdToken "minutes" :AccessToken "minutes" :RefreshToken "days"}
+    :IdTokenValidity 60
+    :AccessTokenValidity 60
+    :RefreshTokenValidity 30}})
+
 (defn resource-identity-pool []
   {:Type "AWS::Cognito::IdentityPool"
    :Properties
@@ -212,6 +247,7 @@
      :UserPoolClient (resource-user-pool-client)
      :UserPoolClientSanrecap (resource-user-pool-client-sanrecap)
      :UserPoolClientSanchoris (resource-user-pool-client-sanchoris)
+     :UserPoolClientSanimmerse (resource-user-pool-client-sanimmerse)
      :IdentityPool (resource-identity-pool)
      :IdentityPoolRoleAuthenticated (resource-identity-pool-role-authenticated)
      :IdentityPoolRoleUnauthenticated (resource-identity-pool-role-unauthenticated)
@@ -226,6 +262,7 @@
       :UserPoolClient {:Ref :UserPoolClient}
       :SanrecapUserPoolClient {:Ref :UserPoolClientSanrecap}
       :SanchorisUserPoolClient {:Ref :UserPoolClientSanchoris}
+      :SanimmerseUserPoolClient {:Ref :UserPoolClientSanimmerse}
       :IdentityPool {:Ref :IdentityPool}})}))
 
 (defn- certificate-arn [param]
