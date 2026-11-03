@@ -93,3 +93,11 @@
                        :region "ap-northeast-1"
                        :domain-name (-> param :sanfreceipt-domain-name)
                        :output-key :SanfreceiptCertificateArn}))
+
+(defn deploy-sanimmerse
+  "sanimmerse の API Gateway (リージョナル、HTTP API) のカスタムドメイン用 (ap-northeast-1)。"
+  [param]
+  (deploy-stack param {:stack-name (str (-> param :prefix) "-" "sanimmerse-certificate")
+                       :region "ap-northeast-1"
+                       :domain-name (-> param :sanimmerse-domain-name)
+                       :output-key :SanimmerseCertificateArn}))

@@ -46,6 +46,7 @@ This deploys:
 - `certificate` - ACM certificate (us-east-1) for the Cognito custom domain; `sanrecap-certificate` - ACM certificate (ap-northeast-1) for the sanrecap API custom domain. Both are DNS-validated: add the validation CNAME in Cloudflare (DNS only) while the stack is creating
 - `sanrecap` - sanrecap backend (API Gateway + Lambda + SNS/SQS + DynamoDB + S3; AWS WAF only with `SANRECAP_ENABLE_WAF=true`). Requires `cognito` first; not included in `deploy all`. See [013-sanrecap.md](013-sanrecap.md)
 - `sanfreceipt-repository`, `sanfreceipt-certificate`, `sanfreceipt` - sanfreceipt backend (ECR, ACM, API Gateway HTTP API + container image Lambda + DynamoDB + Stripe events through EventBridge and SQS + CloudWatch alarms). Not included in `deploy all`. See [015-sanfreceipt.md](015-sanfreceipt.md)
+- `sanimmerse-certificate`, `sanimmerse` - sanimmerse cloud (ACM, API Gateway HTTP API + Lambda + DynamoDB + S3 downloads + Stripe events through EventBridge and SQS when the SSM settings exist). Requires `cognito` first; not included in `deploy all`. See [016-sanimmerse.md](016-sanimmerse.md)
 - `ssh-tunnel` - SSH tunnel instance (not included in `deploy all`)
 - `ami-builder` - AMI builder instance (not included in `deploy all`)
 
