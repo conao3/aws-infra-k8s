@@ -4,7 +4,8 @@
   (cognito スタック。先にデプロイする) の ID トークン、Sign in with Apple の identity トークン、端末トークンで、アプリが検証する。
   データは DynamoDB の users・data・tokens・shared-rules の 4 表、エージェントの配布物は S3 の downloads バケット。
   Stripe の契約イベントは、SSM `/<prefix>/sanimmerse/stripe-*` がそろっているときだけ、
-  パートナーイベントソースのバス → ルール → SQS (+DLQ) → 同じ成果物の Lambda `billing`。k8s には載せない。
+  パートナーイベントソースのバス → ルール → SQS (+DLQ) → 同じ成果物の Lambda `billing`。
+  Sign in with Apple の REST API の鍵は、SSM `/<prefix>/sanimmerse/apple-*` がそろっているときだけ api に渡す。k8s には載せない。
   コードは sanimmerse の apps/api/dist/lambda (index.mjs・billing.mjs・web/)。"
   (:require
    [babashka.fs :as fs]
@@ -36,7 +37,7 @@
   ["dynamodb:GetItem" "dynamodb:PutItem" "dynamodb:UpdateItem" "dynamodb:DeleteItem"
    "dynamodb:Query" "dynamodb:BatchGetItem" "dynamodb:BatchWriteItem" "dynamodb:ConditionCheckItem"])
 
-;; --- SSM パラメータ (String、`/<prefix>/sanimmerse/<名前>`)。全部あるときだけ Stripe の経路を作る ---
+;; --- SSM パラメータ (String、`/<prefix>/sanimmerse/<名前>`)。Stripe・Apple のそれぞれ全部あるときだけ使う ---
 ;; [名前 環境変数 渡す関数]。環境変数が nil のものはスタックのパラメータとして読む
 
 (def stripe-parameters
@@ -46,6 +47,11 @@
    ["stripe-price-ultra" "STRIPE_PRICE_ULTRA" #{:api :billing}]
    ["stripe-portal-config" "STRIPE_PORTAL_CONFIG" #{:api}]
    ["stripe-event-source" nil #{}]])
+
+(def apple-parameters
+  [["apple-key-id" "APPLE_KEY_ID" #{:api}]
+   ["apple-team-id" "APPLE_TEAM_ID" #{:api}]
+   ["apple-private-key" "APPLE_PRIVATE_KEY" #{:api}]])
 
 (defn- ssm-name [prefix name] (format "/%s/sanimmerse/%s" prefix name))
 
@@ -64,9 +70,9 @@
             (when-let [v (get versions name)] (str ":" v))
             "}}")))
 
-(defn- stripe-env [versions function]
+(defn- ssm-env [parameters versions function]
   (into {}
-        (for [[name env-name functions] stripe-parameters
+        (for [[name env-name functions] parameters
               :when (and env-name (functions function))]
           [(keyword env-name) (ssm-ref versions name)])))
 
@@ -256,7 +262,7 @@
              (sub "https://${ApiDomainName}")
              (get-att :HttpApi :ApiEndpoint)]})
 
-(defn resource-api-function [code-uri stripe? versions]
+(defn resource-api-function [code-uri stripe? apple? versions]
   {:Type "AWS::Serverless::Function"
    :DependsOn ["ApiLogGroup"]
    :Properties
@@ -285,7 +291,8 @@
        :PUBLIC_URL (public-url)
        ;; カスタムドメインがあるとき、Cloudflare の IP 範囲の外からの要求をアプリが 403 で拒む
        :ALLOWED_SOURCES {"Fn::If" ["UseApiDomain" "cloudflare" "any"]}}
-      (when stripe? (stripe-env versions :api)))}}})
+      (when stripe? (ssm-env stripe-parameters versions :api))
+      (when apple? (ssm-env apple-parameters versions :api)))}}})
 
 (defn resource-billing-function [code-uri versions]
   {:Type "AWS::Serverless::Function"
@@ -305,7 +312,7 @@
      (merge
       {:USERS_TABLE {:Ref :UsersTable}
        :DATA_TABLE {:Ref :DataTable}}
-      (stripe-env versions :billing))}
+      (ssm-env stripe-parameters versions :billing))}
     :Events
     {:Stripe {:Type "SQS"
               :Properties {:Queue (get-att :BillingQueue :Arn)
@@ -392,8 +399,8 @@
 ;; --- テンプレート ---
 
 (defn cfn
-  "code-uri は成果物のディレクトリ。stripe? で Stripe の経路を作る。ssm-versions は SSM パラメータの名前からバージョンへの写像 (nil ならバージョンを付けない)。"
-  [{:keys [code-uri stripe? ssm-versions]}]
+  "code-uri は成果物のディレクトリ。stripe? で Stripe の経路を作り、apple? で api に Apple の鍵を渡す。ssm-versions は SSM パラメータの名前からバージョンへの写像 (nil ならバージョンを付けない)。"
+  [{:keys [code-uri stripe? apple? ssm-versions]}]
   (a.cfn/template
    {:Parameters
     (merge
@@ -421,7 +428,7 @@
       :DownloadsBucketPolicy (resource-downloads-bucket-policy)
 
       :ApiFunctionRole (resource-api-function-role)
-      :ApiFunction (resource-api-function code-uri stripe? ssm-versions)
+      :ApiFunction (resource-api-function code-uri stripe? apple? ssm-versions)
 
       :HttpApi (resource-http-api)
       :HttpIntegration (resource-http-integration)
@@ -469,11 +476,11 @@
                                            "--output" "text")))]
     (when-not (contains? #{"" "None"} out) out)))
 
-(defn- stripe-values
-  "SSM `/<prefix>/sanimmerse/stripe-*` が全部あれば、名前から {:version :value} への写像を返す。1 つでも無ければ nil
-   (Stripe の経路を作らない)。"
-  [prefix]
-  (let [names (mapv (fn [[name]] (ssm-name prefix name)) stripe-parameters)
+(defn- ssm-values
+  "parameters の SSM `/<prefix>/sanimmerse/<名前>` が全部あれば、名前から {:version :value} への写像を返す。1 つでも無ければ nil
+   (その設定を使わない)。"
+  [prefix parameters]
+  (let [names (mapv (fn [[name]] (ssm-name prefix name)) parameters)
         found (->> (-> (apply c.util/eshell {:out :string} "aws" "ssm" "get-parameters" "--region" "ap-northeast-1" "--names"
                               (concat names ["--query" "Parameters[*].{name:Name,version:Version,value:Value}" "--output" "json"]))
                        :out
@@ -499,12 +506,12 @@
     (json/generate-stream (cfn input) writer)))
 
 (defn template
-  "AWS を呼ばずにテンプレートを target/cfn/sanimmerse.json (Stripe あり) と sanimmerse-without-stripe.json に書く
+  "AWS を呼ばずにテンプレートを target/cfn/sanimmerse.json (Stripe と Apple あり) と sanimmerse-without-ssm.json (どちらもなし) に書く
    (検証用。CodeUri は仮の値、SSM のバージョンは付けない)。"
   [_param]
-  (doseq [[file stripe?] [["target/cfn/sanimmerse.json" true]
-                          ["target/cfn/sanimmerse-without-stripe.json" false]]]
-    (write-template (fs/file file) {:code-uri "dist/lambda" :stripe? stripe? :ssm-versions nil})
+  (doseq [[file ssm?] [["target/cfn/sanimmerse.json" true]
+                       ["target/cfn/sanimmerse-without-ssm.json" false]]]
+    (write-template (fs/file file) {:code-uri "dist/lambda" :stripe? ssm? :apple? ssm? :ssm-versions nil})
     (println (str (fs/absolutize file)))))
 
 (defn deploy [param]
@@ -512,12 +519,14 @@
         prefix (:prefix param)
         stack-name (str prefix "-sanimmerse")
         dir (code-uri)
-        stripe (stripe-values prefix)
+        stripe (ssm-values prefix stripe-parameters)
+        apple (ssm-values prefix apple-parameters)
         cert (or (System/getenv "SANIMMERSE_CERTIFICATE_ARN")
                  (export-value (str prefix "-SanimmerseCertificateArn")))]
     (write-template file {:code-uri dir
                           :stripe? (boolean stripe)
-                          :ssm-versions (some-> stripe (update-vals :version))})
+                          :apple? (boolean apple)
+                          :ssm-versions (update-vals (merge stripe apple) :version)})
     (c.util/eshell "sam" "validate" "--lint" "--template-file" (str (fs/path file)))
     (c.util/ensure-stack-deployable stack-name)
     (c.util/eshell "sam" "deploy"

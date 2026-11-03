@@ -1,6 +1,6 @@
 # 016: sanimmerse
 
-The `sanimmerse` module builds the cloud of [sanimmerse](https://github.com/sancode-org/sanimmerse) (design: sanimmerse `docs/002-cloud.md`): an API Gateway HTTP API behind Cloudflare in front of one Lambda that serves the web app and the API, four DynamoDB tables, an S3 bucket for the agent downloads, and, when the Stripe settings exist, a billing Lambda fed by the Stripe partner event bus through SQS. It does not run on k8s and is not part of `deploy all`.
+The `sanimmerse` module builds the cloud of [sanimmerse](https://github.com/sancode-org/sanimmerse) (design: sanimmerse `docs/002-cloud.md`): an API Gateway HTTP API behind Cloudflare in front of one Lambda that serves the web app and the API, four DynamoDB tables, an S3 bucket for the agent downloads, and, when the Stripe settings exist, a billing Lambda fed by the Stripe partner event bus through SQS. When the Sign in with Apple key exists in SSM, the API Lambda gets it for the Sign in with Apple REST API. It does not run on k8s and is not part of `deploy all`.
 
 Two stacks per environment, plus the shared `cognito` stack:
 
@@ -25,11 +25,11 @@ Two stacks per environment, plus the shared `cognito` stack:
 
 | Function | Trigger | Handler | Timeout / memory | Environment |
 |----------|---------|---------|------------------|-------------|
-| `api` | HTTP API `$default` | `index.handler` | 29 s / 1024 MB | `USERS_TABLE`, `DATA_TABLE`, `TOKENS_TABLE`, `SHARED_RULES_TABLE`, `DOWNLOADS_BUCKET`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, `AUTH_DOMAIN`, `APPLE_AUDIENCE`, `PUBLIC_URL`, `ALLOWED_SOURCES`; with Stripe also `STRIPE_SECRET_KEY`, `STRIPE_PORTAL_CONFIG`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PRICE_ULTRA` |
+| `api` | HTTP API `$default` | `index.handler` | 29 s / 1024 MB | `USERS_TABLE`, `DATA_TABLE`, `TOKENS_TABLE`, `SHARED_RULES_TABLE`, `DOWNLOADS_BUCKET`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, `AUTH_DOMAIN`, `APPLE_AUDIENCE`, `PUBLIC_URL`, `ALLOWED_SOURCES`; with Stripe also `STRIPE_SECRET_KEY`, `STRIPE_PORTAL_CONFIG`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PRICE_ULTRA`; with the Apple key also `APPLE_KEY_ID`, `APPLE_TEAM_ID`, `APPLE_PRIVATE_KEY` |
 | `billing` | Billing queue (batch 1, `ReportBatchItemFailures`, `MaximumConcurrency` 2) | `billing.handler` | 30 s / 256 MB | `USERS_TABLE`, `DATA_TABLE`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PRICE_ULTRA` |
 
 - `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID` and `AUTH_DOMAIN` are imported from the `cognito` stack (`<prefix>-UserPool`, `<prefix>-SanimmerseUserPoolClient`, `<prefix>-UserPoolDomain`: `dev-auth-k8s.sancode.dev`, prd `auth-k8s.sancode.dev`).
-- `APPLE_AUDIENCE` is `dev.sancode.sanimmerse`, the iOS app's bundle ID, which Sign in with Apple puts in the identity token's `aud`.
+- `APPLE_AUDIENCE` is `dev.sancode.sanimmerse`, the iOS app's bundle ID, which Sign in with Apple puts in the identity token's `aud`. It is also the `client_id` of the Sign in with Apple REST API calls.
 - `PUBLIC_URL` is `https://<custom domain>` with the certificate (`https://dev-sanimmerse.sancode.dev`, prd `https://sanimmerse.sancode.dev`) and the HTTP API's `execute-api` URL without it.
 - `ALLOWED_SOURCES` is `cloudflare` with the custom domain and `any` without it. HTTP APIs take neither resource policies nor AWS WAF, so the app answers 403 to a request whose source address (`requestContext.http.sourceIp`) is outside Cloudflare's published ranges, as sanchoris and sanfreceipt do.
 - The account's Lambda concurrency limit is 10 in dev and prd, and a function's reserved concurrency must leave 10 unreserved, so `billing` is capped by the event source's `MaximumConcurrency` 2 instead of reserved concurrency.
@@ -56,6 +56,7 @@ The stack fixes these names; the app (sanimmerse `apps/api`) matches them.
 | Tables | `users`: key `email` (lowercase). `data`: `userId` + `sk` (`A#<activity id>`, `R#<field>#<service>#<value>`, `S`, `O#<device>#<app>`, `T#<token hash>`). `tokens`: `tokenHash` (SHA-256 of the device token). `shared-rules`: `key` (`<field>#<service>#<value>`) + `userId`. No secondary index and no TTL |
 | Cognito | ID tokens of the shared pool whose `aud` is `COGNITO_CLIENT_ID`; the web app uses the hosted UI at `https://<AUTH_DOMAIN>` with PKCE |
 | Stripe | The portal session names `STRIPE_PORTAL_CONFIG` (the Stripe account is shared with other products). Without the Stripe variables the billing routes are unavailable |
+| Apple | With `APPLE_KEY_ID`, `APPLE_TEAM_ID` and `APPLE_PRIVATE_KEY` the app exchanges the iOS app's Sign in with Apple authorization code for a refresh token at sign-in and revokes it when the account is deleted. Without them the sign-in skips the exchange |
 
 ## Cognito app client
 
@@ -85,7 +86,23 @@ Billing is built from the Stripe settings in SSM. The six String parameters `/<p
 aws ssm put-parameter --type String --name /dev-k8s/sanimmerse/stripe-price-pro --value '<price id>'
 ```
 
-On the Stripe side (test mode on dev, live mode on prd): the three products with monthly prices, a portal configuration, a restricted key (Customers read, Products read, Prices read, Checkout Sessions write, Customer Portal write), and the event destination in the dashboard (Developers → Workbench → Webhooks → Add destination → Amazon EventBridge; events `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, snapshot payload; name `<prefix>-sanimmerse-billing`, the AWS account ID and `ap-northeast-1`). The destination's source name is also listed by `aws events list-event-sources`; it turns from `PENDING` to `ACTIVE` once the stack's bus exists. The values end up in the Lambda configuration in plain text, so the key is a restricted key.
+On the Stripe side (test mode on dev, live mode on prd): the three products with monthly prices, a portal configuration, a restricted key (Customers read, Products read, Prices read, Checkout Sessions write, Customer Portal write, Subscriptions write for the account deletion), and the event destination in the dashboard (Developers → Workbench → Webhooks → Add destination → Amazon EventBridge; events `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, snapshot payload; name `<prefix>-sanimmerse-billing`, the AWS account ID and `ap-northeast-1`). The destination's source name is also listed by `aws events list-event-sources`; it turns from `PENDING` to `ACTIVE` once the stack's bus exists. The values end up in the Lambda configuration in plain text, so the key is a restricted key.
+
+## Sign in with Apple
+
+The api function signs the client secret of the Sign in with Apple REST API (`https://appleid.apple.com/auth/token` and `/auth/revoke`) with a Sign in with Apple key of the team (Apple Developer → Keys, service Sign in with Apple, primary App ID `dev.sancode.sanimmerse`). The three String parameters `/<prefix>/sanimmerse/apple-{key-id,team-id,private-key}` must all exist; `deploy sanimmerse` reads them like the Stripe ones and, only then, adds the variables to `api` with versioned dynamic references. The same key serves dev and prd.
+
+| Name | Value | Variable |
+|------|-------|----------|
+| `apple-key-id` | Key ID (10 characters) | `APPLE_KEY_ID` |
+| `apple-team-id` | Team ID `Z4383RWSA2` | `APPLE_TEAM_ID` |
+| `apple-private-key` | The `.p8` file as it is (PKCS #8 PEM, several lines) | `APPLE_PRIVATE_KEY` |
+
+```bash
+aws ssm put-parameter --type String --name /dev-k8s/sanimmerse/apple-private-key --value file://AuthKey_<key id>.p8
+```
+
+The key ends up in the Lambda configuration in plain text, as the Stripe key does; it can only sign Sign in with Apple requests of this team.
 
 ## Deploy
 
@@ -98,7 +115,7 @@ Steps for a new environment, in order:
 1. `deploy cognito` (the `sanimmerse` app client; on prd through a change set as above).
 2. Certificate: `deploy sanimmerse-certificate`. The stack waits for DNS validation: read the record with `aws acm describe-certificate --certificate-arn <arn> --query 'Certificate.DomainValidationOptions[].ResourceRecord'` and add it to the `sancode.dev` zone in Cloudflare as a CNAME, DNS only.
 3. Code, in sanimmerse: build `apps/api/dist/lambda`.
-4. Stripe and SSM (optional, above).
+4. Stripe and Sign in with Apple in SSM (optional, above).
 5. Stack:
 
    ```bash
@@ -114,7 +131,7 @@ To deploy new code, build it and run step 5 again. A changed SSM value also need
 The templates can be generated and checked without AWS access:
 
 ```bash
-nix develop --command clojure -M -m conao3.aws-infra-k8s template sanimmerse   # target/cfn/sanimmerse.json (Stripe) and sanimmerse-without-stripe.json, placeholder CodeUri
+nix develop --command clojure -M -m conao3.aws-infra-k8s template sanimmerse   # target/cfn/sanimmerse.json (Stripe and Apple) and sanimmerse-without-ssm.json (neither), placeholder CodeUri
 nix develop --command sam validate --lint --template-file target/cfn/sanimmerse.json --region ap-northeast-1
 ```
 
@@ -139,3 +156,4 @@ The daily check by the operator, the same for every san* product: the depth of `
 | Cognito hosted UI | `dev-auth-k8s.sancode.dev` | `auth-k8s.sancode.dev` |
 | SSM | `/dev-k8s/sanimmerse/` | `/prd-k8s/sanimmerse/` |
 | Stripe | Test mode | Live mode |
+| Sign in with Apple key | `U382H426M2` | `U382H426M2` |
