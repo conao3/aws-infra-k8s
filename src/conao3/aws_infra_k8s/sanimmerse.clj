@@ -2,7 +2,7 @@
   "sanimmerse (sancode-org/sanimmerse) のクラウド。Cloudflare (proxied) の背後の API Gateway の HTTP API から、
   Lambda `api` (Hono。Web アプリ・GraphQL・同期・課金の入口) を呼ぶ。認証は共有の Cognito ユーザープール
   (cognito スタック。先にデプロイする) の ID トークン、Sign in with Apple の identity トークン、端末トークンで、アプリが検証する。
-  データは DynamoDB の users・data・tokens・shared-rules の 4 表、エージェントの配布物は S3 の downloads バケット。
+  データは DynamoDB の users・data・tokens の 3 表、エージェントの配布物は S3 の downloads バケット。
   Stripe の契約イベントは、SSM `/<prefix>/sanimmerse/stripe-*` がそろっているときだけ、
   パートナーイベントソースのバス → ルール → SQS (+DLQ) → 同じ成果物の Lambda `billing`。
   Sign in with Apple の REST API の鍵は、SSM `/<prefix>/sanimmerse/apple-*` がそろっているときだけ api に渡す。k8s には載せない。
@@ -110,10 +110,6 @@
 ;; 端末トークン。キーはトークンの SHA-256。属性は userId・name・createdAt
 (defn resource-tokens-table []
   (table "tokens" [["tokenHash" "HASH"]] :protect? true))
-
-;; 共有されたルール。key は <field>#<service>#<value>。data の R# の写しなので作り直せる
-(defn resource-shared-rules-table []
-  (table "shared-rules" [["key" "HASH"] ["userId" "RANGE"]]))
 
 ;; --- 配布物 (エージェントの実行ファイル)。api が署名付き URL へ転送する ---
 
@@ -225,12 +221,7 @@
      :Action item-actions
      :Resource [(get-att :UsersTable :Arn)
                 (get-att :DataTable :Arn)
-                (get-att :TokensTable :Arn)
-                (get-att :SharedRulesTable :Arn)]}
-    ;; 共有ルールは表ごと読んで 10 分キャッシュする
-    {:Effect "Allow"
-     :Action "dynamodb:Scan"
-     :Resource (get-att :SharedRulesTable :Arn)}
+                (get-att :TokensTable :Arn)]}
     ;; 署名付き URL の転送先。ListBucket があると無いキーが 404 (NoSuchKey) になる
     {:Effect "Allow"
      :Action "s3:GetObject"
@@ -279,7 +270,6 @@
       {:USERS_TABLE {:Ref :UsersTable}
        :DATA_TABLE {:Ref :DataTable}
        :TOKENS_TABLE {:Ref :TokensTable}
-       :SHARED_RULES_TABLE {:Ref :SharedRulesTable}
        :DOWNLOADS_BUCKET {:Ref :DownloadsBucket}
        :COGNITO_USER_POOL_ID (import-value "UserPool")
        ;; ID トークンの aud がこのクライアントのものか、API で確かめる
@@ -420,7 +410,6 @@
       :UsersTable (resource-users-table)
       :DataTable (resource-data-table)
       :TokensTable (resource-tokens-table)
-      :SharedRulesTable (resource-shared-rules-table)
       :DownloadsBucket (resource-downloads-bucket)
       :DownloadsBucketPolicy (resource-downloads-bucket-policy)
 
@@ -453,7 +442,6 @@
        :SanimmerseUsersTable {:Ref :UsersTable}
        :SanimmerseDataTable {:Ref :DataTable}
        :SanimmerseTokensTable {:Ref :TokensTable}
-       :SanimmerseSharedRulesTable {:Ref :SharedRulesTable}
        :SanimmerseDownloadsBucket {:Ref :DownloadsBucket}
        :SanimmerseApiFunction {:Ref :ApiFunction}})
      (when stripe?

@@ -16,7 +16,7 @@ Two stacks per environment, plus the shared `cognito` stack:
 |-------|-----------|
 | Entry | API Gateway HTTP API `<prefix>-sanimmerse-http` with one `$default` route (no authorizer) to the `api` function (payload 2.0, integration timeout 30 s), stage `$default` (20 requests/s, burst 40, JSON access logs without headers, query strings or bodies). With the certificate: regional custom domain and API mapping, and the `execute-api` endpoint disabled |
 | Compute | Lambda `<prefix>-sanimmerse-api` and, with Stripe, `<prefix>-sanimmerse-billing`: `nodejs24.x`, `arm64`, JSON logs, the same code directory, one IAM role each |
-| Data | DynamoDB on demand: `<prefix>-sanimmerse-users` (`email`), `-data` (`userId` + `sk`), `-tokens` (`tokenHash`), `-shared-rules` (`key` + `userId`), all keys strings. `users` and `data` have point-in-time recovery; `users`, `data` and `tokens` have deletion protection. `shared-rules` is a copy of the sharing learners' `R#` items and can be rebuilt. Encryption at rest is DynamoDB's default; the stack has no KMS key |
+| Data | DynamoDB on demand: `<prefix>-sanimmerse-users` (`email`), `-data` (`userId` + `sk`), `-tokens` (`tokenHash`), all keys strings. `users` and `data` have point-in-time recovery; `users`, `data` and `tokens` have deletion protection. Encryption at rest is DynamoDB's default; the stack has no KMS key |
 | Downloads | S3 bucket (output `SanimmerseDownloadsBucket`): public access blocked, bucket owner enforced, SSE-S3, TLS only, incomplete multipart uploads aborted after 1 day |
 | Billing (Stripe only) | `AWS::Events::EventBus` named after the Stripe partner event source, a rule (`source` prefix `aws.partner/stripe.com`) to SQS `<prefix>-sanimmerse-billing` (visibility timeout 180 s = 6 x the function timeout, `maxReceiveCount` 5) and DLQ `-billing-dlq` (14 days), both with SSE-SQS and TLS only; the queue policy allows only this rule |
 | Logs | `/aws/lambda/<prefix>-sanimmerse-api`, `/aws/lambda/<prefix>-sanimmerse-billing`, `/aws/apigateway/<prefix>-sanimmerse-http-access`, 30 days |
@@ -25,7 +25,7 @@ Two stacks per environment, plus the shared `cognito` stack:
 
 | Function | Trigger | Handler | Timeout / memory | Environment |
 |----------|---------|---------|------------------|-------------|
-| `api` | HTTP API `$default` | `index.handler` | 29 s / 1024 MB | `USERS_TABLE`, `DATA_TABLE`, `TOKENS_TABLE`, `SHARED_RULES_TABLE`, `DOWNLOADS_BUCKET`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, `AUTH_DOMAIN`, `APPLE_AUDIENCE`, `PUBLIC_URL`, `ALLOWED_SOURCES`; with Stripe also `STRIPE_SECRET_KEY`, `STRIPE_PORTAL_CONFIG`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PRICE_ULTRA`; with the Apple key also `APPLE_KEY_ID`, `APPLE_TEAM_ID`, `APPLE_PRIVATE_KEY` |
+| `api` | HTTP API `$default` | `index.handler` | 29 s / 1024 MB | `USERS_TABLE`, `DATA_TABLE`, `TOKENS_TABLE`, `DOWNLOADS_BUCKET`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, `AUTH_DOMAIN`, `APPLE_AUDIENCE`, `PUBLIC_URL`, `ALLOWED_SOURCES`; with Stripe also `STRIPE_SECRET_KEY`, `STRIPE_PORTAL_CONFIG`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PRICE_ULTRA`; with the Apple key also `APPLE_KEY_ID`, `APPLE_TEAM_ID`, `APPLE_PRIVATE_KEY` |
 | `billing` | Billing queue (batch 1, `ReportBatchItemFailures`) | `billing.handler` | 30 s / 256 MB | `USERS_TABLE`, `DATA_TABLE`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PRICE_ULTRA` |
 
 - `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID` and `AUTH_DOMAIN` are imported from the `cognito` stack (`<prefix>-UserPool`, `<prefix>-SanimmerseUserPoolClient`, `<prefix>-UserPoolDomain`: `dev-auth-k8s.sancode.dev`, prd `auth-k8s.sancode.dev`).
@@ -38,7 +38,7 @@ Two stacks per environment, plus the shared `cognito` stack:
 
 | Function | Permissions |
 |----------|-------------|
-| `api` | On the four tables: `GetItem`, `PutItem`, `UpdateItem`, `DeleteItem`, `Query`, `BatchGetItem`, `BatchWriteItem`, `ConditionCheckItem` (transactions are authorized through the item actions). `Scan` on `shared-rules` only. `s3:GetObject` on the downloads bucket's objects and `s3:ListBucket` on the bucket (a missing key then answers 404) |
+| `api` | On the three tables: `GetItem`, `PutItem`, `UpdateItem`, `DeleteItem`, `Query`, `BatchGetItem`, `BatchWriteItem`, `ConditionCheckItem` (transactions are authorized through the item actions). `s3:GetObject` on the downloads bucket's objects and `s3:ListBucket` on the bucket (a missing key then answers 404) |
 | `billing` | `GetItem`, `UpdateItem` on `users`; `GetItem`, `Query`, `PutItem`, `UpdateItem` on `data`; receive and delete on the billing queue |
 
 Both write only to their own log group.
@@ -53,7 +53,7 @@ The stack fixes these names; the app (sanimmerse `apps/api`) matches them.
 | `index.handler` | HTTP API payload 2.0 for every path: the web app, `/api/*` (`/api/config`, `/api/graphql`, `/api/events`, `/api/session`, billing) and `/download/*`. Logs one JSON object per line to stdout |
 | `/download/*` | The api function redirects to a presigned `GetObject` URL of an object in `DOWNLOADS_BUCKET` |
 | `billing.handler` | SQS event whose record body is the EventBridge envelope of one Stripe event (`detail` is the Stripe event object); returns `{ batchItemFailures }`. An event it cannot apply (unknown price) must fail so that it ends up in the DLQ |
-| Tables | `users`: key `email` (lowercase). `data`: `userId` + `sk` (`A#<activity id>`, `R#<field>#<service>#<value>`, `S`, `O#<device>#<app>`, `T#<token hash>`). `tokens`: `tokenHash` (SHA-256 of the device token). `shared-rules`: `key` (`<field>#<service>#<value>`) + `userId`. No secondary index and no TTL |
+| Tables | `users`: key `email` (lowercase). `data`: `userId` + `sk` (`A#<activity id>`, `R#<field>#<service>#<value>`, `S`, `O#<device>#<app>`, `T#<token hash>`). `tokens`: `tokenHash` (SHA-256 of the device token). No secondary index and no TTL |
 | Cognito | ID tokens of the shared pool whose `aud` is `COGNITO_CLIENT_ID`; the web app uses the hosted UI at `https://<AUTH_DOMAIN>` with PKCE |
 | Stripe | The portal session names `STRIPE_PORTAL_CONFIG` (the Stripe account is shared with other products). Without the Stripe variables the billing routes are unavailable |
 | Apple | With `APPLE_KEY_ID`, `APPLE_TEAM_ID` and `APPLE_PRIVATE_KEY` the app exchanges the iOS app's Sign in with Apple authorization code for a refresh token at sign-in and revokes it when the account is deleted. Without them the sign-in skips the exchange |
