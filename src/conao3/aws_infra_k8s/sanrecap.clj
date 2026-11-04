@@ -763,6 +763,7 @@
           (json/generate-stream writer)))
 
     (c.util/eshell "sam" "validate" "--lint" "--template-file" (str (fs/path file)))
+    (c.util/ensure-trimmed-ssm-values (format "/%s/sanrecap/" prefix))
     (c.util/ensure-stack-deployable stack-name)
     ;; AI Gateway のキーとモデル ID は SSM パラメータ (String) に先に置いておく。モデル ID は名前だけを渡し、キーはテンプレートが動的参照で読む (スタックのパラメータに値を出さない)
     (c.util/eshell "sam" "deploy"

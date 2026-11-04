@@ -287,6 +287,7 @@
           (json/generate-stream writer)))
 
     (c.util/eshell "sam" "validate" "--lint" "--template-file" (str (fs/path file)))
+    (c.util/ensure-trimmed-ssm-values (format "/%s/cognito/" (-> param :prefix)))
     (c.util/ensure-stack-deployable stack-name)
     ;; Google の client_id / client_secret は、テンプレートが SSM パラメータ
     ;; `/{prefix}/cognito/google-client-{id,secret}` の動的参照で受けるので、ここでは取得しない

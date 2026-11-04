@@ -1242,6 +1242,7 @@
         (when-not (fs/exists? zip)
           (throw (ex-info (format "build the Lambda functions in sanchoris first (%s)" zip) {:file (str zip)})))))
     (timed "ssm parameters" (ensure-secrets prefix))
+    (timed "ssm values" (c.util/ensure-trimmed-ssm-values (format "/%s/sanchoris/" prefix)))
     (timed "sam validate --lint" (lint file))
     (timed "stack status" (c.util/ensure-stack-deployable stack-name))
     (timed "sam deploy"

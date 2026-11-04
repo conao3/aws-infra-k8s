@@ -519,6 +519,7 @@
         values (ssm-values prefix)
         cert (or (System/getenv "SANFRECEIPT_CERTIFICATE_ARN")
                  (export-value (str prefix "-SanfreceiptCertificateArn")))]
+    (c.util/ensure-trimmed-ssm-values (format "/%s/sanfreceipt/" prefix))
     (write-template file {:image-uri image
                           :ssm-versions (update-vals values :version)})
     (sam-deploy file

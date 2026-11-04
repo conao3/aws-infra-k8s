@@ -1,7 +1,8 @@
 (ns conao3.aws-infra-k8s.util
   (:require
     [babashka.process :as process]
-    [cheshire.core :as json]))
+    [cheshire.core :as json]
+    [clojure.string :as str]))
 
 (defn eprintln [& args]
   (binding [*out* *err*]
@@ -13,6 +14,22 @@
       (apply eprintln rest)
       (apply eprintln args)))
   (apply process/shell args))
+
+(defn ensure-trimmed-ssm-values
+  "SSM パラメータ `<path>` 配下の値が前後に空白を持たないことを確かめる。PEM の鍵 (`-----END ...-----` で終わる値) は除く。
+   あれば名前を挙げて止める。"
+  [path]
+  (let [untrimmed (->> (-> (eshell {:out :string} "aws" "ssm" "get-parameters-by-path" "--region" "ap-northeast-1"
+                                   "--path" path "--recursive" "--with-decryption" "--output" "json")
+                           :out
+                           (json/parse-string true)
+                           :Parameters)
+                       (remove #(re-find #"-----END [A-Z ]+-----\s*$" (:Value %)))
+                       (remove #(= (:Value %) (str/trim (:Value %))))
+                       (map :Name))]
+    (when (seq untrimmed)
+      (throw (ex-info (str "remove the leading and trailing whitespace from the SSM parameters: " (str/join " " untrimmed))
+                      {:untrimmed untrimmed})))))
 
 (defn get-stack-status [stack-name]
   (->> (or (-> (eshell {:out :string :continue true} "aws" "cloudformation" "describe-stacks" "--stack-name" stack-name)

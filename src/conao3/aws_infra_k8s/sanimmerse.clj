@@ -525,6 +525,7 @@
                           :apple? (boolean apple)
                           :ssm-versions (update-vals (merge stripe apple) :version)})
     (c.util/eshell "sam" "validate" "--lint" "--template-file" (str (fs/path file)))
+    (c.util/ensure-trimmed-ssm-values (format "/%s/sanimmerse/" prefix))
     (c.util/ensure-stack-deployable stack-name)
     (c.util/eshell "sam" "deploy"
                    "--template-file" (str (fs/path file))

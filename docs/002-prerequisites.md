@@ -80,6 +80,8 @@ aws ssm put-parameter --type String --name /dev-k8s/cognito/google-client-secret
 
 Anyone with `ssm:GetParameter` can read the secret, so keep it to the dev account's administrators.
 
+Write SSM values without a trailing newline: `--value '<value>'` or `--value "$(cat <file>)"` (command substitution drops it), not `--value file://<file>` with a file that ends in a newline. `deploy cognito`, `deploy sanrecap`, `deploy sanimmerse`, `deploy sanfreceipt` and `deploy sanchoris` read every parameter under `/<prefix>/<module>/` first and stop, naming the parameters, when a value has leading or trailing whitespace, since Stripe and the other services take the value as an exact ID or key. PEM keys (values ending in `-----END ...-----`) keep their final newline.
+
 ### 4. CodeBuild GitHub Source Credentials
 
 Register a GitHub Personal Access Token for CodeBuild to clone private repositories:
