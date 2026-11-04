@@ -1,6 +1,7 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs-nixos.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-parts.url = "github:hercules-ci/flake-parts";
     treefmt-nix.url = "github:numtide/treefmt-nix";
   };
@@ -8,6 +9,7 @@
   outputs = inputs @ {
     self,
     nixpkgs,
+    nixpkgs-nixos,
     flake-parts,
     ...
   }:
@@ -18,21 +20,21 @@
       ];
 
       flake = {
-        nixosConfigurations.ec2-x86_64 = nixpkgs.lib.nixosSystem {
+        nixosConfigurations.ec2-x86_64 = nixpkgs-nixos.lib.nixosSystem {
           system = "x86_64-linux";
           modules = [
             {
-              nix.registry.nixpkgs.flake = inputs.nixpkgs;
+              nix.registry.nixpkgs.flake = inputs.nixpkgs-nixos;
             }
             "${self}/nixos/hosts/ec2-image.nix"
           ];
         };
 
-        nixosConfigurations.ec2-aarch64 = nixpkgs.lib.nixosSystem {
+        nixosConfigurations.ec2-aarch64 = nixpkgs-nixos.lib.nixosSystem {
           system = "aarch64-linux";
           modules = [
             {
-              nix.registry.nixpkgs.flake = inputs.nixpkgs;
+              nix.registry.nixpkgs.flake = inputs.nixpkgs-nixos;
             }
             "${self}/nixos/hosts/ec2-image.nix"
           ];
@@ -64,19 +66,19 @@
       in {
         packages = {
           vm =
-            (nixpkgs.lib.nixosSystem {
+            (nixpkgs-nixos.lib.nixosSystem {
               system = guestSystem;
               modules =
                 [
                   {
                     networking.hostName = "nixos-vm";
-                    nix.registry.nixpkgs.flake = inputs.nixpkgs;
+                    nix.registry.nixpkgs.flake = inputs.nixpkgs-nixos;
                     virtualisation.diskSize = 20 * 1024;
                   }
                   "${self}/nixos/hosts/vm.nix"
                 ]
-                ++ nixpkgs.lib.optionals (guestSystem != system) [
-                  {virtualisation.host.pkgs = import inputs.nixpkgs {inherit system;};}
+                ++ nixpkgs-nixos.lib.optionals (guestSystem != system) [
+                  {virtualisation.host.pkgs = import inputs.nixpkgs-nixos {inherit system;};}
                 ];
             }).config.system.build.vm;
         };
