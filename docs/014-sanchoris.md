@@ -127,7 +127,7 @@ nix develop --command clojure -M -m conao3.aws-infra-k8s deploy cognito
 nix develop --command clojure -M -m conao3.aws-infra-k8s deploy sanchoris-certificate
 ```
 
-prd uses the same commands with `DEPLOY_ENV=prd AWS_PROFILE=conao3.prd.k8s` ("Environments"). `deploy sanchoris` by hand needs `SANCHORIS_ENABLE_WORKSPACES=true SANCHORIS_WORKSPACE_NETWORK=public SANCHORIS_WORKER_MAX_CONCURRENCY=2` and `SANCHORIS_DIR`.
+prd uses the same commands with `DEPLOY_ENV=prd AWS_PROFILE=conao3.prd.k8s` ("Environments"). `deploy sanchoris` by hand needs `SANCHORIS_ENABLE_WORKSPACES=true SANCHORIS_WORKSPACE_NETWORK=public` and `SANCHORIS_DIR`.
 
 `deploy sanchoris` writes `target/cfn/sanchoris.json`, runs `sam validate --lint` when the template differs from the last one that passed (`target/cfn/sanchoris.lint-ok`), prints the time of each step as `[time] <step> <seconds>s` on stderr, and passes these parameters:
 
@@ -168,7 +168,7 @@ SANCHORIS_TABLE_MAIN=dev-k8s-sanchoris-main SANCHORIS_TABLE_AUDIT=dev-k8s-sancho
 
 Delete in the reverse order (sanchoris, then sanchoris-certificate and cognito). The tables have deletion protection: turn it off (`aws dynamodb update-table --no-deletion-protection-enabled`) before deleting the stack, and empty the buckets and the ECR repository first.
 
-The dev and prd accounts each allow 1000 concurrent Lambda executions in total, shared with the sanrecap worker (up to 5). `SANCHORIS_WORKER_MAX_CONCURRENCY` sets the sanchoris worker's `WorkerMaxConcurrency`; both environments use 2. Fargate allows 30 vCPU for On-Demand and 30 for Spot in both accounts, which is 30 Free or Pro Workspaces (1 vCPU) or 15 Max or Ultra Workspaces (2 vCPU) at a time.
+The dev and prd accounts each allow 1000 concurrent Lambda executions in total, shared with the sanrecap worker (up to 5). Both environments use the default `WorkerMaxConcurrency` 5, which bounds how many jobs start Workspaces at once. Fargate allows 30 vCPU for On-Demand and 30 for Spot in both accounts, which is 30 Free or Pro Workspaces (1 vCPU) or 15 Max or Ultra Workspaces (2 vCPU) at a time.
 
 ## Environments
 
@@ -182,7 +182,7 @@ The dev and prd accounts each allow 1000 concurrent Lambda executions in total, 
 | SSM | `/dev-k8s/sanchoris/` | `/prd-k8s/sanchoris/` |
 | GitHub App | "Sanchoris (dev)" (`sanchoris-dev`) | "Sanchoris App" (`sanchoris-app`) |
 | Stripe | Test mode | Live mode |
-| Stack settings | `SANCHORIS_ENABLE_WORKSPACES=true`, `SANCHORIS_WORKSPACE_NETWORK=public`, `SANCHORIS_WORKER_MAX_CONCURRENCY=2` | Same |
+| Stack settings | `SANCHORIS_ENABLE_WORKSPACES=true`, `SANCHORIS_WORKSPACE_NETWORK=public` | Same |
 
 Both environments mirror each other: the HTTP API serves the web app, `/api`, the webhooks, and the GitHub OAuth on one host name, and the Run channel has its own, both one level under `sancode.dev` so that Cloudflare's Universal SSL covers the proxied names. The api zip embeds the frontend built with the environment's Cognito values, so build the functions for the environment you deploy (`VITE_COGNITO_DOMAIN=<Hosted UI> VITE_COGNITO_CLIENT_ID=<SanchorisUserPoolClient of that environment> nix develop -c pnpm build:lambda`) and push the images to that account's repositories.
 

@@ -23,8 +23,6 @@
 (def billing-memory-mb 256)
 ;; SQS の可視性タイムアウトは関数のタイムアウトの 6 倍
 (def billing-visibility-timeout-sec (* 6 billing-timeout-sec))
-;; billing の同時実行の上限 (SQS のイベントソースの MaximumConcurrency の最小値)。アカウントの同時実行の上限が 10 で、予約同時実行は未予約の下限 10 を割るので使えない
-(def billing-max-concurrency 2)
 (def log-retention-days 30)
 (def runtime "nodejs24.x")
 ;; Sign in with Apple の identity トークンの aud (iOS アプリの bundle ID)
@@ -317,8 +315,7 @@
     {:Stripe {:Type "SQS"
               :Properties {:Queue (get-att :BillingQueue :Arn)
                            :BatchSize 1
-                           :FunctionResponseTypes ["ReportBatchItemFailures"]
-                           :ScalingConfig {:MaximumConcurrency billing-max-concurrency}}}}}})
+                           :FunctionResponseTypes ["ReportBatchItemFailures"]}}}}})
 
 ;; --- API Gateway: HTTP API (`$default` の 1 ルート。認証はアプリ) ---
 

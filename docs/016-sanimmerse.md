@@ -26,13 +26,13 @@ Two stacks per environment, plus the shared `cognito` stack:
 | Function | Trigger | Handler | Timeout / memory | Environment |
 |----------|---------|---------|------------------|-------------|
 | `api` | HTTP API `$default` | `index.handler` | 29 s / 1024 MB | `USERS_TABLE`, `DATA_TABLE`, `TOKENS_TABLE`, `SHARED_RULES_TABLE`, `DOWNLOADS_BUCKET`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, `AUTH_DOMAIN`, `APPLE_AUDIENCE`, `PUBLIC_URL`, `ALLOWED_SOURCES`; with Stripe also `STRIPE_SECRET_KEY`, `STRIPE_PORTAL_CONFIG`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PRICE_ULTRA`; with the Apple key also `APPLE_KEY_ID`, `APPLE_TEAM_ID`, `APPLE_PRIVATE_KEY` |
-| `billing` | Billing queue (batch 1, `ReportBatchItemFailures`, `MaximumConcurrency` 2) | `billing.handler` | 30 s / 256 MB | `USERS_TABLE`, `DATA_TABLE`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PRICE_ULTRA` |
+| `billing` | Billing queue (batch 1, `ReportBatchItemFailures`) | `billing.handler` | 30 s / 256 MB | `USERS_TABLE`, `DATA_TABLE`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PRICE_ULTRA` |
 
 - `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID` and `AUTH_DOMAIN` are imported from the `cognito` stack (`<prefix>-UserPool`, `<prefix>-SanimmerseUserPoolClient`, `<prefix>-UserPoolDomain`: `dev-auth-k8s.sancode.dev`, prd `auth-k8s.sancode.dev`).
 - `APPLE_AUDIENCE` is `dev.sancode.sanimmerse`, the iOS app's bundle ID, which Sign in with Apple puts in the identity token's `aud`. It is also the `client_id` of the Sign in with Apple REST API calls.
 - `PUBLIC_URL` is `https://<custom domain>` with the certificate (`https://dev-sanimmerse.sancode.dev`, prd `https://sanimmerse.sancode.dev`) and the HTTP API's `execute-api` URL without it.
 - `ALLOWED_SOURCES` is `cloudflare` with the custom domain and `any` without it. HTTP APIs take neither resource policies nor AWS WAF, so the app answers 403 to a request whose source address (`requestContext.http.sourceIp`) is outside Cloudflare's published ranges, as sanchoris and sanfreceipt do.
-- The account's Lambda concurrency limit is 1000 in dev and prd. `billing` is capped by the event source's `MaximumConcurrency` 2.
+- The account's Lambda concurrency limit is 1000 in dev and prd, shared by every function of the account.
 
 ### IAM
 

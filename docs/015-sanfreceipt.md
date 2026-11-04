@@ -28,7 +28,7 @@ The browser talks to freee's API directly for deals, partners and receipt metada
 | Function | Trigger | Image command | Timeout / memory | Environment | Table permissions |
 |----------|---------|---------------|------------------|-------------|-------------------|
 | `api` | HTTP API `$default` | `lambda/index.handler` | 60 s / 2048 MB | `SANFRECEIPT_APP_ORIGIN`, `SANFRECEIPT_TABLE`, `SANFRECEIPT_ALLOWED_SOURCES`, `SANFRECEIPT_ADMIN_COMPANY_IDS`, `FREEE_CLIENT_ID`, `FREEE_CLIENT_SECRET`, `FREEE_ACCOUNTS_BASE`, `FREEE_API_BASE`, `NTA_API_BASE`, `NTA_APPLICATION_ID`, `AI_GATEWAY_BASE_URL`, `AI_GATEWAY_API_KEY`, `AI_GATEWAY_MODEL`, `STRIPE_API_BASE`, `STRIPE_SECRET_KEY`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PRICE_ULTRA`, `STRIPE_PORTAL_CONFIG` | `GetItem`, `PutItem`, `UpdateItem`, `DeleteItem`, `Query`, `ConditionCheckItem` |
-| `billing` | Billing queue (batch 1, `ReportBatchItemFailures`, `MaximumConcurrency` 2) | `lambda/billing.handler` | 30 s / 256 MB | `SANFRECEIPT_TABLE`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PRICE_ULTRA` | Same as `api` |
+| `billing` | Billing queue (batch 1, `ReportBatchItemFailures`) | `lambda/billing.handler` | 30 s / 256 MB | `SANFRECEIPT_TABLE`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_MAX`, `STRIPE_PRICE_ULTRA` | Same as `api` |
 
 - `SANFRECEIPT_APP_ORIGIN` is `https://<custom domain>` with the certificate and the HTTP API's `execute-api` URL without it.
 - `SANFRECEIPT_ALLOWED_SOURCES` is `cloudflare` with the custom domain and `any` without it. HTTP APIs take neither resource policies nor AWS WAF, so the app answers 403 to a request whose source address (`requestContext.http.sourceIp`) is outside Cloudflare's published ranges, as sanchoris does ([014](014-sanchoris.md), "Custom domains behind Cloudflare").
@@ -132,7 +132,7 @@ External services that email operational notices about sanfreceipt (Stripe, free
 
 ## Lambda concurrency
 
-The dev and prd accounts allow 1000 concurrent Lambda executions in total, shared with sanrecap (worker up to 5) and sanchoris (worker 2). The billing function is capped at 2 (the smallest `MaximumConcurrency`). The api function has no cap; a burst of readings that hits the account limit shows as `api` Throttles in the daily check.
+The dev and prd accounts allow 1000 concurrent Lambda executions in total, shared with the other products, and both functions draw from it; a burst of readings that hits the account limit shows as `api` Throttles in the daily check.
 
 ## Environments
 
