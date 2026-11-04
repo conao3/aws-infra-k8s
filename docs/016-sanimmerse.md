@@ -32,7 +32,7 @@ Two stacks per environment, plus the shared `cognito` stack:
 - `APPLE_AUDIENCE` is `dev.sancode.sanimmerse`, the iOS app's bundle ID, which Sign in with Apple puts in the identity token's `aud`. It is also the `client_id` of the Sign in with Apple REST API calls.
 - `PUBLIC_URL` is `https://<custom domain>` with the certificate (`https://dev-sanimmerse.sancode.dev`, prd `https://sanimmerse.sancode.dev`) and the HTTP API's `execute-api` URL without it.
 - `ALLOWED_SOURCES` is `cloudflare` with the custom domain and `any` without it. HTTP APIs take neither resource policies nor AWS WAF, so the app answers 403 to a request whose source address (`requestContext.http.sourceIp`) is outside Cloudflare's published ranges, as sanchoris and sanfreceipt do.
-- The account's Lambda concurrency limit is 10 in dev and prd, and a function's reserved concurrency must leave 10 unreserved, so `billing` is capped by the event source's `MaximumConcurrency` 2 instead of reserved concurrency.
+- The account's Lambda concurrency limit is 1000 in dev and prd. `billing` is capped by the event source's `MaximumConcurrency` 2.
 
 ### IAM
 

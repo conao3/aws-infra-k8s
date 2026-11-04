@@ -168,7 +168,7 @@ SANCHORIS_TABLE_MAIN=dev-k8s-sanchoris-main SANCHORIS_TABLE_AUDIT=dev-k8s-sancho
 
 Delete in the reverse order (sanchoris, then sanchoris-certificate and cognito). The tables have deletion protection: turn it off (`aws dynamodb update-table --no-deletion-protection-enabled`) before deleting the stack, and empty the buckets and the ECR repository first.
 
-The dev and prd accounts each allow 10 concurrent Lambda executions in total, and the sanrecap worker may take 5 of them; with `WorkerMaxConcurrency` 5 the sanchoris worker could take the rest and starve the api and channel functions. Use `SANCHORIS_WORKER_MAX_CONCURRENCY=2` in both until the quota is raised. Fargate allows 30 vCPU for On-Demand and 30 for Spot in both accounts, which is 30 Free or Pro Workspaces (1 vCPU) or 15 Max or Ultra Workspaces (2 vCPU) at a time.
+The dev and prd accounts each allow 1000 concurrent Lambda executions in total, shared with the sanrecap worker (up to 5). `SANCHORIS_WORKER_MAX_CONCURRENCY` sets the sanchoris worker's `WorkerMaxConcurrency`; both environments use 2. Fargate allows 30 vCPU for On-Demand and 30 for Spot in both accounts, which is 30 Free or Pro Workspaces (1 vCPU) or 15 Max or Ultra Workspaces (2 vCPU) at a time.
 
 ## Environments
 

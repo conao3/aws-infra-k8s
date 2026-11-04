@@ -132,7 +132,7 @@ External services that email operational notices about sanfreceipt (Stripe, free
 
 ## Lambda concurrency
 
-The dev and prd accounts allow 10 concurrent Lambda executions in total, shared with sanrecap (worker up to 5) and sanchoris (worker 2); an increase of the quota to 100 is requested. The billing function is capped at 2 (the smallest `MaximumConcurrency`). The api function has no cap; a burst of readings that hits the account limit shows as `api` Throttles in the daily check.
+The dev and prd accounts allow 1000 concurrent Lambda executions in total, shared with sanrecap (worker up to 5) and sanchoris (worker 2). The billing function is capped at 2 (the smallest `MaximumConcurrency`). The api function has no cap; a burst of readings that hits the account limit shows as `api` Throttles in the daily check.
 
 ## Environments
 
