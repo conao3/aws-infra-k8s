@@ -380,14 +380,16 @@
     :Environment
     {:Variables
      {:USERS_TABLE {:Ref :UsersTable}
+      :BILLING_QUEUE_URL {:Ref :StripeQueue}
       :STRIPE_PRICE_PRO (stripe-ref "stripe-price-pro")
       :STRIPE_PRICE_MAX (stripe-ref "stripe-price-max")
       :STRIPE_PRICE_ULTRA (stripe-ref "stripe-price-ultra")}}
     :Events
-    {:Stripe {:Type "SQS"
-              :Properties {:Queue (get-att :StripeQueue :Arn)
-                           :BatchSize 1
-                           :FunctionResponseTypes ["ReportBatchItemFailures"]}}}}})
+    {:Drain {:Type "Schedule"
+             :Properties {:Schedule "rate(5 minutes)"
+                          :Name (prefix-name "billing-drain")
+                          :Description "Drains the billing queue. An SQS event source polls even while the queue is empty, so the function reads the queue itself on a timer instead."
+                          :Enabled true}}}}})
 
 ;; --- Lambda ---
 

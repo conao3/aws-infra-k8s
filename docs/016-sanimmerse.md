@@ -1,6 +1,6 @@
 # 016: sanimmerse
 
-The `sanimmerse` module builds the cloud of [sanimmerse](https://github.com/sancode-org/sanimmerse) (design: sanimmerse `docs/002-cloud.md`): an API Gateway HTTP API behind Cloudflare in front of one Lambda that serves the web app and the API, four DynamoDB tables, an S3 bucket for the agent downloads, and, when the Stripe settings exist, a billing Lambda fed by the Stripe partner event bus through SQS. When the Sign in with Apple key exists in SSM, the API Lambda gets it for the Sign in with Apple REST API. It does not run on k8s and is not part of `deploy all`.
+The `sanimmerse` module builds the cloud of [sanimmerse](https://github.com/sancode-org/sanimmerse) (design: sanimmerse `docs/002-cloud.md`): an API Gateway HTTP API behind Cloudflare in front of one Lambda that serves the web app and the API, four DynamoDB tables, an S3 bucket for the agent downloads, and, when the Stripe settings exist, a billing Lambda that drains an SQS queue fed by the Stripe partner event bus on a 5 minute schedule. When the Sign in with Apple key exists in SSM, the API Lambda gets it for the Sign in with Apple REST API. It does not run on k8s and is not part of `deploy all`.
 
 Two stacks per environment, plus the shared `cognito` stack:
 

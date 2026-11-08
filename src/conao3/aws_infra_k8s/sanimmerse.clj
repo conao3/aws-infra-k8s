@@ -299,13 +299,15 @@
     {:Variables
      (merge
       {:USERS_TABLE {:Ref :UsersTable}
-       :DATA_TABLE {:Ref :DataTable}}
+       :DATA_TABLE {:Ref :DataTable}
+       :BILLING_QUEUE_URL {:Ref :BillingQueue}}
       (ssm-env stripe-parameters versions :billing))}
     :Events
-    {:Stripe {:Type "SQS"
-              :Properties {:Queue (get-att :BillingQueue :Arn)
-                           :BatchSize 1
-                           :FunctionResponseTypes ["ReportBatchItemFailures"]}}}}})
+    {:Drain {:Type "Schedule"
+             :Properties {:Schedule "rate(5 minutes)"
+                          :Name (prefix-name "billing-drain")
+                          :Description "Drains the billing queue. An SQS event source polls even while the queue is empty, so the function reads the queue itself on a timer instead."
+                          :Enabled true}}}}})
 
 ;; --- API Gateway: HTTP API (`$default` の 1 ルート。認証はアプリ) ---
 
