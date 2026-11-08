@@ -245,7 +245,7 @@
    {:QueueName (prefix-name "work-dlq.fifo")
     :FifoQueue true
     :MessageRetentionPeriod 1209600
-    :SqsManagedSseEnabled true}})
+    :SqsManagedSseEnabled false}})
 
 (defn resource-work-queue []
   {:Type "AWS::SQS::Queue"
@@ -255,7 +255,7 @@
     :ContentBasedDeduplication true
     :VisibilityTimeout work-visibility-timeout-sec
     :MessageRetentionPeriod 345600
-    :SqsManagedSseEnabled true
+    :SqsManagedSseEnabled false
     :RedrivePolicy {:deadLetterTargetArn (get-att :WorkDlq :Arn)
                     :maxReceiveCount 5}}})
 
@@ -266,7 +266,7 @@
    :Properties
    {:QueueName (prefix-name "relay-dlq")
     :MessageRetentionPeriod 1209600
-    :SqsManagedSseEnabled true}})
+    :SqsManagedSseEnabled false}})
 
 (defn resource-queue-policy
   "SQS のキューのポリシーは 1 つの Statement に 1 つの Resource しか持てないので、キューごとに作る。"

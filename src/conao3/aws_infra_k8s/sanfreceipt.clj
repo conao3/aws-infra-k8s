@@ -147,7 +147,7 @@
    :Properties
    {:QueueName (prefix-name "billing-dlq")
     :MessageRetentionPeriod 1209600
-    :SqsManagedSseEnabled true}})
+    :SqsManagedSseEnabled false}})
 
 (defn resource-billing-queue []
   {:Type "AWS::SQS::Queue"
@@ -155,7 +155,7 @@
    {:QueueName (prefix-name "billing")
     :VisibilityTimeout billing-visibility-timeout-sec
     :MessageRetentionPeriod 345600
-    :SqsManagedSseEnabled true
+    :SqsManagedSseEnabled false
     :RedrivePolicy {:deadLetterTargetArn (get-att :BillingDlq :Arn)
                     :maxReceiveCount 5}}})
 

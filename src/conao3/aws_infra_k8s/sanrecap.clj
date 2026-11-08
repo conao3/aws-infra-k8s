@@ -170,7 +170,7 @@
    :Properties
    {:QueueName (prefix-name "jobs-dlq")
     :MessageRetentionPeriod 1209600
-    :SqsManagedSseEnabled true}})
+    :SqsManagedSseEnabled false}})
 
 (defn resource-jobs-queue []
   {:Type "AWS::SQS::Queue"
@@ -179,7 +179,7 @@
     :VisibilityTimeout worker-visibility-timeout-sec
     ;; ジョブは 1 時間で期限切れになるので、それより古いメッセージは残さない
     :MessageRetentionPeriod 3600
-    :SqsManagedSseEnabled true
+    :SqsManagedSseEnabled false
     :RedrivePolicy {:deadLetterTargetArn (get-att :JobsDlq :Arn)
                     :maxReceiveCount 3}}})
 
@@ -304,7 +304,7 @@
    :Properties
    {:QueueName (prefix-name "billing-dlq")
     :MessageRetentionPeriod 1209600
-    :SqsManagedSseEnabled true}})
+    :SqsManagedSseEnabled false}})
 
 (defn resource-stripe-queue []
   {:Type "AWS::SQS::Queue"
@@ -312,7 +312,7 @@
    {:QueueName (prefix-name "billing")
     :VisibilityTimeout 180
     :MessageRetentionPeriod 345600
-    :SqsManagedSseEnabled true
+    :SqsManagedSseEnabled false
     :RedrivePolicy {:deadLetterTargetArn (get-att :StripeDlq :Arn)
                     :maxReceiveCount 5}}})
 

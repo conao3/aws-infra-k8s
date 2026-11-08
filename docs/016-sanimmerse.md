@@ -18,7 +18,7 @@ Two stacks per environment, plus the shared `cognito` stack:
 | Compute | Lambda `<prefix>-sanimmerse-api` and, with Stripe, `<prefix>-sanimmerse-billing`: `nodejs24.x`, `arm64`, JSON logs, the same code directory, one IAM role each |
 | Data | DynamoDB on demand: `<prefix>-sanimmerse-users` (`email`), `-data` (`userId` + `sk`), `-tokens` (`tokenHash`), all keys strings. `users` and `data` have point-in-time recovery; `users`, `data` and `tokens` have deletion protection. Encryption at rest is DynamoDB's default; the stack has no KMS key |
 | Downloads | S3 bucket (output `SanimmerseDownloadsBucket`): public access blocked, bucket owner enforced, SSE-S3, TLS only, incomplete multipart uploads aborted after 1 day |
-| Billing (Stripe only) | `AWS::Events::EventBus` named after the Stripe partner event source, a rule (`source` prefix `aws.partner/stripe.com`) to SQS `<prefix>-sanimmerse-billing` (visibility timeout 180 s = 6 x the function timeout, `maxReceiveCount` 5) and DLQ `-billing-dlq` (14 days), both with SSE-SQS and TLS only; the queue policy allows only this rule |
+| Billing (Stripe only) | `AWS::Events::EventBus` named after the Stripe partner event source, a rule (`source` prefix `aws.partner/stripe.com`) to SQS `<prefix>-sanimmerse-billing` (visibility timeout 180 s = 6 x the function timeout, `maxReceiveCount` 5) and DLQ `-billing-dlq` (14 days), both with TLS only and no SSE (queue policy in 012-security.md); the queue policy allows only this rule |
 | Logs | `/aws/lambda/<prefix>-sanimmerse-api`, `/aws/lambda/<prefix>-sanimmerse-billing`, `/aws/apigateway/<prefix>-sanimmerse-http-access`, 30 days |
 
 ## Lambda functions

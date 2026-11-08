@@ -136,6 +136,9 @@ See [011-network-policy.md](./011-network-policy.md) for details.
 - **Access control**: IAM role-based access control
 - **Mount targets**: Private subnets only
 
+#### SQS
+- **Encryption**: None. Server-side encryption stays off on every san product queue, and each queue definition sets `SqsManagedSseEnabled` to `false` (SQS turns SSE on by default for new queues, so the setting has to be explicit). The queues carry transient job and billing events only, and queue policies already limit access to the owning stack over TLS.
+
 ## Not Implemented / Future Considerations
 
 ### Medium Priority

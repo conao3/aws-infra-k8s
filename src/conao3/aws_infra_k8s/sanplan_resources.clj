@@ -274,7 +274,8 @@
 (defn resource-stripe-billing-queue []
   {:Type "AWS::SQS::Queue"
    :Properties
-   {:QueueName (a.cfn/prefix "sanplan-billing")}})
+   {:QueueName (a.cfn/prefix "sanplan-billing")
+    :SqsManagedSseEnabled false}})
 
 (defn resource-stripe-billing-queue-policy []
   {:Type "AWS::SQS::QueuePolicy"
