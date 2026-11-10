@@ -1,6 +1,6 @@
 # 014: sanchoris
 
-The `sanchoris` module builds the AWS side of [sanchoris](https://github.com/conao3/sanchoris): a serverless control plane (API Gateway, Lambda, DynamoDB, S3, SQS, EventBridge Scheduler) and ECS Fargate for Workspaces. It does not run on k8s and is not part of `deploy all`. The contract with the application is sanchoris `docs/architecture.md`; the DynamoDB tables come from sanchoris `infra/tables.json`, so the table definitions are never retyped here.
+The `sanchoris` module builds the AWS side of [sanchoris](https://github.com/sancode-org/sanchoris): a serverless control plane (API Gateway, Lambda, DynamoDB, S3, SQS, EventBridge Scheduler) and ECS Fargate for Workspaces. It does not run on k8s and is not part of `deploy all`. The contract with the application is sanchoris `docs/architecture.md`; the DynamoDB tables come from sanchoris `infra/tables.json`, so the table definitions are never retyped here.
 
 ## Resources
 
@@ -105,7 +105,7 @@ docker push $R/dev-k8s-sanchoris-relay:latest
    | `stripe-portal-config` | The stack parameter `StripePortalConfiguration` (`AWS::SSM::Parameter::Value<String>`), resolved into the `api` function's `STRIPE_PORTAL_CONFIGURATION`. The Stripe account is shared with other products, so every customer portal session names this configuration (`bpc_...`). A new value takes effect on the next stack update |
    | `stripe-price-pro`, `stripe-price-max`, `stripe-price-ultra` | Seeding `PLANS` after a deploy (below) |
 
-3. sanchoris checked out at `~/ghq/github.com/conao3/sanchoris` (or `SANCHORIS_DIR`) with `infra/tables.json` and the built functions `target/lambda/{api,channel-authorizer,channel,worker,relay}/bootstrap.zip` (`VITE_COGNITO_DOMAIN=<Hosted UI domain> VITE_COGNITO_CLIENT_ID=<SanchorisUserPoolClient> nix develop -c pnpm build:lambda`; the api zip embeds the frontend built with those values).
+3. sanchoris checked out at `~/ghq/github.com/sancode-org/sanchoris` (or `SANCHORIS_DIR`) with `infra/tables.json` and the built functions `target/lambda/{api,channel-authorizer,channel,worker,relay}/bootstrap.zip` (`VITE_COGNITO_DOMAIN=<Hosted UI domain> VITE_COGNITO_CLIENT_ID=<SanchorisUserPoolClient> nix develop -c pnpm build:lambda`; the api zip embeds the frontend built with those values).
 4. The API Gateway account setting has a CloudWatch Logs role (the WebSocket stage writes access logs through it). The `sanrecap` stack sets it in dev and prd.
 5. The ECS service-linked role `AWSServiceRoleForECS` exists in the account. `CreateCluster` fails with "Unable to assume the service linked role" when the stack creates it in an account that has never used ECS; create it first with `aws iam create-service-linked-role --aws-service-name ecs.amazonaws.com` (dev and prd have it).
 

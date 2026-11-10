@@ -1,5 +1,5 @@
 (ns conao3.aws-infra-k8s.sanchoris
-  "sanchoris (conao3/sanchoris) の基盤。制御側はサーバーレス: API Gateway の HTTP API (画面、webhook、OAuth) と
+  "sanchoris (sancode-org/sanchoris) の基盤。制御側はサーバーレス: API Gateway の HTTP API (画面、webhook、OAuth) と
   WebSocket API (Run channel) の Lambda、DynamoDB (main は stream 付き、audit は追記だけ)、S3 (docs / records、SSE-S3)、
   SQS FIFO の作業キューとそれを消費する worker の Lambda、main の stream を作業キューと EventBridge Scheduler に渡す relay の Lambda。
   Workspace だけが ECS Fargate で動き、公開サブネットの中継 (egress relay の CONNECT プロキシ) を出口に持つ。
@@ -1153,10 +1153,10 @@
     value))
 
 (defn template-input
-  "sanchoris のリポジトリ (SANCHORIS_DIR、既定 ~/ghq/github.com/conao3/sanchoris) の表の定義と Lambda の成果物の場所。"
+  "sanchoris のリポジトリ (SANCHORIS_DIR、既定 ~/ghq/github.com/sancode-org/sanchoris) の表の定義と Lambda の成果物の場所。"
   []
   (let [dir (fs/absolutize (or (System/getenv "SANCHORIS_DIR")
-                               (fs/expand-home "~/ghq/github.com/conao3/sanchoris")))
+                               (fs/expand-home "~/ghq/github.com/sancode-org/sanchoris")))
         tables-file (fs/path dir "infra" "tables.json")]
     (when-not (fs/exists? tables-file)
       (throw (ex-info (format "table definitions not found: %s" tables-file) {:file (str tables-file)})))
