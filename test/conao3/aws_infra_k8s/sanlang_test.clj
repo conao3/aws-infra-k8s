@@ -27,7 +27,7 @@
         api (properties template :ApiFunction)]
     (is (= ["arm64"] (:Architectures translate) (:Architectures api)))
     (is (= [10240 300 "Image"] ((juxt :MemorySize :Timeout :PackageType) translate)))
-    (is (= [256 29 "Zip" "nodejs26.x" "api.handler"] ((juxt :MemorySize :Timeout :PackageType :Runtime :Handler) api)))
+    (is (= [256 29 "Zip" "nodejs24.x" "api.handler"] ((juxt :MemorySize :Timeout :PackageType :Runtime :Handler) api)))
     (is (= {"Fn::Join" [":" [{"Fn::ImportValue" {"Fn::Sub" "${Prefix}-SanlangRepositoryUri"}} {:Ref :ImageTag}]]}
            (get-in translate [:Code :ImageUri])))
     (is (= {:Ref :ApiCodeBucket} (get-in api [:Code :S3Bucket])))

@@ -163,7 +163,7 @@
                                                                           :ADAPTER_PATH "/opt/models/adapter.gguf"})}}}
         :ApiFunction {:Type "AWS::Lambda::Function"
                       :Properties {:FunctionName (named "api") :PackageType "Zip"
-                                   :Runtime "nodejs26.x" :Handler "api.handler" :Architectures ["arm64"]
+                                   :Runtime "nodejs24.x" :Handler "api.handler" :Architectures ["arm64"]
                                    :Code {:S3Bucket (ref :ApiCodeBucket) :S3Key (ref :ApiCodeKey)
                                           :S3ObjectVersion {"Fn::If" ["HasCodeVersion" (ref :ApiCodeVersion) (ref "AWS::NoValue")]}}
                                    :Role (get-att :ApiRole :Arn) :MemorySize 256 :Timeout 29
