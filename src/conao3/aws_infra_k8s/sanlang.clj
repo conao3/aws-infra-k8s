@@ -133,6 +133,7 @@
                     :AllowedPattern "https://[^/\\s]+|http://localhost(:[0-9]+)?"}
         :ApiCodeVersion {:Type "String" :Default ""}
         :AllowedSources {:Type "String" :Default "cloudflare" :AllowedValues ["cloudflare" "any"]}
+        :TranslateMemorySize {:Type "Number" :Default 10240 :MinValue 128 :MaxValue 10240}
         :MaxInputCharacters {:Type "Number" :Default 10000 :MinValue 1}
         :MonthlyCharacterLimit {:Type "Number" :Default 100000 :MinValue 1}})
       :Conditions {:HasCodeVersion {"Fn::Not" [{"Fn::Equals" [(ref :ApiCodeVersion) ""]}]}}
@@ -155,7 +156,7 @@
         :TranslateFunction {:Type "AWS::Lambda::Function"
                             :Properties {:FunctionName (named "translate") :PackageType "Image"
                                          :Code {:ImageUri {"Fn::Join" [":" [(imported "SanlangRepositoryUri") (ref :ImageTag)]]}} :Architectures ["arm64"]
-                                         :Role (get-att :TranslateRole :Arn) :MemorySize 10240 :Timeout 300
+                                         :Role (get-att :TranslateRole :Arn) :MemorySize (ref :TranslateMemorySize) :Timeout 300
                                          :Environment {:Variables (merge (common-environment)
                                                                          {:LLAMA_SERVER "/opt/bin/llama-server"
                                                                           :LLAMA_PORT "8081"
@@ -231,5 +232,6 @@
                          {:WebOrigin (:sanlang-web-origin param)
                           :ApiCodeVersion (or (:api-code-version param) "")
                           :AllowedSources (or (:allowed-sources param) "cloudflare")
+                          :TranslateMemorySize (or (:translate-memory-size param) (System/getenv "SANLANG_TRANSLATE_MEMORY_SIZE") "10240")
                           :MaxInputCharacters (or (:max-input-characters param) "10000")
                           :MonthlyCharacterLimit (or (:monthly-character-limit param) "100000")}))))

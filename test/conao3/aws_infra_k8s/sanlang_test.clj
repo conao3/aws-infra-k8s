@@ -26,7 +26,9 @@
         translate (properties template :TranslateFunction)
         api (properties template :ApiFunction)]
     (is (= ["arm64"] (:Architectures translate) (:Architectures api)))
-    (is (= [10240 300 "Image"] ((juxt :MemorySize :Timeout :PackageType) translate)))
+    (is (= [{:Ref :TranslateMemorySize} 300 "Image"] ((juxt :MemorySize :Timeout :PackageType) translate)))
+    (is (= {:Type "Number" :Default 10240 :MinValue 128 :MaxValue 10240}
+           (get-in template [:Parameters :TranslateMemorySize])))
     (is (= [256 29 "Zip" "nodejs24.x" "api.handler"] ((juxt :MemorySize :Timeout :PackageType :Runtime :Handler) api)))
     (is (= {"Fn::Join" [":" [{"Fn::ImportValue" {"Fn::Sub" "${Prefix}-SanlangRepositoryUri"}} {:Ref :ImageTag}]]}
            (get-in translate [:Code :ImageUri])))
@@ -146,14 +148,15 @@
       (with-out-str
         (sanlang/deploy (merge param {:image-tag "release-1" :api-code-bucket "artifacts"
                                       :api-code-key "sanlang/release-1.zip" :certificate-arn "arn:example"
-                                      :cfn-lint "/approved/tools/cfn-lint"}))))
+                                      :translate-memory-size "3008" :cfn-lint "/approved/tools/cfn-lint"}))))
     (is (= [["/approved/tools/cfn-lint" "--regions" "ap-northeast-1" "--template" "target/cfn/sanlang.json"]]
            (take 1 @commands)))
     (is (= ["dev-k8s-sanlang"] @stacks))
     (is (= ["sam" "deploy" "--region" "ap-northeast-1"] (take 4 (second @commands))))
     (is (every? (set (second @commands)) ["ImageTag=release-1" "ApiCodeBucket=artifacts"
                                           "ApiCodeKey=sanlang/release-1.zip" "CertificateArn=arn:example"
-                                          "WebOrigin=https://dev-sanlang.sancode.dev" "AllowedSources=cloudflare"]))
+                                          "WebOrigin=https://dev-sanlang.sancode.dev" "AllowedSources=cloudflare"
+                                          "TranslateMemorySize=3008"]))
     (is (= 2 (count @commands)))))
 
 (deftest deployment-requires-artifacts-before-any-command

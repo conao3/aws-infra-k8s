@@ -31,12 +31,17 @@ translate Lambda only. Keep the deployed image available: a lifecycle expiration
 of an old deployed image can prevent Lambda reactivation. Use unique release tags
 and retain/redeploy the active version before it ages out of the last 10.
 
-Translate is 10,240 MB, arm64, 300 s, using the production target of Sanlang's
+Translate defaults to 10,240 MB (parameterized), arm64, 300 s, using the production target of Sanlang's
 `apps/server/Dockerfile`. There is no auth bypass or measurement handler. Lambda
 processes one invocation per execution environment; llama-server has one slot.
 No global reserved concurrency of 1 or provisioned concurrency is imposed. The
 zip API is Node.js 24, arm64, 256 MB, 29 s (`api.mjs`, handler `api.handler`).
 The translate container keeps its Node.js 26 base image.
+The dev account currently caps Lambda memory at 3008 MB; deploy there with
+`SANLANG_TRANSLATE_MEMORY_SIZE=3008`. A quota increase requires Papa's approval.
+llama-server uses Node's `availableParallelism()` for its thread count, rather
+than assuming the six CPUs of a 10,240 MB Lambda; verify CPU availability when
+measuring a smaller configuration (expected two CPUs at 3008 MB).
 Both log groups retain 30 days. No request/response body tracing is enabled.
 The table is on-demand, has PITR and deletion protection, and is retained on
 deletion/replacement. IAM allows translate **UpdateItem only**, api **GetItem
@@ -98,6 +103,7 @@ not the us-east-1 certificate used by the shared Cognito custom domain.
 | `AllowedSources` | `--allowed-sources`, default `cloudflare` | Source-IP gate; `any` is an explicit diagnostic opt-out, not an auth bypass |
 | `MaxInputCharacters` | `--max-input-characters`, default 10000 | Input code-point cap |
 | `MonthlyCharacterLimit` | `--monthly-character-limit`, default 100000 | Per-user UTC monthly input code points |
+| `TranslateMemorySize` | `--translate-memory-size` or `SANLANG_TRANSLATE_MEMORY_SIZE`, default 10240 | Translate Lambda MB, 128–10240; account limits may be lower; dev currently requires 3008 |
 
 The shared Cognito stack parameter `SanlangWebOrigin` receives the same
 `SANLANG_WEB_ORIGIN`. Its empty default derives the environment origin above.
