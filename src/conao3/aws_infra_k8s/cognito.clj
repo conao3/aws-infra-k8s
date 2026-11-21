@@ -182,6 +182,34 @@
     :AccessTokenValidity 60
     :RefreshTokenValidity 30}})
 
+(defn- sanlang-urls []
+  {"Fn::If" ["HasSanlangWebOrigin"
+              [{"Fn::Sub" "${SanlangWebOrigin}/"}]
+              {"Fn::If" ["IsPrd"
+                         ["https://sanlang.sancode.dev/"]
+                         [{"Fn::Sub" "https://${Env}-sanlang.sancode.dev/"}]]}]})
+
+(defn resource-user-pool-client-sanlang
+  "Public web client: authorization code + PKCE, with a full-page redirect to the web root."
+  []
+  {:Type "AWS::Cognito::UserPoolClient"
+   :DependsOn ["UserPoolIdentityProviderGoogle"]
+   :Properties
+   {:ClientName (a.cfn/prefix "user-pool-client-sanlang")
+    :UserPoolId {:Ref :UserPool}
+    :GenerateSecret false
+    :ExplicitAuthFlows ["ALLOW_REFRESH_TOKEN_AUTH"]
+    :PreventUserExistenceErrors "ENABLED"
+    :EnableTokenRevocation true
+    :CallbackURLs (sanlang-urls)
+    :LogoutURLs (sanlang-urls)
+    :AllowedOAuthFlows ["code"]
+    :AllowedOAuthScopes ["email" "openid" "profile"]
+    :AllowedOAuthFlowsUserPoolClient true
+    :SupportedIdentityProviders ["COGNITO" "Google"]
+    :TokenValidityUnits {:IdToken "minutes" :AccessToken "minutes" :RefreshToken "days"}
+    :IdTokenValidity 60 :AccessTokenValidity 60 :RefreshTokenValidity 30}})
+
 (defn resource-identity-pool []
   {:Type "AWS::Cognito::IdentityPool"
    :Properties
@@ -235,10 +263,14 @@
   (a.cfn/template
    {:Parameters
     (merge
-     (a.cfn/list-string-parameters [:Env :Prefix :DomainName :CertificateArn]))
+     (a.cfn/list-string-parameters [:Env :Prefix :DomainName :CertificateArn])
+     {:SanlangWebOrigin {:Type "String" :Default ""
+                         :Description "Sanlang web origin without trailing slash; empty uses the environment default"
+                         :AllowedPattern "|https://[^/\\s]+|http://localhost(:[0-9]+)?"}})
 
     :Conditions
-    {:IsPrd {"Fn::Equals" [{"Ref" "Env"} "prd"]}}
+    {:IsPrd {"Fn::Equals" [{"Ref" "Env"} "prd"]}
+     :HasSanlangWebOrigin {"Fn::Not" [{"Fn::Equals" [{:Ref :SanlangWebOrigin} ""]}]}}
 
     :Resources
     {:UserPool (resource-user-pool)
@@ -248,6 +280,7 @@
      :UserPoolClientSanrecap (resource-user-pool-client-sanrecap)
      :UserPoolClientSanchoris (resource-user-pool-client-sanchoris)
      :UserPoolClientSanimmerse (resource-user-pool-client-sanimmerse)
+     :UserPoolClientSanlang (resource-user-pool-client-sanlang)
      :IdentityPool (resource-identity-pool)
      :IdentityPoolRoleAuthenticated (resource-identity-pool-role-authenticated)
      :IdentityPoolRoleUnauthenticated (resource-identity-pool-role-unauthenticated)
@@ -263,6 +296,7 @@
       :SanrecapUserPoolClient {:Ref :UserPoolClientSanrecap}
       :SanchorisUserPoolClient {:Ref :UserPoolClientSanchoris}
       :SanimmerseUserPoolClient {:Ref :UserPoolClientSanimmerse}
+      :SanlangUserPoolClient {:Ref :UserPoolClientSanlang}
       :IdentityPool {:Ref :IdentityPool}})}))
 
 (defn- certificate-arn [param]
@@ -294,7 +328,8 @@
     (let [overrides {:Env (-> param :env)
                      :Prefix (-> param :prefix)
                      :DomainName (-> param :domain-name)
-                     :CertificateArn (certificate-arn param)}]
+                     :CertificateArn (certificate-arn param)
+                     :SanlangWebOrigin (or (:sanlang-web-origin param) "")}]
       (c.util/eshell "sam" "deploy"
                      "--template-file" (str (fs/path file))
                      "--stack-name" stack-name

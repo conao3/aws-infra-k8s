@@ -101,3 +101,11 @@
                        :region "ap-northeast-1"
                        :domain-name (-> param :sanimmerse-domain-name)
                        :output-key :SanimmerseCertificateArn}))
+
+(defn deploy-sanlang
+  "Sanlang regional REST API certificate (ap-northeast-1)."
+  [param]
+  (deploy-stack param {:stack-name (str (:prefix param) "-sanlang-certificate")
+                       :region "ap-northeast-1"
+                       :domain-name (:sanlang-domain-name param)
+                       :output-key :SanlangCertificateArn}))

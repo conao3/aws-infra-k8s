@@ -23,7 +23,8 @@
    [conao3.aws-infra-k8s.sanrecap :as c.sanrecap]
    [conao3.aws-infra-k8s.sanchoris :as c.sanchoris]
    [conao3.aws-infra-k8s.sanfreceipt :as c.sanfreceipt]
-   [conao3.aws-infra-k8s.sanimmerse :as c.sanimmerse])
+   [conao3.aws-infra-k8s.sanimmerse :as c.sanimmerse]
+   [conao3.aws-infra-k8s.sanlang :as c.sanlang])
   (:gen-class))
 
 (defn parse-args [args]
@@ -42,7 +43,8 @@
       "template" (case (first rest-args)
                    "sanchoris" (c.sanchoris/template param)
                    "sanfreceipt" (c.sanfreceipt/template param)
-                   "sanimmerse" (c.sanimmerse/template param))
+                   "sanimmerse" (c.sanimmerse/template param)
+                   "sanlang" (c.sanlang/template param))
       "deploy" (let [target (first rest-args)
                      parsed-args (parse-args (rest rest-args))
                      param (merge param parsed-args)]
@@ -76,6 +78,7 @@
                    "sanchoris-certificate" (c.certificate/deploy-sanchoris param)
                    "sanfreceipt-certificate" (c.certificate/deploy-sanfreceipt param)
                    "sanimmerse-certificate" (c.certificate/deploy-sanimmerse param)
+                   "sanlang-certificate" (c.certificate/deploy-sanlang param)
 
                    ;; k8s に載せない (API Gateway + Cognito + WAF + Lambda + SNS/SQS/DynamoDB)。`all` には含めない
                    "sanrecap" (c.sanrecap/deploy param)
@@ -86,6 +89,8 @@
                    "sanfreceipt" (c.sanfreceipt/deploy param)
                    ;; k8s に載せない (API Gateway の HTTP API + Lambda + DynamoDB + S3 + SQS + EventBridge)。`all` には含めない
                    "sanimmerse" (c.sanimmerse/deploy param)
+                   "sanlang-repository" (c.sanlang/deploy-repository param)
+                   "sanlang" (c.sanlang/deploy param)
                    "all" (do
                            (run ["deploy" "network"] param)
                            (run ["deploy" "routing"] param)
@@ -128,6 +133,9 @@
                :sanchoris-channel-domain-name sanchoris-channel-domain
                :sanfreceipt-domain-name sanfreceipt-domain
                :sanimmerse-domain-name sanimmerse-domain
+               :sanlang-domain-name (format "%s-sanlang-api.sancode.dev" env)
+               :sanlang-web-origin (or (System/getenv "SANLANG_WEB_ORIGIN")
+                                      (if (= env "prd") "https://sanlang.sancode.dev" (format "https://%s-sanlang.sancode.dev" env)))
                :alb-certificate-domain-name "*.sancode.dev"
                :StripeEventSourceName stripe-event-source
                :domain-aliases (str/join "," (map #(format "%s.sancode.dev" %) app-domains))}]

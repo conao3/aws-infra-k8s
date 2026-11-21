@@ -210,6 +210,7 @@ bin/k8s-local down
 | `sanrecap` | sanrecap backend: API Gateway + Lambda + SNS/SQS + DynamoDB + S3, optional AWS WAF (off by default, ~$7/month) (optional, needs `cognito`, not in `all`) |
 | `sanchoris` | sanchoris: HTTP and WebSocket APIs + Lambda + DynamoDB + S3 (SSE-KMS) + SQS FIFO + EventBridge Scheduler + ECS Fargate for Workspaces, optional VPC endpoints (off by default, ~$31/month) (optional, needs `cognito`, not in `all`) |
 | `sanimmerse` | sanimmerse: HTTP API + Lambda (web app and API) + DynamoDB + S3 downloads, Stripe events through EventBridge and SQS when the SSM settings exist (optional, needs `cognito`, not in `all`) |
+| `sanlang` | Optional Sanlang server inference: regional REST streaming API, arm64 container/zip Lambdas and DynamoDB usage; separate `sanlang-repository` and `sanlang-certificate` stacks, needs `cognito`, not in `all`. See [017-sanlang.md](docs/017-sanlang.md). |
 
 ### Global Modules (us-east-1)
 
