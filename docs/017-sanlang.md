@@ -155,6 +155,14 @@ validator outside the pinned Nix shell; shared tool pins are unchanged.
 Template validation is static, not proof of deployment, regional runtime/streaming
 support, image architecture, DNS or end-to-end auth.
 
+The direct-push verification runs the Sanlang `clojure.test` suite and
+`cljfmt check` / `clj-kondo --lint` on the new module and test files. `make test`
+cannot substitute for these checks: it invokes the absent `./aws-infra-k8s`
+executable and exits with Make error 127 before any tests run.
+Full-file `cljfmt check` also reports pre-existing formatting in the CLI's closing
+`deploy all` form and the original Sanplan client's logout URLs; these legacy
+forms are left unchanged. The new Sanlang module and test files pass formatting.
+
 ## Approved rollout only — NOT RUN
 
 **Stop here unless Papa has approved the target environment, costs, artifact

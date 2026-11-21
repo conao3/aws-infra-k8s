@@ -184,10 +184,10 @@
 
 (defn- sanlang-urls []
   {"Fn::If" ["HasSanlangWebOrigin"
-              [{"Fn::Sub" "${SanlangWebOrigin}/"}]
-              {"Fn::If" ["IsPrd"
-                         ["https://sanlang.sancode.dev/"]
-                         [{"Fn::Sub" "https://${Env}-sanlang.sancode.dev/"}]]}]})
+             [{"Fn::Sub" "${SanlangWebOrigin}/"}]
+             {"Fn::If" ["IsPrd"
+                        ["https://sanlang.sancode.dev/"]
+                        [{"Fn::Sub" "https://${Env}-sanlang.sancode.dev/"}]]}]})
 
 (defn resource-user-pool-client-sanlang
   "Public web client: authorization code + PKCE, with a full-page redirect to the web root."

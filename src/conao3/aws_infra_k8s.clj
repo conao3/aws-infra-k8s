@@ -135,7 +135,7 @@
                :sanimmerse-domain-name sanimmerse-domain
                :sanlang-domain-name (format "%s-sanlang-api.sancode.dev" env)
                :sanlang-web-origin (or (System/getenv "SANLANG_WEB_ORIGIN")
-                                      (if (= env "prd") "https://sanlang.sancode.dev" (format "https://%s-sanlang.sancode.dev" env)))
+                                       (if (= env "prd") "https://sanlang.sancode.dev" (format "https://%s-sanlang.sancode.dev" env)))
                :alb-certificate-domain-name "*.sancode.dev"
                :StripeEventSourceName stripe-event-source
                :domain-aliases (str/join "," (map #(format "%s.sancode.dev" %) app-domains))}]
