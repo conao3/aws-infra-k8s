@@ -1,0 +1,30 @@
+name: app-admin
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'docker/app-admin/**'
+      - '.github/actions/app-admin-image/**'
+      - '.github/workflows/app-admin.yml'
+  pull_request:
+    paths:
+      - 'docker/app-admin/**'
+      - '.github/actions/app-admin-image/**'
+      - '.github/workflows/app-admin.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      matrix:
+        environment: [dev, prd]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: ./.github/actions/app-admin-image
+        with:
+          environment: ${{ matrix.environment }}
+          tags: app-admin:${{ matrix.environment }}

@@ -1,0 +1,38 @@
+name: app-admin image
+description: Build the app-admin Docker image for an environment from the checkout
+inputs:
+  environment:
+    description: Environment whose URLs the admin page links to (dev or prd)
+    required: true
+  tags:
+    description: Image tags, one per line
+    required: true
+runs:
+  using: composite
+  steps:
+    - if: inputs.environment == 'prd'
+      shell: bash
+      run: |
+        set -euxo pipefail -o posix
+        perl -0pi -e 's|\s*<!-- SANPLAN_CARD_START -->.*?<!-- SANPLAN_CARD_END -->\s*|\n|s' docker/app-admin/html/index.html
+        sed -i \
+          -e 's|https://dev-app1.sancode.dev|https://app1.sancode.dev|g' \
+          -e 's|https://dev-app2.sancode.dev|https://app2.sancode.dev|g' \
+          -e 's|https://dev-app3.sancode.dev|https://app3.sancode.dev|g' \
+          -e 's|https://dev-cli-proxy-api.sancode.dev/v1|https://cli-proxy-api.sancode.dev/v1|g' \
+          -e 's|https://dev-n8n.sancode.dev/|https://n8n.sancode.dev/|g' \
+          -e 's|dev-k8s-secret|prd-k8s-secret|g' \
+          -e 's|conao3.dev.k8s|conao3.prd.k8s|g' \
+          docker/app-admin/html/index.html
+    - shell: bash
+      env:
+        TAGS: ${{ inputs.tags }}
+      run: |
+        set -euxo pipefail -o posix
+        args=()
+        while IFS= read -r tag; do
+          if [ -n "$tag" ]; then
+            args+=(-t "$tag")
+          fi
+        done <<< "$TAGS"
+        docker build "${args[@]}" docker/app-admin

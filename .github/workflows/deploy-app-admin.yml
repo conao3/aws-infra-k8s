@@ -1,0 +1,59 @@
+name: Deploy app-admin image
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment whose ECR repository receives the image
+        type: choice
+        options: [dev, prd]
+        default: dev
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04-arm
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-1
+      - uses: aws-actions/amazon-ecr-login@v2.1.7
+        id: ecr-login
+      - id: image
+        shell: bash
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          PREFIX: ${{ vars.PREFIX }}
+        run: |
+          set -euxo pipefail -o posix
+          echo "repository=${REGISTRY}/${PREFIX}-app-admin" >> "$GITHUB_OUTPUT"
+          echo "tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+      - uses: ./.github/actions/app-admin-image
+        with:
+          environment: ${{ inputs.environment }}
+          tags: |
+            ${{ steps.image.outputs.repository }}:${{ steps.image.outputs.tag }}
+            ${{ steps.image.outputs.repository }}:latest
+      - shell: bash
+        env:
+          REPOSITORY: ${{ steps.image.outputs.repository }}
+          TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          set -euxo pipefail -o posix
+          docker push "${REPOSITORY}:${TAG}"
+          docker push "${REPOSITORY}:latest"
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ## app-admin image pushed
+
+          - **Repository**: ${REPOSITORY}
+          - **Tags**: \`${TAG}\`, \`latest\`
+          - **Architecture**: arm64
+          EOF

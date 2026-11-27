@@ -3,7 +3,9 @@
 # Docs: https://gh.io/actions-lockfile
 version: 'v0.0.3'
 workflows:
-    '.github/workflows/build-app-admin.yml':
+    '.github/workflows/app-admin.yml':
+        - 'actions/checkout@v7.0.1'
+    '.github/workflows/deploy-app-admin.yml':
         - 'actions/checkout@v7.0.1'
         - 'aws-actions/amazon-ecr-login@v2.1.7'
         - 'aws-actions/configure-aws-credentials@v6.3.0'
