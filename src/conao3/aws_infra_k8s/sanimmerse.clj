@@ -538,7 +538,7 @@
                         (str/join " ")))))
 
 (def agent-files ["sanimmerse-linux-x64" "sanimmerse-macos-arm64" "sanimmerse-windows-x64.exe"])
-(def agent-upload-subject "repo:sancode-org/sanimmerse:ref:refs/heads/master")
+(def agent-upload-subject (sub "repo:sancode-org@248270855/sanimmerse@1442783865:environment:${Env}"))
 
 (defn agent-upload-cfn [_param]
   (let [bucket {"Fn::ImportValue" (sub "${Prefix}-SanimmerseDownloadsBucket")}]
