@@ -204,7 +204,7 @@ bin/k8s-local down
 | `efs` | EFS One Zone for persistent storage |
 | `rds` | RDS PostgreSQL (optional) |
 | `cognito` | Shared Cognito User Pool with Google IdP and per-app clients (optional) |
-| `github-oidc` | GitHub Actions OIDC (optional) |
+| `github-oidc` | IAM role for this repository's GitHub Actions, trusting the provider of `github-oidc-provider` (optional) |
 | `github-oidc-provider` | GitHub Actions OIDC provider only, for the per-product roles (optional, one per account) |
 | `sanplan-resources` | Sanplan CodeBuild + Step Functions (optional) |
 | `cli-proxy-api-resources` | CLIProxyAPI CodeBuild + Step Functions (optional) |

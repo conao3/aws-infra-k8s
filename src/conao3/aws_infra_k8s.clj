@@ -100,6 +100,7 @@
                            (run ["deploy" "cognito"] param)
                            (run ["deploy" "s3"] param)
                            (run ["deploy" "vm-import"] param)
+                           (run ["deploy" "github-oidc-provider"] param)
                            (run ["deploy" "github-oidc"] param)
                            (run ["deploy" "ecr"] param)
                            ;; (run ["deploy" "budget"] param)

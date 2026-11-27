@@ -23,7 +23,7 @@
     {:Version "2012-10-17"
      :Statement
      [{:Effect "Allow"
-       :Principal {:Federated {"Fn::GetAtt" [:GitHubOIDCProvider :Arn]}}
+       :Principal {:Federated {"Fn::ImportValue" {"Fn::Sub" "${Prefix}-GitHubOIDCProviderArn"}}}
        :Action "sts:AssumeRoleWithWebIdentity"
        :Condition
        {:StringEquals
@@ -94,13 +94,11 @@
                 :Description "GitHub repository name"}))
 
     :Resources
-    {:GitHubOIDCProvider (resource-oidc-provider)
-     :GitHubActionsRole (resource-github-actions-role)}
+    {:GitHubActionsRole (resource-github-actions-role)}
 
     :Outputs
     (a.cfn/list-outputs
-     {:GitHubOIDCProviderArn {"Fn::GetAtt" [:GitHubOIDCProvider :Arn]}
-      :GitHubActionsRoleArn {"Fn::GetAtt" [:GitHubActionsRole :Arn]}})}))
+     {:GitHubActionsRoleArn {"Fn::GetAtt" [:GitHubActionsRole :Arn]}})}))
 
 (defn deploy [param]
   (let [file (fs/file "target/cfn/github-oidc.json")

@@ -37,7 +37,8 @@ This deploys:
 - `cluster` - k3s cluster on NixOS
 - `alb` - Application Load Balancer with Target Group
 - `eice` - EC2 Instance Connect Endpoint
-- `github-oidc` - GitHub Actions OIDC provider and IAM role
+- `github-oidc-provider` - GitHub Actions OIDC provider (one per account)
+- `github-oidc` - IAM role for this repository's GitHub Actions, trusting that provider
 - `rds` - RDS PostgreSQL database
 - `cognito` - Shared Cognito User Pool (Google IdP, one app client per app; admin-create-user only). Every env uses a custom domain (`<env>-auth-k8s.sancode.dev`, prd `auth-k8s.sancode.dev`) with an ACM certificate in us-east-1 (`certificate` first)
 - `efs` - EFS One Zone for persistent storage
