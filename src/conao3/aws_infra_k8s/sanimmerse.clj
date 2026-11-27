@@ -536,3 +536,53 @@
                         (map (fn [[k v]]
                                (format "%s=\"%s\"" (name k) v)))
                         (str/join " ")))))
+
+(def agent-files ["sanimmerse-linux-x64" "sanimmerse-macos-arm64" "sanimmerse-windows-x64.exe"])
+(def agent-upload-subject "repo:sancode-org/sanimmerse:ref:refs/heads/master")
+
+(defn agent-upload-cfn [_param]
+  (let [bucket {"Fn::ImportValue" (sub "${Prefix}-SanimmerseDownloadsBucket")}]
+    (a.cfn/template
+     {:Parameters (a.cfn/list-string-parameters [:Env :Prefix])
+      :Resources
+      {:AgentUploadRole
+       {:Type "AWS::IAM::Role"
+        :Properties
+        {:AssumeRolePolicyDocument
+         {:Version "2012-10-17"
+          :Statement
+          [{:Effect "Allow"
+            :Principal {:Federated {"Fn::ImportValue" (sub "${Prefix}-GitHubOIDCProviderArn")}}
+            :Action "sts:AssumeRoleWithWebIdentity"
+            :Condition {:StringEquals {"token.actions.githubusercontent.com:aud" "sts.amazonaws.com"
+                                       "token.actions.githubusercontent.com:sub" agent-upload-subject}}}]}
+         :Policies
+         [{:PolicyName "put-agent-executables"
+           :PolicyDocument
+           {:Version "2012-10-17"
+            :Statement
+            [{:Effect "Allow"
+              :Action ["s3:PutObject" "s3:AbortMultipartUpload"]
+              :Resource (mapv (fn [file] {"Fn::Sub" [(str "arn:aws:s3:::${Bucket}/" file) {:Bucket bucket}]})
+                              agent-files)}]}}]}}}
+      :Outputs (a.cfn/list-outputs {:SanimmerseAgentUploadRoleArn (get-att :AgentUploadRole :Arn)})})))
+
+(defn deploy-agent-upload [param]
+  (let [file (fs/file "target/cfn/sanimmerse-agent-upload.json")
+        prefix (:prefix param)
+        stack-name (str prefix "-sanimmerse-agent-upload")]
+    (fs/create-dirs (fs/parent file))
+    (c.util/eprintln (format "Write: %s" (fs/path file)))
+    (with-open [writer (io/writer file)]
+      (json/generate-stream (agent-upload-cfn param) writer))
+    (c.util/eshell "sam" "validate" "--lint" "--template-file" (str (fs/path file)))
+    (c.util/ensure-stack-deployable stack-name)
+    (c.util/eshell "sam" "deploy"
+                   "--template-file" (str (fs/path file))
+                   "--stack-name" stack-name
+                   "--resolve-s3"
+                   "--capabilities" "CAPABILITY_IAM"
+                   "--no-fail-on-empty-changeset"
+                   "--on-failure" "DELETE"
+                   "--parameter-overrides"
+                   (format "Env=\"%s\" Prefix=\"%s\"" (:env param) prefix))))

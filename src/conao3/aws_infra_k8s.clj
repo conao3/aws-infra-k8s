@@ -60,6 +60,7 @@
                    "s3" (c.s3/deploy param)
                    "vm-import" (c.vm-import/deploy param)
                    "github-oidc" (c.github-oidc/deploy param)
+                   "github-oidc-provider" (c.github-oidc/deploy-provider param)
                    "ecr" (c.ecr/deploy param)
 
                    ;; depends on network
@@ -89,6 +90,7 @@
                    "sanfreceipt" (c.sanfreceipt/deploy param)
                    ;; k8s に載せない (API Gateway の HTTP API + Lambda + DynamoDB + S3 + SQS + EventBridge)。`all` には含めない
                    "sanimmerse" (c.sanimmerse/deploy param)
+                   "sanimmerse-agent-upload" (c.sanimmerse/deploy-agent-upload param)
                    "sanlang-repository" (c.sanlang/deploy-repository param)
                    "sanlang" (c.sanlang/deploy param)
                    "all" (do

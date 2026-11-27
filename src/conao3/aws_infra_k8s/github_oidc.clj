@@ -129,3 +129,27 @@
                           (map (fn [[k v]]
                                  (format "%s=\"%s\"" (name k) v)))
                           (str/join " ")))))
+
+(defn provider-cfn [_param]
+  (a.cfn/template
+   {:Parameters (a.cfn/list-string-parameters [:Env :Prefix])
+    :Resources {:GitHubOIDCProvider (resource-oidc-provider)}
+    :Outputs (a.cfn/list-outputs {:GitHubOIDCProviderArn {"Fn::GetAtt" [:GitHubOIDCProvider :Arn]}})}))
+
+(defn deploy-provider [param]
+  (let [file (fs/file "target/cfn/github-oidc-provider.json")
+        stack-name (str (-> param :prefix) "-github-oidc-provider")]
+    (fs/create-dirs (fs/parent file))
+    (c.util/eprintln (format "Write: %s" (fs/path file)))
+    (with-open [writer (io/writer file)]
+      (json/generate-stream (provider-cfn param) writer))
+    (c.util/eshell "sam" "validate" "--lint" "--template-file" (str (fs/path file)))
+    (c.util/ensure-stack-deployable stack-name)
+    (c.util/eshell "sam" "deploy"
+                   "--template-file" (str (fs/path file))
+                   "--stack-name" stack-name
+                   "--resolve-s3"
+                   "--no-fail-on-empty-changeset"
+                   "--on-failure" "DELETE"
+                   "--parameter-overrides"
+                   (format "Env=\"%s\" Prefix=\"%s\"" (-> param :env) (-> param :prefix)))))
