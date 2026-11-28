@@ -12,8 +12,15 @@ Web (Device by default; optional Server, Cognito ID token)
   → Cloudflare proxied <env>-sanlang-api.sancode.dev
   → regional API Gateway REST API, root base-path mapping → stage api
       POST /v1/translate → arm64 container Lambda translate → local llama-server
-      GET /v1/config, GET /v1/me, OPTIONS on all three routes → arm64 zip Lambda api
+      GET /v1/config, GET /v1/me, POST /v1/billing/checkout, POST /v1/billing/portal,
+      OPTIONS on all five routes → arm64 zip Lambda api
   → DynamoDB usage: userId (S) + period (S, YYYY-MM UTC)
+  → DynamoDB users: userId (S)
+
+With the Stripe SSM parameters only:
+Stripe event destination → partner event bus → rule <prefix>-sanlang-stripe
+  → SQS <prefix>-sanlang-billing (+ DLQ <prefix>-sanlang-billing-dlq)
+  → arm64 zip Lambda billing, every 5 minutes (rule <prefix>-sanlang-billing-drain) → DynamoDB users
 ```
 
 This is not a Kubernetes service. `sanlang`, `sanlang-repository` and
@@ -21,7 +28,8 @@ This is not a Kubernetes service. `sanlang`, `sanlang-repository` and
 `cognito` stack adds one public Sanlang app client and exports its ID. Existing
 user pools, clients and login domain remain unchanged. Review the shared-stack
 change set, especially in prd; do not replace the pool or other applications.
-Billing/Stripe, subscriptions and payment-driven quotas are future work.
+The Stripe billing resources exist only when the four Stripe SSM parameters exist
+(see "Stripe billing" below).
 
 The repository stack calls the existing `ecr.clj` helper: repository
 `<prefix>-sanlang-translate` (for example `dev-k8s-sanlang-translate`), scan on push,
@@ -36,18 +44,30 @@ Translate defaults to 10,240 MB (parameterized), arm64, 300 s, using the product
 processes one invocation per execution environment; llama-server has one slot.
 No global reserved concurrency of 1 or provisioned concurrency is imposed. The
 zip API is Node.js 24, arm64, 256 MB, 29 s (`api.mjs`, handler `api.handler`).
+The billing Lambda is Node.js 24, arm64, 256 MB, 30 s (`billing.mjs`, handler
+`billing.handler`) from the same zip.
 The translate container keeps its Node.js 26 base image.
 The dev account currently caps Lambda memory at 3008 MB; deploy there with
 `SANLANG_TRANSLATE_MEMORY_SIZE=3008`. A quota increase requires Papa's approval.
 llama-server uses Node's `availableParallelism()` for its thread count, rather
 than assuming the six CPUs of a 10,240 MB Lambda; verify CPU availability when
 measuring a smaller configuration (expected two CPUs at 3008 MB).
-Both log groups retain 30 days. No request/response body tracing is enabled.
-The table is on-demand, has PITR and deletion protection, and is retained on
-deletion/replacement. IAM allows translate **UpdateItem only**, api **GetItem
-only**, on this exact table; each can write only its own pre-created log group.
-No VPC, NAT, SSM secrets, billing resources or public Lambda Function URLs are
-needed. Lambda supplies the reserved `AWS_REGION` variable automatically.
+The translate and api log groups retain 30 days and are retained on stack
+deletion; the billing log group retains 30 days and is deleted with the billing
+resources. No request/response body tracing is enabled.
+Both tables (`<prefix>-sanlang-usage`, `<prefix>-sanlang-users`) are on-demand,
+have PITR and deletion protection, and are retained on deletion/replacement.
+Each function can write only its own pre-created log group and has only these
+item actions on these exact tables and queue:
+
+| Function | Permissions |
+|---|---|
+| `translate` | `dynamodb:UpdateItem` on usage; `dynamodb:GetItem` on users |
+| `api` | `dynamodb:GetItem` on usage; `dynamodb:GetItem`, `dynamodb:PutItem`, `dynamodb:UpdateItem` on users |
+| `billing` | `dynamodb:GetItem`, `dynamodb:UpdateItem` on users; `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` on the billing queue |
+
+No VPC, NAT or public Lambda Function URLs are used. Lambda supplies the
+reserved `AWS_REGION` variable automatically.
 
 ## REST streaming contract
 
@@ -60,7 +80,8 @@ The exact CloudFormation settings are:
 - URI:
   `arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2021-11-15/functions/${TranslateFunction.Arn}/response-streaming-invocations`.
   The streaming API version is **2021-11-15**, not the buffered 2015-03-31 path.
-- Buffered GET/OPTIONS integrations use 2015-03-31 `/invocations`, 29000 ms.
+- The buffered integrations of api (GET, POST on `/v1/billing/*`, OPTIONS) use
+  2015-03-31 `/invocations`, 29000 ms.
   All route permissions are scoped to this API, HTTP verb and path. The API
   snapshot logical ID changes when the generated route/integration definitions
   change, so a subsequent deployment publishes those changes.
@@ -96,13 +117,15 @@ not the us-east-1 certificate used by the shared Cognito custom domain.
 | Backend parameter | CLI flag or source | Purpose |
 |---|---|---|
 | `ImageTag` | `--image-tag` or `SANLANG_IMAGE_TAG`, required | Immutable tag in the repository exported by `sanlang-repository`; URI is composed from that export, not an arbitrary registry |
-| `ApiCodeBucket`, `ApiCodeKey` | `--api-code-bucket`, `--api-code-key` or `SANLANG_API_CODE_BUCKET`, `SANLANG_API_CODE_KEY`, required | Existing same-region S3 artifact bucket/key containing `api.mjs` at zip root |
+| `ApiCodeBucket`, `ApiCodeKey` | `--api-code-bucket`, `--api-code-key` or `SANLANG_API_CODE_BUCKET`, `SANLANG_API_CODE_KEY`, required | Existing same-region S3 artifact bucket/key containing `api.mjs` and `billing.mjs` at zip root (api and billing use the same zip) |
 | `ApiCodeVersion` | `--api-code-version`, optional | S3 object version; otherwise use a unique key per release so CloudFormation detects new code |
 | `CertificateArn` | `--certificate-arn` or `SANLANG_CERTIFICATE_ARN`, required | ARN from the separate certificate stack's `SanlangCertificateArn` export |
 | `WebOrigin` | `SANLANG_WEB_ORIGIN` | Exact HTTPS web origin, no trailing slash; defaults to `https://dev-sanlang.sancode.dev` / `https://sanlang.sancode.dev` (prd). `http://localhost:<port>` is allowed for development |
 | `AllowedSources` | `--allowed-sources`, default `cloudflare` | Source-IP gate; `any` is an explicit diagnostic opt-out, not an auth bypass |
 | `MaxInputCharacters` | `--max-input-characters`, default 10000 | Input code-point cap |
-| `MonthlyCharacterLimit` | `--monthly-character-limit`, default 100000 | Per-user UTC monthly input code points |
+| `FreeMonthlyCharacterLimit` | `--free-monthly-character-limit`, default 100000 | Per-user UTC monthly input code points on the free plan |
+| `ProMonthlyCharacterLimit` | `--pro-monthly-character-limit`, default 2000000 | Per-user UTC monthly input code points on the Pro plan |
+| `StripeEventSourceName` | SSM `/<prefix>/sanlang/stripe-event-source`; present only with the Stripe SSM parameters | Name of the Stripe partner event source; name of the stack's event bus |
 | `TranslateMemorySize` | `--translate-memory-size` or `SANLANG_TRANSLATE_MEMORY_SIZE`, default 10240 | Translate Lambda MB, 128–10240; account limits may be lower; dev currently requires 3008 |
 
 The shared Cognito stack parameter `SanlangWebOrigin` receives the same
@@ -112,11 +135,16 @@ full-page redirect, not `/auth/callback`. Public client, no secret, code flow +
 PKCE, `openid email profile`, Cognito/Google identity providers, token revocation,
 60-minute ID/access tokens, 30-day refresh token. The server verifies the ID
 token; the gateway deliberately has `AuthorizationType: NONE`, so config and
-preflight are public while me/translate enforce auth and quota in application code.
+preflight are public while me/translate/billing enforce auth and quota in application code.
 
-Both functions receive `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, `AUTH_DOMAIN`
-from shared-stack exports; `USAGE_TABLE`, `ALLOWED_SOURCES`, `ALLOWED_ORIGINS`
-(the exact `WebOrigin`), `MAX_INPUT_CHARACTERS`, `MONTHLY_CHARACTER_LIMIT`.
+Translate and api receive `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`, `AUTH_DOMAIN`
+from shared-stack exports; `USAGE_TABLE`, `USERS_TABLE`, `ALLOWED_SOURCES`,
+`ALLOWED_ORIGINS` (the exact `WebOrigin`), `MAX_INPUT_CHARACTERS`,
+`FREE_MONTHLY_CHARACTER_LIMIT`, `PRO_MONTHLY_CHARACTER_LIMIT`. Api additionally
+receives `PUBLIC_URL` (the exact `WebOrigin`: `https://dev-sanlang.sancode.dev`,
+prd `https://sanlang.sancode.dev`) and, with the Stripe SSM parameters,
+`STRIPE_SECRET_KEY`, `STRIPE_PRICE_PRO`, `STRIPE_PORTAL_CONFIG`. Without them
+`STRIPE_SECRET_KEY` is unset and the app disables billing.
 Translate additionally receives the production container paths:
 `LLAMA_SERVER=/opt/bin/llama-server`, `LLAMA_PORT=8081`,
 `MODEL_PATH=/opt/models/model.gguf`, `ADAPTER_PATH=/opt/models/adapter.gguf`.
@@ -127,10 +155,71 @@ The custom API domain is always **`<env>-sanlang-api.sancode.dev`**, including
 `prd-sanlang-api.sancode.dev`. `SanlangApiUrl` has no stage suffix; its root
 mapping preserves `/v1/...` in REST proxy events. The default execute-api endpoint
 is disabled. Source-IP validation uses `requestContext.identity.sourceIp`, not
-spoofable forwarded headers. CORS/OPTIONS is handled by api for all three routes;
+spoofable forwarded headers. CORS/OPTIONS is handled by api for all five routes;
 do not add a gateway Cognito authorizer to OPTIONS/config. The web build must set
 `VITE_SANLANG_API_URL` to `SanlangApiUrl`; without it the switch remains hidden.
 Keep web COOP `same-origin` and COEP `require-corp` unchanged.
+
+## Stripe billing
+
+Billing is built from the Stripe settings in SSM. The four String parameters
+`/<prefix>/sanlang/stripe-{secret-key,price-pro,portal-config,event-source}` must
+all exist; `deploy sanlang` reads them with `aws ssm get-parameters`, checks that
+no value under `/<prefix>/sanlang/` has leading or trailing whitespace, and only
+then adds the billing resources, the Stripe variables of `api` and the stack
+parameter `StripeEventSourceName`. Without them the stack has the users table,
+the limits and the billing routes, and no billing resources. The template
+references each value with a versioned dynamic reference
+(`{{resolve:ssm:/<prefix>/sanlang/<name>:<version>}}`), so a new value reaches
+the functions on the next `deploy sanlang`.
+
+| Name | Value | Variable | Functions |
+|------|-------|----------|-----------|
+| `stripe-secret-key` | Stripe restricted key (`rk_...`) | `STRIPE_SECRET_KEY` | api |
+| `stripe-price-pro` | Price ID of `Sanlang Pro` (monthly, lookup key `sanlang_pro_monthly`) | `STRIPE_PRICE_PRO` | api, billing |
+| `stripe-portal-config` | Customer portal configuration ID (`bpc_...`) for the Pro price | `STRIPE_PORTAL_CONFIG` | api |
+| `stripe-event-source` | Name of the Stripe partner event source (`aws.partner/stripe.com/ed_...`) | Stack parameter `StripeEventSourceName` | — (the stack's event bus and rule) |
+
+```bash
+aws ssm put-parameter --region ap-northeast-1 --type String --name /dev-k8s/sanlang/stripe-price-pro --value '<price id>'
+```
+
+| Resource | Contents |
+|----------|----------|
+| `StripeEventBus` | `AWS::Events::EventBus` whose name and event source are `StripeEventSourceName` |
+| `StripeRule` | Rule `<prefix>-sanlang-stripe` on that bus (`source` prefix `aws.partner/stripe.com`) to the billing queue |
+| `BillingQueue` | SQS `<prefix>-sanlang-billing`: visibility timeout 180 s (6 x the billing timeout), retention 4 days, `maxReceiveCount` 5 to the DLQ, no SSE. The queue policy allows `sqs:SendMessage` from `events.amazonaws.com` only for this rule and denies requests without TLS |
+| `BillingDlq` | SQS `<prefix>-sanlang-billing-dlq`: retention 14 days, no SSE, TLS only; output `SanlangBillingDlqUrl` |
+| `BillingFunction` | Lambda `<prefix>-sanlang-billing` (`AWS::Serverless::Function`): `billing.handler` from the api zip, `nodejs24.x`, arm64, 30 s, 256 MB; SAM `Schedule` event `rate(5 minutes)` (rule `<prefix>-sanlang-billing-drain`); output `SanlangBillingFunction` |
+| `BillingRole`, `BillingLogGroup` | The billing role (IAM table above) and `/aws/lambda/<prefix>-sanlang-billing` (30 days) |
+
+`billing.handler` runs on the schedule, receives from `BILLING_QUEUE_URL`, applies
+each message and deletes it. A message body is the EventBridge envelope of one
+Stripe event (`detail` is the Stripe event object). A message it cannot apply
+(unknown price) must not be deleted, so that it moves to the DLQ after 5 receives. Billing
+receives `USERS_TABLE`, `BILLING_QUEUE_URL` and `STRIPE_PRICE_PRO`. The portal
+session names `STRIPE_PORTAL_CONFIG`.
+
+On the Stripe side (test mode on dev, live mode on prd):
+
+1. Product `Sanlang Pro` with metadata `app=sanlang` and a monthly price with
+   lookup key `sanlang_pro_monthly` and metadata `app=sanlang`. Put its price ID
+   in `stripe-price-pro`.
+2. A customer portal configuration that offers the Pro price. Put its ID in
+   `stripe-portal-config`.
+3. A restricted key with Customers read, Products read, Prices read, Checkout
+   Sessions write and Customer Portal write. Put it in `stripe-secret-key`.
+4. The event destination in the dashboard (Developers → Workbench → Webhooks →
+   Add destination → Amazon EventBridge; events `customer.subscription.created`,
+   `customer.subscription.updated`, `customer.subscription.deleted`, snapshot
+   payload; name `<prefix>-sanlang-billing`, the AWS account ID and
+   `ap-northeast-1`). Put the destination's partner event source name in
+   `stripe-event-source`; `aws events list-event-sources --region ap-northeast-1`
+   also lists it. It turns from `PENDING` to `ACTIVE` once the stack's bus exists.
+5. `deploy sanlang`.
+
+The values end up in the Lambda configuration in plain text, so the key is a
+restricted key.
 
 ## Offline checks (safe; no AWS calls)
 
@@ -140,13 +229,14 @@ adds isolated `clojure.test` invariants and uses the existing template/SAM workf
 
 ```bash
 nix develop --command clojure -Sdeps '{:paths ["src" "resources" "test"]}' -M -m conao3.aws-infra-k8s.sanlang-test
+# sanlang.json has the Stripe billing resources (unversioned SSM references), sanlang-without-ssm.json does not.
 nix develop --command clojure -M -m conao3.aws-infra-k8s template sanlang
 # Install current validator tooling (PyPI only, not AWS), then validate offline.
 uv tool install cfn-lint==1.61.0
-# The four generated files are ignored under target/cfn; never call deploy to generate them.
+# The five generated files are ignored under target/cfn; never call deploy to generate them.
 AWS_EC2_METADATA_DISABLED=true \
   uv tool run --offline --from cfn-lint==1.61.0 cfn-lint --regions ap-northeast-1 \
-    --template target/cfn/sanlang{,-repository,-certificate,-cognito}.json
+    --template target/cfn/sanlang{,-without-ssm,-repository,-certificate,-cognito}.json
 ```
 
 `clj-kondo` and `cljfmt` can additionally be run via
@@ -229,14 +319,15 @@ docker buildx build --platform linux/arm64 --target production \
   --provenance=false --sbom=false --push -t "$ECR_URI:$RELEASE" \
   -f apps/server/Dockerfile .
 nix develop --command vp run build
-# Zip only the buffered API bundle; keep the handler at the archive root.
-(cd apps/server/dist/lambda && zip -j api.zip api.mjs)
+# Zip the buffered API and billing bundles; keep both handlers at the archive root.
+(cd apps/server/dist/lambda && zip -j api.zip api.mjs billing.mjs)
 export SANLANG_API_CODE_BUCKET=<existing-private-artifact-bucket-in-ap-northeast-1>
 export SANLANG_API_CODE_KEY="sanlang/$RELEASE/api.zip"
 aws s3 cp apps/server/dist/lambda/api.zip \
   "s3://$SANLANG_API_CODE_BUCKET/$SANLANG_API_CODE_KEY"
 ```
 
+For billing, put the four Stripe SSM parameters first ("Stripe billing" above).
 Return to this repository, preserving/exporting the artifact variables:
 
 ```bash
@@ -258,17 +349,23 @@ leveled check/fallback and NDJSON flushing before enabling Server for users.
 
 ## Operations and rollback
 
-Watch Lambda Errors, Throttles, duration/memory, REST API 5xx/latency and DynamoDB
-throttles. Streaming, 10 GB Lambda duration, ECR storage/scanning, PITR and logs
-cost money. No billing-based entitlement is provisioned. No source/translated
-text should appear in logs or gateway tracing. Account-wide concurrency and
+Watch Lambda Errors, Throttles, duration/memory, REST API 5xx/latency, DynamoDB
+throttles and, with Stripe, the depth of `<prefix>-sanlang-billing-dlq` and the
+billing function's Errors. Streaming, 10 GB Lambda duration, ECR storage/scanning,
+PITR and logs cost money. The Pro entitlement and its limit come from the users
+table, which the billing function updates from the Stripe subscription events.
+No source/translated text should appear in logs or gateway tracing. Account-wide concurrency and
 Gateway throttles should be reviewed before rollout; they are not changed here.
 
 Rollback by deploying a retained earlier immutable image tag and matching earlier
 zip key/version, or rebuilding the web with no API URL to hide Server. Keep
 browser inference available. Data restoration uses DynamoDB PITR to a new table
-and an explicitly reviewed migration. Removal order: backend → certificate and
+and an explicitly reviewed migration. Billing events that failed 5 times are in
+`<prefix>-sanlang-billing-dlq` (output `SanlangBillingDlqUrl`); after fixing the
+cause, move them back with `aws sqs start-message-move-task --source-arn <dlq arn>`.
+Removing one of the Stripe SSM parameters and redeploying removes the billing
+resources and the Stripe variables. Removal order: backend → certificate and
 repository → shared Cognito client/exports once unused; remove Cloudflare records
-manually. Table/repository/log-group retention intentionally leaves data/images/logs behind;
+and the Stripe event destination manually. Table/repository/log-group retention intentionally leaves data/images/logs behind;
 deletion protection must be explicitly disabled before deleting the retained
-table. Remove old code artifacts under the artifact bucket's own retention policy.
+tables. Remove old code artifacts under the artifact bucket's own retention policy.
