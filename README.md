@@ -1,4 +1,8 @@
-# aws-infra-k8s
+<p align="center"><img src="docs/assets/banner.png" alt="aws-infra-k8s: Run a low-cost Kubernetes cluster on AWS with Clojure and NixOS" width="880"></p>
+<p align="center"><strong>Run a low-cost Kubernetes cluster on AWS with Clojure and NixOS</strong></p>
+<p align="center"><a href="https://github.com/conao3/aws-infra-k8s/actions/workflows/app-admin.yml"><img src="https://github.com/conao3/aws-infra-k8s/actions/workflows/app-admin.yml/badge.svg?branch=master" alt="CI"></a> <a href="LICENSE"><img src="https://img.shields.io/github/license/conao3/aws-infra-k8s" alt="License"></a> <a href="https://github.com/conao3/aws-infra-k8s/stargazers"><img src="https://img.shields.io/github/stars/conao3/aws-infra-k8s?style=flat" alt="GitHub stars"></a></p>
+<p align="center"><a href="#overview">Overview</a> | <a href="#quick-start">Quick Start</a> | <a href="#documentation">Documentation</a> | <a href="#contributing">Contributing</a> | <a href="#license">License</a></p>
+<h1>aws-infra-k8s</h1>
 
 AWS infrastructure management for Kubernetes using Clojure and CloudFormation.
 
