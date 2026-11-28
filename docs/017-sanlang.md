@@ -208,8 +208,10 @@ On the Stripe side (test mode on dev, live mode on prd):
    in `stripe-price-pro`.
 2. A customer portal configuration that offers the Pro price. Put its ID in
    `stripe-portal-config`.
-3. A restricted key with Customers read, Products read, Prices read, Checkout
-   Sessions write and Customer Portal write. Put it in `stripe-secret-key`.
+3. A restricted key with Customers write, Checkout Sessions write, Customer
+   Portal write, Subscriptions read, Products read and Prices read, and no other
+   permissions (the list in sanlang `apps/server/README.md`). Put it in
+   `stripe-secret-key`.
 4. The event destination in the dashboard (Developers → Workbench → Webhooks →
    Add destination → Amazon EventBridge; events `customer.subscription.created`,
    `customer.subscription.updated`, `customer.subscription.deleted`, snapshot
