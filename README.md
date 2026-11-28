@@ -55,7 +55,7 @@ k3s Cluster on NixOS (EC2)
 
 ### Prerequisites
 
-1. **AWS Profile**: Set up AWS credentials and use `AWS_PROFILE=conao3.k8s` before each command
+1. **AWS Profile**: Set up AWS credentials and use `AWS_PROFILE=conao3.dev.k8s` before each command
 
 2. **Required Tools**: Clojure, AWS CLI, SAM CLI, kubectl
 
@@ -77,10 +77,10 @@ See [docs/002-prerequisites.md](docs/002-prerequisites.md) for full setup instru
 
 ```bash
 # Deploy all infrastructure (VPC, ALB, k3s cluster, CloudFront, etc.)
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy all
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy all
 
 # Deploy only the CLIProxyAPI build/deploy resources
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy cli-proxy-api-resources
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy cli-proxy-api-resources
 ```
 
 ### Deploy Applications
@@ -89,14 +89,14 @@ AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy cli-proxy-api-r
 # Deploy Kubernetes applications (Traefik, apps, monitoring)
 export GRAFANA_ADMIN_USER=admin
 export GRAFANA_ADMIN_PASSWORD='<strong-password>'
-AWS_PROFILE=conao3.k8s bin/k8s deploy
+AWS_PROFILE=conao3.dev.k8s bin/k8s deploy
 ```
 
 ### Access Your Cluster
 
 ```bash
 # Get CloudFront URL
-AWS_PROFILE=conao3.k8s aws cloudformation describe-stacks \
+AWS_PROFILE=conao3.dev.k8s aws cloudformation describe-stacks \
   --stack-name dev-k8s-cloudfront --region us-east-1 \
   --query 'Stacks[0].Outputs[?OutputKey==`DistributionDomainName`].OutputValue' \
   --output text
@@ -104,11 +104,11 @@ AWS_PROFILE=conao3.k8s aws cloudformation describe-stacks \
 # Access applications: https://xxx.cloudfront.net/
 
 # Port forward Grafana
-AWS_PROFILE=conao3.k8s bin/ssh/node grafana
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node grafana
 # Open: http://localhost:30300 (use the configured Grafana credentials)
 
 # Port forward Prometheus
-AWS_PROFILE=conao3.k8s bin/ssh/node prometheus
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node prometheus
 # Open: http://localhost:30900
 ```
 
@@ -224,7 +224,7 @@ bin/k8s-local down
 ### Deploy Single Module
 
 ```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy <module-name>
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy <module-name>
 ```
 
 ## Common Tasks
@@ -236,27 +236,27 @@ AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy <module-name>
 # Then redeploy
 export GRAFANA_ADMIN_USER=admin
 export GRAFANA_ADMIN_PASSWORD='<strong-password>'
-AWS_PROFILE=conao3.k8s bin/k8s deploy
+AWS_PROFILE=conao3.dev.k8s bin/k8s deploy
 ```
 
 ### Add New Application
 
 1. Create `k8s/my-app/` with deployment.yaml, service.yaml, ingress.yaml
-2. Deploy: `GRAFANA_ADMIN_USER=admin GRAFANA_ADMIN_PASSWORD='<strong-password>' AWS_PROFILE=conao3.k8s bin/k8s deploy`
+2. Deploy: `GRAFANA_ADMIN_USER=admin GRAFANA_ADMIN_PASSWORD='<strong-password>' AWS_PROFILE=conao3.dev.k8s bin/k8s deploy`
 
 See [007-ingress-subdomain.md](docs/007-ingress-subdomain.md#add-new-application) for details.
 
 ### View Logs
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl logs <pod-name> --tail=50'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl logs <pod-name> --tail=50'
 ```
 
 ### Check Resources
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get pods -A'
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl top nodes'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl get pods -A'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl top nodes'
 ```
 
 ### Update Cloudflare IP List
@@ -266,7 +266,7 @@ AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl top nodes'
 make update-cloudflare-ips
 
 # Then redeploy CloudFront stack
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy cloudfront
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy cloudfront
 ```
 
 ### Push the app-admin Image
@@ -281,11 +281,11 @@ See [003-deployment.md](docs/003-deployment.md#app-admin-image) for details.
 
 ```bash
 # Build the AMI with the ami-builder Step Functions state machine (CodeBuild + VM Import)
-aws stepfunctions start-execution --profile conao3.k8s \
-  --state-machine-arn $(aws cloudformation list-exports --profile conao3.k8s \
+aws stepfunctions start-execution --profile conao3.dev.k8s \
+  --state-machine-arn $(aws cloudformation list-exports --profile conao3.dev.k8s \
     --query "Exports[?Name=='dev-k8s-StateMachine'].Value" --output text)
 # After the execution succeeds, roll the new AMI out to the nodes
-AWS_PROFILE=conao3.k8s ./bin/image deploy
+AWS_PROFILE=conao3.dev.k8s ./bin/image deploy
 ```
 
 See [004-nixos-ami.md](docs/004-nixos-ami.md) for details.
@@ -296,19 +296,19 @@ See [004-nixos-ami.md](docs/004-nixos-ami.md) for details.
 
 1. Check ALB target health:
    ```bash
-   AWS_PROFILE=conao3.k8s aws elbv2 describe-target-health \
+   AWS_PROFILE=conao3.dev.k8s aws elbv2 describe-target-health \
      --target-group-arn $(aws cloudformation list-exports \
        --query "Exports[?Name=='dev-k8s-TargetGroup'].Value" --output text)
    ```
 
 2. Check Traefik logs:
    ```bash
-   AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl logs -n traefik -l app=traefik --tail=50'
+   AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl logs -n traefik -l app=traefik --tail=50'
    ```
 
 3. Check pod status:
    ```bash
-   AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get pods -A'
+   AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl get pods -A'
    ```
 
 ### Infrastructure Issues
@@ -316,7 +316,7 @@ See [004-nixos-ami.md](docs/004-nixos-ami.md) for details.
 Check CloudFormation stack events:
 
 ```bash
-AWS_PROFILE=conao3.k8s aws cloudformation describe-stack-events \
+AWS_PROFILE=conao3.dev.k8s aws cloudformation describe-stack-events \
   --stack-name dev-k8s-<module-name> --max-items 10
 ```
 

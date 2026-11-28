@@ -74,9 +74,9 @@ The `cluster` stack reads the AMI ID from SSM `/<prefix>/custom-ami-id`.
 Deploy the S3 bucket, the `vmimport` service role that VM Import uses to read the image, and the builder:
 
 ```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy s3
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy vm-import
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy ami-builder
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy s3
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy vm-import
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy ami-builder
 ```
 
 ### Build the AMI
@@ -86,17 +86,17 @@ Push the NixOS changes to `master` first, since CodeBuild builds what is on GitH
 ```bash
 STATE_MACHINE_ARN=$(aws cloudformation list-exports \
   --query "Exports[?Name=='dev-k8s-StateMachine'].Value" --output text \
-  --profile conao3.k8s)
+  --profile conao3.dev.k8s)
 
 EXECUTION_ARN=$(aws stepfunctions start-execution \
   --state-machine-arn "${STATE_MACHINE_ARN}" \
   --query executionArn --output text \
-  --profile conao3.k8s)
+  --profile conao3.dev.k8s)
 
 aws stepfunctions describe-execution \
   --execution-arn "${EXECUTION_ARN}" \
   --query status --output text \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 ```
 
 Repeat `describe-execution` until the status is `SUCCEEDED`, then check the new AMI ID:
@@ -104,7 +104,7 @@ Repeat `describe-execution` until the status is `SUCCEEDED`, then check the new 
 ```bash
 aws ssm get-parameter --name /dev-k8s/custom-ami-id \
   --query Parameter.Value --output text \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 ```
 
 ### Roll Out the AMI
@@ -112,7 +112,7 @@ aws ssm get-parameter --name /dev-k8s/custom-ami-id \
 `bin/image deploy` starts an instance refresh of the `<prefix>-node` Auto Scaling group and waits for it to succeed:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/image deploy
+AWS_PROFILE=conao3.dev.k8s bin/image deploy
 ```
 
 ### Build the Image Locally
@@ -153,7 +153,7 @@ aws ec2 describe-images \
   --filter 'Name=name,Values=nixos/25.05*' 'Name=architecture,Values=arm64' \
   --query 'sort_by(Images, &CreationDate)[-1].[ImageId,Name]' \
   --output text \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 ```
 
 **Default AMI**: `ami-00ce0dbbbd1a71d5b` (nixos/25.05.813814.ac62194c3917-aarch64-linux)
@@ -171,7 +171,7 @@ Edit `src/conao3/aws_infra_k8s/cluster.clj` and set the AMI ID:
 Then redeploy:
 
 ```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy cluster
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy cluster
 ```
 
 ## Customizing the AMI
@@ -220,7 +220,7 @@ Common issues:
 Check the `dev-k8s-ami-importer` Lambda logs and the VM Import task status:
 
 ```bash
-aws ec2 describe-import-snapshot-tasks --profile conao3.k8s
+aws ec2 describe-import-snapshot-tasks --profile conao3.dev.k8s
 ```
 
 ### Instance Won't Start
@@ -230,7 +230,7 @@ Check the EC2 instance system log:
 ```bash
 aws ec2 get-console-output \
   --instance-id <instance-id> \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 ```
 
 ## AMI Maintenance
@@ -256,7 +256,7 @@ aws ec2 describe-images \
   --filters "Name=name,Values=dev-k8s-*" \
   --query 'Images[*].[ImageId,Name,CreationDate]' \
   --output table \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 ```
 
 Deregister old AMI:
@@ -264,7 +264,7 @@ Deregister old AMI:
 ```bash
 aws ec2 deregister-image \
   --image-id <ami-id> \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 ```
 
 Delete associated snapshot:
@@ -272,5 +272,5 @@ Delete associated snapshot:
 ```bash
 aws ec2 delete-snapshot \
   --snapshot-id <snapshot-id> \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 ```

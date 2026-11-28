@@ -376,14 +376,14 @@ Environment Variables:
   CLI_PROXY_API_KEY     CLIProxyAPI Bearer API key for n8n workflows
 
 Local kubectl access (healthy instance):
-  Terminal 1: AWS_PROFILE=conao3.k8s bin/k8s port-forward
+  Terminal 1: AWS_PROFILE=conao3.dev.k8s bin/k8s port-forward
   Terminal 2: export KUBECONFIG=\$(pwd)/target/kubeconfig
-  Terminal 2: AWS_PROFILE=conao3.k8s bin/k8s deploy
+  Terminal 2: AWS_PROFILE=conao3.dev.k8s bin/k8s deploy
 
 Deploy to warmup instance:
-  Terminal 1: AWS_PROFILE=conao3.k8s bin/k8s port-forward-warmup
+  Terminal 1: AWS_PROFILE=conao3.dev.k8s bin/k8s port-forward-warmup
   Terminal 2: export KUBECONFIG=\$(pwd)/target/kubeconfig
-  Terminal 2: AWS_PROFILE=conao3.k8s bin/k8s deploy
+  Terminal 2: AWS_PROFILE=conao3.dev.k8s bin/k8s deploy
 EOF
 }
 

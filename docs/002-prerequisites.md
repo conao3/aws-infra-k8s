@@ -6,10 +6,11 @@ Before deploying the infrastructure, you need to set up the following AWS resour
 
 All AWS operations use the `AWS_PROFILE` environment variable to specify credentials.
 
-Prefix each command with the profile:
+Prefix each command with the profile of the environment. The examples in these docs use dev; for prd, set `DEPLOY_ENV=prd` and the prd profile:
 
 ```bash
-AWS_PROFILE=conao3.k8s <command>
+AWS_PROFILE=conao3.dev.k8s <command> # dev (249899228725)
+DEPLOY_ENV=prd AWS_PROFILE=conao3.prd.k8s <command> # prd (932326148159)
 ```
 
 ## Required AWS Resources
@@ -23,7 +24,7 @@ aws ec2 create-key-pair \
   --key-name dev-k8s-keypair \
   --query 'KeyMaterial' \
   --output text \
-  --profile conao3.k8s > ~/.ssh/dev-k8s-keypair.pem
+  --profile conao3.dev.k8s > ~/.ssh/dev-k8s-keypair.pem
 
 chmod 400 ~/.ssh/dev-k8s-keypair.pem
 ```
@@ -33,8 +34,8 @@ chmod 400 ~/.ssh/dev-k8s-keypair.pem
 Deploy S3 bucket and VM Import role (required for custom AMI upload):
 
 ```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy s3
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy vm-import
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy s3
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy vm-import
 ```
 
 ### 3. Secrets Manager Secret
@@ -49,7 +50,7 @@ EOF
 aws secretsmanager create-secret \
   --name dev-k8s-secret \
   --secret-string file:///tmp/dev-k8s-secret.json \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 
 rm /tmp/dev-k8s-secret.json
 ```
@@ -91,7 +92,7 @@ aws codebuild import-source-credentials \
   --server-type GITHUB \
   --auth-type PERSONAL_ACCESS_TOKEN \
   --token "YOUR_GITHUB_PAT" \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 ```
 
 The token needs `repo` scope. This is a per-region, per-account setting (not per-project).
@@ -105,14 +106,14 @@ aws secretsmanager get-secret-value \
   --secret-id dev-k8s-secret \
   --query SecretString \
   --output text \
-  --profile conao3.k8s | jq . > /tmp/dev-k8s-secret.json
+  --profile conao3.dev.k8s | jq . > /tmp/dev-k8s-secret.json
 
 $EDITOR /tmp/dev-k8s-secret.json
 
 aws secretsmanager update-secret \
   --secret-id dev-k8s-secret \
   --secret-string file:///tmp/dev-k8s-secret.json \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 
 rm /tmp/dev-k8s-secret.json
 ```
@@ -185,7 +186,7 @@ Verify your setup:
 
 ```bash
 # Check AWS profile
-aws sts get-caller-identity --profile conao3.k8s
+aws sts get-caller-identity --profile conao3.dev.k8s
 
 # Check Clojure
 clojure --version

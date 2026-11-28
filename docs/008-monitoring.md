@@ -73,7 +73,7 @@ The monitoring stack consists of:
 
 ```bash
 # Port forward
-AWS_PROFILE=conao3.k8s bin/ssh/node prometheus
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node prometheus
 
 # Open browser: http://localhost:30900
 ```
@@ -82,7 +82,7 @@ AWS_PROFILE=conao3.k8s bin/ssh/node prometheus
 
 ```bash
 # Port forward
-AWS_PROFILE=conao3.k8s bin/ssh/node grafana
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node grafana
 
 # Open browser: http://localhost:30300
 # Login with the credentials configured at deploy time
@@ -316,14 +316,14 @@ If error, verify Prometheus is accessible from Grafana pod.
 Check if the exporter is running:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get pods -l app=node-exporter'
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get pods -l app=kube-state-metrics -n kube-system'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl get pods -l app=node-exporter'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl get pods -l app=kube-state-metrics -n kube-system'
 ```
 
 Check exporter logs:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl logs -l app=node-exporter --tail=50'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl logs -l app=node-exporter --tail=50'
 ```
 
 ## Best Practices

@@ -62,7 +62,7 @@ See [007-ingress-subdomain.md](007-ingress-subdomain.md) for Ingress configurati
 
 1. Create directory `k8s/my-app/`
 2. Add manifests (deployment.yaml, service.yaml, ingress.yaml)
-3. Deploy: `AWS_PROFILE=conao3.k8s bin/k8s deploy`
+3. Deploy: `AWS_PROFILE=conao3.dev.k8s bin/k8s deploy`
 
 See [007-ingress-subdomain.md](007-ingress-subdomain.md#add-new-application) for details.
 
@@ -81,10 +81,10 @@ See [007-ingress-subdomain.md](007-ingress-subdomain.md#add-new-application) for
 
 ```bash
 # Get token
-AWS_PROFILE=conao3.k8s bin/k8s get-dashboard-token
+AWS_PROFILE=conao3.dev.k8s bin/k8s get-dashboard-token
 
 # Port forward
-AWS_PROFILE=conao3.k8s bin/ssh/node dashboard
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node dashboard
 
 # Open browser: https://localhost:31353
 ```
@@ -152,7 +152,7 @@ AWS_PROFILE=conao3.k8s bin/ssh/node dashboard
 
 ```bash
 # Port forward
-AWS_PROFILE=conao3.k8s bin/ssh/node prometheus
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node prometheus
 
 # Open browser: http://localhost:30900
 ```
@@ -181,7 +181,7 @@ See [008-monitoring.md](008-monitoring.md) for query examples.
 
 ```bash
 # Port forward
-AWS_PROFILE=conao3.k8s bin/ssh/node grafana
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node grafana
 
 # Open browser: http://localhost:30300
 # Login with the credentials configured at deploy time
@@ -255,7 +255,7 @@ http://app3.example.local:30080
 ```bash
 export GRAFANA_ADMIN_USER=admin
 export GRAFANA_ADMIN_PASSWORD='<strong-password>'
-AWS_PROFILE=conao3.k8s bin/k8s deploy
+AWS_PROFILE=conao3.dev.k8s bin/k8s deploy
 ```
 
 This deploys all applications to the AWS k3s cluster.
@@ -265,12 +265,12 @@ This deploys all applications to the AWS k3s cluster.
 To update an application:
 
 1. Edit manifests in `k8s/<app-name>/`
-2. Redeploy: `AWS_PROFILE=conao3.k8s bin/k8s deploy`
+2. Redeploy: `AWS_PROFILE=conao3.dev.k8s bin/k8s deploy`
 
 To update only a specific app:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl apply -f /tmp/k8s-manifests/app1/'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl apply -f /tmp/k8s-manifests/app1/'
 ```
 
 ## Troubleshooting
@@ -280,7 +280,7 @@ AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl apply -f /tmp/k8s-manifests/a
 Check pod events:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl describe pod <pod-name>'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl describe pod <pod-name>'
 ```
 
 ### Service Not Accessible
@@ -288,7 +288,7 @@ AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl describe pod <pod-name>'
 Check service endpoints:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get endpoints <service-name>'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl get endpoints <service-name>'
 ```
 
 ### Ingress Not Working
@@ -296,11 +296,11 @@ AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get endpoints <service-name>'
 Check Traefik logs:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl logs -n traefik -l app=traefik'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl logs -n traefik -l app=traefik'
 ```
 
 Check Ingress status:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get ingress -A'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl get ingress -A'
 ```

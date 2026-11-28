@@ -11,7 +11,7 @@ Before deploying, ensure you have completed all steps in [002-prerequisites.md](
 Deploy all infrastructure components:
 
 ```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy all
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy all
 ```
 
 This deploys:
@@ -59,13 +59,13 @@ This deploys:
 ### Deploy Single Module
 
 ```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy <module-name>
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy <module-name>
 ```
 
 **Example**: Deploy only the routing module
 
 ```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy routing
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy routing
 ```
 
 ### Module Dependencies
@@ -96,9 +96,9 @@ The job runs in the GitHub environment `dev` or `prd` (deployments only from `ma
 Each account needs these stacks:
 
 ```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy github-oidc-provider
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy app-admin-repository
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy github-oidc
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy github-oidc-provider
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy app-admin-repository
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy github-oidc
 ```
 
 The role trusts only the OIDC subject `repo:conao3/aws-infra-k8s:environment:<env>` and allows only `ecr:GetAuthorizationToken` and the push actions on `<prefix>-app-admin`.
@@ -145,7 +145,7 @@ All root modules automatically use the `conao3.root` AWS profile.
 After the infrastructure is deployed, deploy Kubernetes applications:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/k8s deploy
+AWS_PROFILE=conao3.dev.k8s bin/k8s deploy
 ```
 
 This deploys:
@@ -164,7 +164,7 @@ See [006-kubernetes-apps.md](006-kubernetes-apps.md) for details on each applica
 Check CloudFormation stacks:
 
 ```bash
-AWS_PROFILE=conao3.k8s aws cloudformation list-stacks \
+AWS_PROFILE=conao3.dev.k8s aws cloudformation list-stacks \
   --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE \
   --query 'StackSummaries[?starts_with(StackName, `dev-k8s-`)].StackName' \
   --output table
@@ -175,7 +175,7 @@ AWS_PROFILE=conao3.k8s aws cloudformation list-stacks \
 Check Kubernetes pods:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get pods -A'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl get pods -A'
 ```
 
 ### Access Verification
@@ -183,7 +183,7 @@ AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get pods -A'
 Get CloudFront URL:
 
 ```bash
-AWS_PROFILE=conao3.k8s aws cloudformation describe-stacks \
+AWS_PROFILE=conao3.dev.k8s aws cloudformation describe-stacks \
   --stack-name dev-k8s-cloudfront \
   --region us-east-1 \
   --query 'Stacks[0].Outputs[?OutputKey==`DistributionDomainName`].OutputValue' \
@@ -199,7 +199,7 @@ Access the URL in a browser to verify the application is running.
 Check CloudFormation events:
 
 ```bash
-AWS_PROFILE=conao3.k8s aws cloudformation describe-stack-events \
+AWS_PROFILE=conao3.dev.k8s aws cloudformation describe-stack-events \
   --stack-name dev-k8s-<module-name> \
   --max-items 10
 ```
@@ -209,24 +209,24 @@ AWS_PROFILE=conao3.k8s aws cloudformation describe-stack-events \
 1. Check ALB target health:
 
 ```bash
-AWS_PROFILE=conao3.k8s aws elbv2 describe-target-health \
+AWS_PROFILE=conao3.dev.k8s aws elbv2 describe-target-health \
   --target-group-arn $(aws cloudformation list-exports \
     --query "Exports[?Name=='dev-k8s-TargetGroup'].Value" \
     --output text \
-    --profile conao3.k8s)
+    --profile conao3.dev.k8s)
 ```
 
 2. Check Traefik logs:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login \
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login \
   'kubectl logs -n traefik -l app=traefik --tail=50'
 ```
 
 3. Check pod status:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login \
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login \
   'kubectl get pods -A'
 ```
 
@@ -236,17 +236,17 @@ To delete all resources (warning: this is irreversible):
 
 ```bash
 # Delete Kubernetes applications first
-AWS_PROFILE=conao3.k8s bin/ssh/node login \
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login \
   'kubectl delete --all deployments,services,ingresses -A'
 
 # Delete infrastructure stacks (in reverse order)
-AWS_PROFILE=conao3.k8s aws cloudformation delete-stack \
+AWS_PROFILE=conao3.dev.k8s aws cloudformation delete-stack \
   --stack-name dev-k8s-cloudfront --region us-east-1
 
-AWS_PROFILE=conao3.k8s aws cloudformation delete-stack \
+AWS_PROFILE=conao3.dev.k8s aws cloudformation delete-stack \
   --stack-name dev-k8s-alb
 
-AWS_PROFILE=conao3.k8s aws cloudformation delete-stack \
+AWS_PROFILE=conao3.dev.k8s aws cloudformation delete-stack \
   --stack-name dev-k8s-cluster
 
 # Continue with other stacks...

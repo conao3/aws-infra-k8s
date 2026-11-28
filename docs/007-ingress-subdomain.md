@@ -77,13 +77,13 @@ aws acm request-certificate \
   --domain-name "*.example.com" \
   --validation-method DNS \
   --region us-east-1 \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 ```
 
 Get the certificate ARN:
 
 ```bash
-aws acm list-certificates --region us-east-1 --profile conao3.k8s
+aws acm list-certificates --region us-east-1 --profile conao3.dev.k8s
 ```
 
 Add the DNS validation record to Route53 and wait for validation to complete.
@@ -98,7 +98,7 @@ DISTRIBUTION_DOMAIN=$(aws cloudformation describe-stacks \
   --region us-east-1 \
   --query 'Stacks[0].Outputs[?OutputKey==`DistributionDomainName`].OutputValue' \
   --output text \
-  --profile conao3.k8s)
+  --profile conao3.dev.k8s)
 
 aws route53 change-resource-record-sets \
   --hosted-zone-id ZXXXXXXXXXXXXX \
@@ -142,7 +142,7 @@ aws route53 change-resource-record-sets \
       }
     ]
   }' \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 ```
 
 **Note**: `Z2FDTNDATAQYW2` is the CloudFront hosted zone ID (constant for all CloudFront distributions).
@@ -179,13 +179,13 @@ Edit `src/conao3/aws_infra_k8s/cloudfront.clj` and add:
 Then redeploy:
 
 ```bash
-AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy cloudfront
+AWS_PROFILE=conao3.dev.k8s clojure -M -m conao3.aws-infra-k8s deploy cloudfront
 ```
 
 ### 4. Deploy Applications
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/k8s deploy
+AWS_PROFILE=conao3.dev.k8s bin/k8s deploy
 ```
 
 ### 5. Verify
@@ -271,7 +271,7 @@ DISTRIBUTION_DOMAIN=$(aws cloudformation describe-stacks \
   --region us-east-1 \
   --query 'Stacks[0].Outputs[?OutputKey==`DistributionDomainName`].OutputValue' \
   --output text \
-  --profile conao3.k8s)
+  --profile conao3.dev.k8s)
 
 aws route53 change-resource-record-sets \
   --hosted-zone-id ZXXXXXXXXXXXXX \
@@ -291,7 +291,7 @@ aws route53 change-resource-record-sets \
       }
     ]
   }' \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 ```
 
 ### 3. Update CloudFront Aliases
@@ -301,7 +301,7 @@ Add `my-app.example.com` to the CloudFront Aliases list (see step 3 above).
 ### 4. Deploy
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/k8s deploy
+AWS_PROFILE=conao3.dev.k8s bin/k8s deploy
 ```
 
 ## Access Without Custom Domain
@@ -328,7 +328,7 @@ Access the Traefik dashboard (not exposed publicly by default):
 
 ```bash
 # Port forward
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl port-forward -n traefik svc/traefik 8080:8080'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl port-forward -n traefik svc/traefik 8080:8080'
 
 # Open browser: http://localhost:8080
 ```
@@ -345,17 +345,17 @@ The dashboard shows:
 
 1. Check Ingress status:
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get ingress -A'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl get ingress -A'
 ```
 
 2. Check Traefik logs:
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl logs -n traefik -l app=traefik --tail=50'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl logs -n traefik -l app=traefik --tail=50'
 ```
 
 3. Check IngressClass:
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get ingressclass'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl get ingressclass'
 ```
 
 ### 404 Not Found

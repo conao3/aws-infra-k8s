@@ -170,24 +170,24 @@ Suitable for most application workloads, but not for latency-sensitive databases
 ### Check EFS Usage
 
 ```bash
-AWS_PROFILE=conao3.k8s aws efs describe-file-systems \
+AWS_PROFILE=conao3.dev.k8s aws efs describe-file-systems \
   --file-system-id $(aws cloudformation list-exports \
     --query "Exports[?Name=='dev-k8s-EfsFileSystemId'].Value" \
     --output text \
-    --profile conao3.k8s) \
+    --profile conao3.dev.k8s) \
   --query 'FileSystems[0].SizeInBytes' \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 ```
 
 ### Check Access Points
 
 ```bash
-AWS_PROFILE=conao3.k8s aws efs describe-access-points \
+AWS_PROFILE=conao3.dev.k8s aws efs describe-access-points \
   --file-system-id $(aws cloudformation list-exports \
     --query "Exports[?Name=='dev-k8s-EfsFileSystemId'].Value" \
     --output text \
-    --profile conao3.k8s) \
-  --profile conao3.k8s
+    --profile conao3.dev.k8s) \
+  --profile conao3.dev.k8s
 ```
 
 ### CloudWatch Metrics
@@ -206,7 +206,7 @@ EFS provides CloudWatch metrics:
 Check EFS CSI controller logs:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login \
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login \
   'kubectl logs -l app=efs-csi-controller -n default --tail=50'
 ```
 
@@ -220,7 +220,7 @@ Common issues:
 Check EFS CSI node logs:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node login \
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login \
   'kubectl logs -l app=efs-csi-node -n default --tail=50'
 ```
 
@@ -229,10 +229,10 @@ AWS_PROFILE=conao3.k8s bin/ssh/node login \
 Verify EFS mount target security group allows NFS from EC2 security group:
 
 ```bash
-AWS_PROFILE=conao3.k8s aws ec2 describe-security-groups \
+AWS_PROFILE=conao3.dev.k8s aws ec2 describe-security-groups \
   --filters "Name=group-name,Values=dev-k8s-efs*" \
   --query 'SecurityGroups[0].IpPermissions' \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 ```
 
 ## Cleanup
@@ -242,9 +242,9 @@ When deleting a PVC, the associated EFS Access Point is automatically deleted.
 To manually delete an Access Point:
 
 ```bash
-AWS_PROFILE=conao3.k8s aws efs delete-access-point \
+AWS_PROFILE=conao3.dev.k8s aws efs delete-access-point \
   --access-point-id fsap-xxxxx \
-  --profile conao3.k8s
+  --profile conao3.dev.k8s
 ```
 
 ## Alternatives

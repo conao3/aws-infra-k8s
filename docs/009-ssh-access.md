@@ -24,45 +24,45 @@ The `bin/ssh/node` script provides multiple commands:
 
 ```bash
 # Default: opens SSH session
-AWS_PROFILE=conao3.k8s bin/ssh/node
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node
 
 # Explicit login
-AWS_PROFILE=conao3.k8s bin/ssh/node login
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login
 
 # Run single command
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get pods -A'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl get pods -A'
 ```
 
 #### Port Forwarding
 
 **Grafana**:
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node grafana
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node grafana
 # Access: http://localhost:30300
 ```
 
 **Prometheus**:
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node prometheus
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node prometheus
 # Access: http://localhost:30900
 ```
 
 **Kubernetes Dashboard**:
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node dashboard
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node dashboard
 # Access: https://localhost:31353
 ```
 
 **Kubernetes API** (for kubectl):
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node k8s
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node k8s
 # Then use kubectl with forwarded port
 ```
 
 #### Help
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node help
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node help
 ```
 
 ## kubectl Access to AWS Cluster
@@ -72,14 +72,14 @@ To use kubectl from your local machine with the AWS cluster:
 **Terminal 1**: Port forward Kubernetes API
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/ssh/node k8s
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node k8s
 ```
 
 **Terminal 2**: Get kubeconfig and use kubectl
 
 ```bash
 # Get kubeconfig from cluster
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'cat /etc/rancher/k3s/k3s.yaml' > /tmp/k3s.yaml
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'cat /etc/rancher/k3s/k3s.yaml' > /tmp/k3s.yaml
 
 # Update server URL to use forwarded port
 sed -i 's|https://127.0.0.1:6443|https://localhost:6443|g' /tmp/k3s.yaml
@@ -130,55 +130,55 @@ ssh -i ~/.ssh/dev-k8s-keypair.pem \
 
 ```bash
 # Pod logs
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl logs <pod-name>'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl logs <pod-name>'
 
 # Deployment logs
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl logs -l app=<app-name> --tail=50'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl logs -l app=<app-name> --tail=50'
 
 # System logs
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'journalctl -u k3s -n 50'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'journalctl -u k3s -n 50'
 ```
 
 ### Check System Resources
 
 ```bash
 # CPU and memory
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'top -bn1 | head -20'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'top -bn1 | head -20'
 
 # Disk usage
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'df -h'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'df -h'
 
 # Disk I/O
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'iostat -x 1 5'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'iostat -x 1 5'
 ```
 
 ### Manage Kubernetes
 
 ```bash
 # Get all resources
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get all -A'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl get all -A'
 
 # Describe pod
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl describe pod <pod-name>'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl describe pod <pod-name>'
 
 # Delete pod (will be recreated by deployment)
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl delete pod <pod-name>'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl delete pod <pod-name>'
 
 # Restart deployment
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl rollout restart deployment/<name>'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl rollout restart deployment/<name>'
 ```
 
 ### Check k3s Status
 
 ```bash
 # k3s service status
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'systemctl status k3s'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'systemctl status k3s'
 
 # k3s version
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'k3s --version'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'k3s --version'
 
 # Check k3s logs
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'journalctl -u k3s --since "1 hour ago"'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'journalctl -u k3s --since "1 hour ago"'
 ```
 
 ## Troubleshooting
@@ -197,16 +197,16 @@ AWS_PROFILE=conao3.k8s bin/ssh/node login 'journalctl -u k3s --since "1 hour ago
 
 ```bash
 # Check instance status
-AWS_PROFILE=conao3.k8s aws ec2 describe-instances \
+AWS_PROFILE=conao3.dev.k8s aws ec2 describe-instances \
   --filters "Name=tag:Name,Values=dev-k8s-node-*" \
   --query 'Reservations[*].Instances[*].[InstanceId,State.Name,PrivateIpAddress]' \
   --output table
 
 # Check EICE
-AWS_PROFILE=conao3.k8s aws ec2 describe-instance-connect-endpoints
+AWS_PROFILE=conao3.dev.k8s aws ec2 describe-instance-connect-endpoints
 
 # Check security groups
-AWS_PROFILE=conao3.k8s aws ec2 describe-security-groups \
+AWS_PROFILE=conao3.dev.k8s aws ec2 describe-security-groups \
   --filters "Name=group-name,Values=dev-k8s-*"
 ```
 
@@ -223,11 +223,11 @@ AWS_PROFILE=conao3.k8s aws ec2 describe-security-groups \
 
 ```bash
 # Check AutoScaling Group
-AWS_PROFILE=conao3.k8s aws autoscaling describe-auto-scaling-groups \
+AWS_PROFILE=conao3.dev.k8s aws autoscaling describe-auto-scaling-groups \
   --auto-scaling-group-names dev-k8s-node
 
 # Check instance health
-AWS_PROFILE=conao3.k8s aws autoscaling describe-auto-scaling-instances
+AWS_PROFILE=conao3.dev.k8s aws autoscaling describe-auto-scaling-instances
 ```
 
 ### Permission Denied
@@ -261,10 +261,10 @@ chmod 400 ~/.ssh/dev-k8s-keypair.pem
 
 ```bash
 # Check if service is listening
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'netstat -tlnp | grep 30300'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'netstat -tlnp | grep 30300'
 
 # Check pod status
-AWS_PROFILE=conao3.k8s bin/ssh/node login 'kubectl get pods -l app=grafana'
+AWS_PROFILE=conao3.dev.k8s bin/ssh/node login 'kubectl get pods -l app=grafana'
 ```
 
 ## Security Considerations

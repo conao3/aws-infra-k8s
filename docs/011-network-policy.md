@@ -195,7 +195,7 @@ kubectl delete networkpolicy --all -n traefik
 To re-enable:
 
 ```bash
-AWS_PROFILE=conao3.k8s AWS_REGION=ap-northeast-1 bin/k8s deploy
+AWS_PROFILE=conao3.dev.k8s AWS_REGION=ap-northeast-1 bin/k8s deploy
 ```
 
 ## Security Best Practices

@@ -134,7 +134,7 @@ kubectl apply -k k8s/
 Or using the deployment script:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/k8s deploy
+AWS_PROFILE=conao3.dev.k8s bin/k8s deploy
 ```
 
 The script:
@@ -233,7 +233,7 @@ resources:
 5. Deploy:
 
 ```bash
-AWS_PROFILE=conao3.k8s bin/k8s deploy
+AWS_PROFILE=conao3.dev.k8s bin/k8s deploy
 ```
 
 ## Variable Substitution
