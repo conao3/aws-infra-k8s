@@ -65,14 +65,6 @@ AWS_PROFILE=conao3.k8s bin/ssh/node k8s
 AWS_PROFILE=conao3.k8s bin/ssh/node help
 ```
 
-### AMI Builder Instance
-
-Access the AMI builder instance (if deployed):
-
-```bash
-AWS_PROFILE=conao3.k8s bin/ssh/ami-builder
-```
-
 ## kubectl Access to AWS Cluster
 
 To use kubectl from your local machine with the AWS cluster:

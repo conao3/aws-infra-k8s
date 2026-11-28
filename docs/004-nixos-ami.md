@@ -62,59 +62,66 @@ See [Architecture FAQ](001-architecture.md#why-disable-traefik-and-servicelb) fo
 
 ## Build and Deploy Custom AMI
 
-### Option 1: GitHub Actions (Recommended)
+The AMI is built in AWS by the `ami-builder` stack (`src/conao3/aws_infra_k8s/ami_builder.clj`), which is not included in `deploy all`. Its Step Functions state machine `<prefix>-ami-builder` runs:
 
-Use the **Build NixOS AMI** workflow in the GitHub Actions tab to build the AMI on ARM64 runners.
+1. **CodeBuild** (`<prefix>-ami-builder`, ARM64): clones the `master` branch of this repository from GitHub, runs `nix build .#imageAmazon` with `buildspec-ami.yml`, uploads the `.vhd` image to the `s3` stack's bucket (export `<prefix>-VmImportBucket`) and writes its S3 URI to SSM `/<prefix>/ami-builder/s3-uri`
+2. **Lambda** (`<prefix>-ami-importer`, `lambda/ami-importer`): imports the image as an EBS snapshot (`ec2:ImportSnapshot`), registers it as an arm64 AMI named `nixos-custom-<timestamp>` and saves the AMI ID to SSM `/<prefix>/custom-ami-id`
 
-The workflow automatically:
-1. Builds the NixOS image natively on aarch64
-2. Uploads to S3 and imports as a snapshot
-3. Registers the AMI
-4. Saves the AMI ID to SSM Parameter Store (`/dev-k8s/custom-ami-id`)
+The `cluster` stack reads the AMI ID from SSM `/<prefix>/custom-ami-id`.
 
-**Steps**:
+### Prerequisites
+
+Deploy the S3 bucket, the `vmimport` service role that VM Import uses to read the image, and the builder:
 
 ```bash
-# Trigger the workflow
-gh workflow run build-ami.yml
-
-# Wait for completion
-sleep 5
-gh run watch $(gh run list --workflow=build-ami.yml --limit=1 --json databaseId --jq '.[0].databaseId')
-
-# Deploy cluster with the new AMI
-AWS_PROFILE=conao3.k8s ./bin/image deploy
+AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy s3
+AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy vm-import
+AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy ami-builder
 ```
 
-### Option 2: Local Build
+### Build the AMI
 
-**Requirements**:
-- Nix with aarch64 support (or binfmt_misc + QEMU)
-- AWS CLI configured
-
-**Steps**:
+Push the NixOS changes to `master` first, since CodeBuild builds what is on GitHub. Then start the state machine and wait for it:
 
 ```bash
-# Build the custom image
-AWS_PROFILE=conao3.k8s bin/image build
+STATE_MACHINE_ARN=$(aws cloudformation list-exports \
+  --query "Exports[?Name=='dev-k8s-StateMachine'].Value" --output text \
+  --profile conao3.k8s)
 
-# Upload to S3, import snapshot, and register as AMI
-AWS_PROFILE=conao3.k8s bin/image upload
+EXECUTION_ARN=$(aws stepfunctions start-execution \
+  --state-machine-arn "${STATE_MACHINE_ARN}" \
+  --query executionArn --output text \
+  --profile conao3.k8s)
 
-# Deploy cluster with custom AMI
+aws stepfunctions describe-execution \
+  --execution-arn "${EXECUTION_ARN}" \
+  --query status --output text \
+  --profile conao3.k8s
+```
+
+Repeat `describe-execution` until the status is `SUCCEEDED`, then check the new AMI ID:
+
+```bash
+aws ssm get-parameter --name /dev-k8s/custom-ami-id \
+  --query Parameter.Value --output text \
+  --profile conao3.k8s
+```
+
+### Roll Out the AMI
+
+`bin/image deploy` starts an instance refresh of the `<prefix>-node` Auto Scaling group and waits for it to succeed:
+
+```bash
 AWS_PROFILE=conao3.k8s bin/image deploy
 ```
 
-The `upload` command:
-- Saves the AMI ID to SSM Parameter Store (`/dev-k8s/custom-ami-id`)
-- Creates a local file `target/ami-id.txt` with the AMI ID
+### Build the Image Locally
 
-### What Happens During Upload?
+To check that the image builds before pushing, build it on an aarch64 machine (or with binfmt_misc + QEMU):
 
-1. **Upload to S3**: The raw disk image (`.vhd` format) is uploaded to your S3 bucket
-2. **Import Snapshot**: AWS imports the image as an EBS snapshot
-3. **Register AMI**: The snapshot is registered as an AMI
-4. **Save to SSM**: The AMI ID is saved to Parameter Store for deployment automation
+```bash
+nix build .#packages.aarch64-linux.imageAmazon
+```
 
 ## Test Custom Image with VM
 
@@ -195,22 +202,13 @@ Edit `nixos/nixos-configuration.nix` to add packages or change settings:
 
 ### Rebuild and Deploy
 
-```bash
-# Build new AMI
-gh workflow run build-ami.yml
-
-# Wait for completion
-gh run watch $(gh run list --workflow=build-ami.yml --limit=1 --json databaseId --jq '.[0].databaseId')
-
-# Deploy updated cluster
-AWS_PROFILE=conao3.k8s ./bin/image deploy
-```
+Commit and push the change to `master`, then follow [Build the AMI](#build-the-ami) and [Roll Out the AMI](#roll-out-the-ami).
 
 ## Troubleshooting
 
 ### Build Fails
 
-Check the GitHub Actions logs or local build output for errors.
+Check the failed step of the Step Functions execution and the CodeBuild logs in CloudWatch Logs (`/aws/codebuild/dev-k8s-ami-builder`), or the local build output.
 
 Common issues:
 - Insufficient disk space
@@ -219,7 +217,7 @@ Common issues:
 
 ### AMI Import Fails
 
-Check the VM Import task status:
+Check the `dev-k8s-ami-importer` Lambda logs and the VM Import task status:
 
 ```bash
 aws ec2 describe-import-snapshot-tasks --profile conao3.k8s
