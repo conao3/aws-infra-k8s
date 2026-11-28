@@ -93,7 +93,7 @@ gh run watch $(gh run list -R conao3/aws-infra-k8s --workflow=deploy-app-admin.y
 
 The job runs in the GitHub environment `dev` or `prd` (deployments only from `master`). It reads the environment variables `AWS_ROLE_ARN` (`arn:aws:iam::<account>:role/<prefix>-github-actions`) and `PREFIX` (`dev-k8s` or `prd-k8s`), and pushes `<prefix>-app-admin:<first 8 characters of the commit>` and `:latest`. For prd, the image links to the prd URLs.
 
-Each account needs, in this order:
+Each account needs these stacks:
 
 ```bash
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy github-oidc-provider

@@ -281,8 +281,8 @@ See [003-deployment.md](docs/003-deployment.md#app-admin-image) for details.
 
 ```bash
 # Build the AMI with the ami-builder Step Functions state machine (CodeBuild + VM Import)
-AWS_PROFILE=conao3.k8s aws stepfunctions start-execution \
-  --state-machine-arn $(aws cloudformation list-exports \
+aws stepfunctions start-execution --profile conao3.k8s \
+  --state-machine-arn $(aws cloudformation list-exports --profile conao3.k8s \
     --query "Exports[?Name=='dev-k8s-StateMachine'].Value" --output text)
 # After the execution succeeds, roll the new AMI out to the nodes
 AWS_PROFILE=conao3.k8s ./bin/image deploy
