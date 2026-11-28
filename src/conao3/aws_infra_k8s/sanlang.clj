@@ -198,7 +198,8 @@
                     :Properties {:Name (ref :StripeEventSourceName) :EventSourceName (ref :StripeEventSourceName)}}
    :StripeRule {:Type "AWS::Events::Rule"
                 :Properties {:Name (named "stripe") :EventBusName (ref :StripeEventBus)
-                             :EventPattern {:source [{:prefix "aws.partner/stripe.com"}]}
+                             :EventPattern {:source [{:prefix "aws.partner/stripe.com"}]
+                                            :detail {:data {:object {:metadata {:app ["sanlang"]}}}}}
                              :Targets [{:Id "BillingQueue" :Arn (get-att :BillingQueue :Arn)}]}}
    :BillingRole (role :BillingLogGroup
                       [(allow ["dynamodb:GetItem" "dynamodb:UpdateItem"] :UsersTable)

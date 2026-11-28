@@ -188,7 +188,7 @@ aws ssm put-parameter --region ap-northeast-1 --type String --name /dev-k8s/sanl
 | Resource | Contents |
 |----------|----------|
 | `StripeEventBus` | `AWS::Events::EventBus` whose name and event source are `StripeEventSourceName` |
-| `StripeRule` | Rule `<prefix>-sanlang-stripe` on that bus (`source` prefix `aws.partner/stripe.com`) to the billing queue |
+| `StripeRule` | Rule `<prefix>-sanlang-stripe` on that bus (`source` prefix `aws.partner/stripe.com` and subscription `metadata.app` `sanlang`, so other products sharing the Stripe account stay out of the queue) to the billing queue |
 | `BillingQueue` | SQS `<prefix>-sanlang-billing`: visibility timeout 180 s (6 x the billing timeout), retention 4 days, `maxReceiveCount` 5 to the DLQ, no SSE. The queue policy allows `sqs:SendMessage` from `events.amazonaws.com` only for this rule and denies requests without TLS |
 | `BillingDlq` | SQS `<prefix>-sanlang-billing-dlq`: retention 14 days, no SSE, TLS only; output `SanlangBillingDlqUrl` |
 | `BillingFunction` | Lambda `<prefix>-sanlang-billing` (`AWS::Serverless::Function`): `billing.handler` from the api zip, `nodejs24.x`, arm64, 30 s, 256 MB; SAM `Schedule` event `rate(5 minutes)` (rule `<prefix>-sanlang-billing-drain`); output `SanlangBillingFunction` |

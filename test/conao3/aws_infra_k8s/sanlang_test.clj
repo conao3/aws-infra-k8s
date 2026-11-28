@@ -122,7 +122,9 @@
            (properties template :StripeEventBus)))
     (is (= "aws.partner/stripe.com/not-configured" (get-in template [:Parameters :StripeEventSourceName :Default])))
     (is (= {"Fn::Sub" "${Prefix}-sanlang-stripe"} (:Name (properties template :StripeRule))))
-    (is (= {:source [{:prefix "aws.partner/stripe.com"}]} (:EventPattern (properties template :StripeRule))))
+    (is (= {:source [{:prefix "aws.partner/stripe.com"}]
+            :detail {:data {:object {:metadata {:app ["sanlang"]}}}}}
+           (:EventPattern (properties template :StripeRule))))
     (let [[allow deny] (get-in (properties template :BillingQueuePolicy) [:PolicyDocument :Statement])]
       (is (= {:Service "events.amazonaws.com"} (:Principal allow)))
       (is (= {:ArnEquals {"aws:SourceArn" {"Fn::GetAtt" [:StripeRule :Arn]}}} (:Condition allow)))
