@@ -1,6 +1,6 @@
 {:paths ["src" "resources"]
  :deps
- {org.clojure/clojure {:mvn/version "1.12.6"}
+ {org.clojure/clojure {:mvn/version "1.12.7"}
   camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.3"}
   babashka/process {:mvn/version "0.6.25"}
   babashka/fs {:mvn/version "0.5.34"}
