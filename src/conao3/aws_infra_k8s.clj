@@ -62,6 +62,7 @@
                    "github-oidc" (c.github-oidc/deploy param)
                    "github-oidc-provider" (c.github-oidc/deploy-provider param)
                    "ecr" (c.ecr/deploy param)
+                   "app-admin-repository" (c.ecr/deploy-app-admin-repository param)
 
                    ;; depends on network
                    "cluster" (c.cluster/deploy param)
@@ -103,6 +104,7 @@
                            (run ["deploy" "github-oidc-provider"] param)
                            (run ["deploy" "github-oidc"] param)
                            (run ["deploy" "ecr"] param)
+                           (run ["deploy" "app-admin-repository"] param)
                            ;; (run ["deploy" "budget"] param)
                            (run ["deploy" "cluster"] param)
                            (run ["deploy" "alb"] param)

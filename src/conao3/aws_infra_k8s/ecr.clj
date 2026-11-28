@@ -33,8 +33,7 @@
         a.cfn/list-string-parameters)
 
     :Resources
-    {:EcrAppAdmin (resource-ecr-repository "app-admin")
-     :EcrCliProxyApi (resource-ecr-repository "cli-proxy-api")
+    {:EcrCliProxyApi (resource-ecr-repository "cli-proxy-api")
      :EcrSanplanBackend (resource-ecr-repository "sanplan-backend")
      :EcrSanplanBackendBun (resource-ecr-repository "sanplan-backend-bun")
      :EcrSanplanFrontend (resource-ecr-repository "sanplan-frontend")
@@ -42,9 +41,7 @@
 
     :Outputs
     (a.cfn/list-outputs
-     {:EcrAppAdminArn {"Fn::GetAtt" [:EcrAppAdmin :Arn]}
-      :EcrAppAdminUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrAppAdmin}"}
-      :EcrCliProxyApiArn {"Fn::GetAtt" [:EcrCliProxyApi :Arn]}
+     {:EcrCliProxyApiArn {"Fn::GetAtt" [:EcrCliProxyApi :Arn]}
       :EcrCliProxyApiUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrCliProxyApi}"}
       :EcrSanplanBackendArn {"Fn::GetAtt" [:EcrSanplanBackend :Arn]}
       :EcrSanplanBackendUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrSanplanBackend}"}
@@ -55,14 +52,28 @@
       :EcrSanplanMigrateArn {"Fn::GetAtt" [:EcrSanplanMigrate :Arn]}
       :EcrSanplanMigrateUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrSanplanMigrate}"}})}))
 
-(defn deploy [param]
-  (let [file (fs/file "target/cfn/ecr.json")
-        stack-name (str (-> param :prefix) "-" "ecr")]
+(defn app-admin-repository-cfn [_param]
+  (a.cfn/template
+   {:Parameters
+    (-> [:Env :Prefix]
+        a.cfn/list-string-parameters)
+
+    :Resources
+    {:EcrAppAdmin (resource-ecr-repository "app-admin")}
+
+    :Outputs
+    (a.cfn/list-outputs
+     {:EcrAppAdminArn {"Fn::GetAtt" [:EcrAppAdmin :Arn]}
+      :EcrAppAdminUri {"Fn::Sub" "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrAppAdmin}"}})}))
+
+(defn- deploy-template [param template stack-suffix]
+  (let [file (fs/file (format "target/cfn/%s.json" stack-suffix))
+        stack-name (str (-> param :prefix) "-" stack-suffix)]
     (fs/create-dirs (fs/parent file))
 
     (c.util/eprintln (format "Write: %s" (fs/path file)))
     (with-open [writer (io/writer file)]
-      (-> (cfn param)
+      (-> template
           (json/generate-stream writer)))
 
     (c.util/eshell "sam" "validate" "--template-file" (str (fs/path file)))
@@ -80,3 +91,9 @@
                         (map (fn [[k v]]
                                (format "%s=\"%s\"" (name k) v)))
                         (str/join " ")))))
+
+(defn deploy [param]
+  (deploy-template param (cfn param) "ecr"))
+
+(defn deploy-app-admin-repository [param]
+  (deploy-template param (app-admin-repository-cfn param) "app-admin-repository"))

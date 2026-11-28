@@ -27,56 +27,24 @@
        :Action "sts:AssumeRoleWithWebIdentity"
        :Condition
        {:StringEquals
-        {"token.actions.githubusercontent.com:aud" "sts.amazonaws.com"}
-        :StringLike
-        {"token.actions.githubusercontent.com:sub"
-         {"Fn::Sub" "repo:${GitHubRepoOwner}/${GitHubRepoName}:*"}}}}]}
-    :ManagedPolicyArns
-    ["arn:aws:iam::aws:policy/AmazonEC2FullAccess"
-     "arn:aws:iam::aws:policy/AmazonS3FullAccess"]
+        {"token.actions.githubusercontent.com:aud" "sts.amazonaws.com"
+         "token.actions.githubusercontent.com:sub"
+         {"Fn::Sub" "repo:${GitHubRepoOwner}/${GitHubRepoName}:environment:${Env}"}}}}]}
     :Policies
-    [{:PolicyName "GitHubActionsPolicy"
+    [{:PolicyName "PushAppAdminImage"
       :PolicyDocument
       {:Version "2012-10-17"
        :Statement
        [{:Effect "Allow"
-         :Action
-         ["ssm:PutParameter"
-          "ssm:GetParameter"
-          "ssm:GetParameters"
-          "ssm:DescribeParameters"]
-         :Resource "*"}
-        {:Effect "Allow"
-         :Action
-         ["ec2:ImportSnapshot"
-          "ec2:DescribeImportSnapshotTasks"
-          "ec2:RegisterImage"
-          "ec2:CreateTags"]
-         :Resource "*"}
-        {:Effect "Allow"
-         :Action
-         ["cloudformation:ListExports"
-          "cloudformation:DescribeStacks"]
-         :Resource "*"}
-        {:Effect "Allow"
-         :Action
-         ["autoscaling:StartInstanceRefresh"
-          "autoscaling:DescribeInstanceRefreshes"]
-         :Resource "*"}
-        {:Effect "Allow"
          :Action ["ecr:GetAuthorizationToken"]
          :Resource "*"}
         {:Effect "Allow"
          :Action
          ["ecr:BatchCheckLayerAvailability"
-          "ecr:GetDownloadUrlForLayer"
-          "ecr:BatchGetImage"
-          "ecr:PutImage"
           "ecr:InitiateLayerUpload"
           "ecr:UploadLayerPart"
           "ecr:CompleteLayerUpload"
-          "ecr:DescribeImages"
-          "ecr:DescribeImageScanFindings"]
+          "ecr:PutImage"]
          :Resource {"Fn::Sub" "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Prefix}-app-admin"}}]}}]}})
 
 (defn cfn [_param]

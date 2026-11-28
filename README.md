@@ -204,7 +204,8 @@ bin/k8s-local down
 | `efs` | EFS One Zone for persistent storage |
 | `rds` | RDS PostgreSQL (optional) |
 | `cognito` | Shared Cognito User Pool with Google IdP and per-app clients (optional) |
-| `github-oidc` | IAM role for this repository's GitHub Actions, trusting the provider of `github-oidc-provider` (optional) |
+| `app-admin-repository` | ECR repository `<prefix>-app-admin` for the app-admin image |
+| `github-oidc` | IAM role `<prefix>-github-actions` that the `deploy-app-admin.yml` job in the GitHub environment `<env>` assumes; it can only push images to `<prefix>-app-admin` (needs `github-oidc-provider`) |
 | `github-oidc-provider` | GitHub Actions OIDC provider only, for the per-product roles (optional, one per account) |
 | `sanplan-resources` | Sanplan CodeBuild + Step Functions (optional) |
 | `cli-proxy-api-resources` | CLIProxyAPI CodeBuild + Step Functions (optional) |
@@ -268,12 +269,22 @@ make update-cloudflare-ips
 AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy cloudfront
 ```
 
+### Push the app-admin Image
+
+```bash
+gh workflow run deploy-app-admin.yml -R conao3/aws-infra-k8s --ref master -f environment=dev
+```
+
+See [003-deployment.md](docs/003-deployment.md#app-admin-image) for details.
+
 ### Build Custom AMI
 
 ```bash
-# Using GitHub Actions (recommended)
-gh workflow run build-ami.yml
-gh run watch $(gh run list --workflow=build-ami.yml --limit=1 --json databaseId --jq '.[0].databaseId')
+# Build the AMI with the ami-builder Step Functions state machine (CodeBuild + VM Import)
+AWS_PROFILE=conao3.k8s aws stepfunctions start-execution \
+  --state-machine-arn $(aws cloudformation list-exports \
+    --query "Exports[?Name=='dev-k8s-StateMachine'].Value" --output text)
+# After the execution succeeds, roll the new AMI out to the nodes
 AWS_PROFILE=conao3.k8s ./bin/image deploy
 ```
 

@@ -38,7 +38,9 @@ This deploys:
 - `alb` - Application Load Balancer with Target Group
 - `eice` - EC2 Instance Connect Endpoint
 - `github-oidc-provider` - GitHub Actions OIDC provider (one per account)
-- `github-oidc` - IAM role for this repository's GitHub Actions, trusting that provider
+- `github-oidc` - IAM role `<prefix>-github-actions` for the `deploy-app-admin.yml` workflow, trusting that provider only for jobs in the GitHub environment `<env>` of this repository and allowing only image pushes to `<prefix>-app-admin`
+- `app-admin-repository` - ECR repository `<prefix>-app-admin` for the app-admin image
+- `ecr` - ECR repositories for CLIProxyAPI and Sanplan
 - `rds` - RDS PostgreSQL database
 - `cognito` - Shared Cognito User Pool (Google IdP, one app client per app; admin-create-user only). Every env uses a custom domain (`<env>-auth-k8s.sancode.dev`, prd `auth-k8s.sancode.dev`) with an ACM certificate in us-east-1 (`certificate` first)
 - `efs` - EFS One Zone for persistent storage
@@ -49,7 +51,7 @@ This deploys:
 - `sanfreceipt-repository`, `sanfreceipt-certificate`, `sanfreceipt` - sanfreceipt backend (ECR, ACM, API Gateway HTTP API + container image Lambda + DynamoDB + Stripe events through EventBridge and SQS + CloudWatch alarms). Not included in `deploy all`. See [015-sanfreceipt.md](015-sanfreceipt.md)
 - `sanimmerse-certificate`, `sanimmerse` - sanimmerse cloud (ACM, API Gateway HTTP API + Lambda + DynamoDB + S3 downloads + Stripe events through EventBridge and SQS when the SSM settings exist). Requires `cognito` first; not included in `deploy all`. See [016-sanimmerse.md](016-sanimmerse.md)
 - `ssh-tunnel` - SSH tunnel instance (not included in `deploy all`)
-- `ami-builder` - AMI builder instance (not included in `deploy all`)
+- `ami-builder` - Custom NixOS AMI builder: CodeBuild + Lambda (VM Import) + Step Functions; needs `s3` and `vm-import` (not included in `deploy all`). See [004-nixos-ami.md](004-nixos-ami.md)
 
 **Global Resources (us-east-1):**
 - `cloudfront` - CloudFront Distribution + WAF WebACL
@@ -79,6 +81,27 @@ Modules must be deployed in the following order:
 7. `cloudfront`
 
 The `deploy all` command handles dependencies automatically.
+
+## app-admin Image
+
+The app-admin image (`docker/app-admin`) is pushed to ECR only by the manual workflow `deploy-app-admin.yml`. The `app-admin.yml` workflow builds the dev and prd images on push and pull requests without pushing.
+
+```bash
+gh workflow run deploy-app-admin.yml -R conao3/aws-infra-k8s --ref master -f environment=dev
+gh run watch $(gh run list -R conao3/aws-infra-k8s --workflow=deploy-app-admin.yml --limit=1 --json databaseId --jq '.[0].databaseId') --exit-status
+```
+
+The job runs in the GitHub environment `dev` or `prd` (deployments only from `master`). It reads the environment variables `AWS_ROLE_ARN` (`arn:aws:iam::<account>:role/<prefix>-github-actions`) and `PREFIX` (`dev-k8s` or `prd-k8s`), and pushes `<prefix>-app-admin:<first 8 characters of the commit>` and `:latest`. For prd, the image links to the prd URLs.
+
+Each account needs, in this order:
+
+```bash
+AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy github-oidc-provider
+AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy app-admin-repository
+AWS_PROFILE=conao3.k8s clojure -M -m conao3.aws-infra-k8s deploy github-oidc
+```
+
+The role trusts only the OIDC subject `repo:conao3/aws-infra-k8s:environment:<env>` and allows only `ecr:GetAuthorizationToken` and the push actions on `<prefix>-app-admin`.
 
 ## Root Account Resources
 
