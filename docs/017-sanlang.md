@@ -1,9 +1,10 @@
 # Sanlang optional server inference
 
-**Local infrastructure definitions only. No resources have been deployed. All
-AWS commands, image pushes, DNS changes and deployments below require Papa's
-explicit approval; none were run for this change.** Device inference remains the
-web default. No server option is enabled in the Chrome extension.
+The dev stacks `dev-k8s-sanlang`, `dev-k8s-sanlang-certificate` and
+`dev-k8s-sanlang-repository` are deployed; prd is not. Changes that add AWS
+services to the stack are deployed after the updated architecture diagram is
+approved. Device inference remains the web default. No server option is enabled
+in the Chrome extension.
 
 ## Architecture
 
